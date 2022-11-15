@@ -1,0 +1,5 @@
+Hi, this is a text file.
+It is used for paring of tstring_list types.
+
+this file should generate a tstring_list with 5 tstrings.
+One for each line.
