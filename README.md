@@ -6,7 +6,7 @@ libraries. For more information, see
 ![stb](https://nothings.org/stb/stb_h.html)
 for details.
 
-__Original author:__ Thomas Alexgaard Jensen (![https://gitlab.com/Alexgaard](https://gitlab.com/Alexgaard))
+__Original author:__ Thomas Alexgaard Jensen (![https://github.com/thom9258](https://github.com/thom9258))
 
 ## Allocators
 
