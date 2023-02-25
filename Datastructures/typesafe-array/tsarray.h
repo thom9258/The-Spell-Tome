@@ -64,9 +64,10 @@ TODO: Add sorting function, requires "t_operator_largest"
       added comments where nessecary
 [0.1] Added core functionality and primary overloads
 [0.0] Initialized library.
+
+
 */
 
-#include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 
@@ -74,6 +75,13 @@ TODO: Add sorting function, requires "t_operator_largest"
 #define _CAT_(A,B) A##B
 #define _CAT(A,B) _CAT_(A, B)
 #endif /*_C_MACRO_MAGIC_*/
+
+#ifndef TSARRAY_NO_STDLIB
+#include <stdlib.h>
+#define TSARRAY_MALLOC(n) malloc(n)
+#define TSARRAY_REALLOC(p, n) realloc(p,n)
+#define TSARRAY_FREE(p) free(p)
+#endif /*TSARRAY_NO_STDLIB*/
 
 /*required type definition. 
  * If none given, default to int in order to not emit errors*/
@@ -109,18 +117,16 @@ TODO: Add sorting function, requires "t_operator_largest"
 #endif
 
 /*defines for better readability of function names*/
+#define arr_t_struct          arr_t_name
 #define arr_t_initn           _CAT(arr_t_name, _initn)
 #define arr_t_destroy         _CAT(arr_t_name, _destroy)
 #define arr_t_destroy_members _CAT(arr_t_name, _destroy_members)
 #define arr_t_len             _CAT(arr_t_name, _len)
+#define arr_t_capacity        _CAT(arr_t_name, _capacity)
 #define arr_t_resize          _CAT(arr_t_name, _resize)
 #define arr_t_push            _CAT(arr_t_name, _push)
 #define arr_t_push_front      _CAT(arr_t_name, _push_front)
 #define arr_t_insert          _CAT(arr_t_name, _insert)
-/* TODO: implement
-#define arr_t_reverse         _CAT(arr_t_name, _reverse)
-#define arr_t_sort            _CAT(arr_t_name, _sort)
- * */
 #define arr_t_peek            _CAT(arr_t_name, _peek)
 #define arr_t_get             _CAT(arr_t_name, _get)
 #define arr_t_pop             _CAT(arr_t_name, _pop)
@@ -129,7 +135,10 @@ TODO: Add sorting function, requires "t_operator_largest"
 #define arr_t_print           _CAT(arr_t_name, _print)
 #define arr_t_duplicate       _CAT(arr_t_name, _duplicate)
 #define arr_t_concatenate     _CAT(arr_t_name, _concatenate)
-#define arr_t_struct          arr_t_name
+/* TODO: implement
+#define arr_t_reverse         _CAT(arr_t_name, _reverse)
+#define arr_t_sort            _CAT(arr_t_name, _sort)
+ * */
 
 typedef struct {
     t_type* members;
@@ -143,7 +152,7 @@ arr_t_initn(int _n)
 {
     if (_n < 1) _n = 3;
     arr_t_struct out = {0};
-    out.members = (t_type*)malloc(sizeof(t_type) * _n);
+    out.members = (t_type*)TSARRAY_MALLOC(sizeof(t_type) * _n);
     if (out.members == NULL)
         return out;
     out.count = 0;
@@ -157,7 +166,7 @@ arr_t_destroy(arr_t_struct* _arr)
 {
     if (_arr == NULL || _arr->members == NULL)
         return;
-    free(_arr->members);
+    TSARRAY_FREE(_arr->members);
     *_arr = (arr_t_struct) {0};
 }
 
@@ -180,6 +189,14 @@ arr_t_len(arr_t_struct* _arr)
     return _arr->count;
 }
 
+int
+arr_t_capacity(arr_t_struct* _arr)
+{
+    if (_arr == NULL || _arr->members == NULL)
+        return -1;
+    return _arr->max;
+}
+
 arr_t_struct*
 arr_t_resize(arr_t_struct* _dst, int _n)
 {
@@ -189,7 +206,7 @@ arr_t_resize(arr_t_struct* _dst, int _n)
         *_dst = arr_t_initn(_n);
         return _dst;
     }
-    _dst->members = (t_type*)realloc(_dst->members, _n * sizeof(t_type));
+    _dst->members = (t_type*)TSARRAY_REALLOC(_dst->members, _n * sizeof(t_type));
     if (_dst->members == NULL)
         return NULL;
     _dst->max = _n;

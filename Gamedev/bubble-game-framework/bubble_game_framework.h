@@ -34,6 +34,7 @@ CHANGELOG:
 [0.2] Implemented a config struct as input to BUBBLE_init().
       Started impl on double frame buffer.
       Fixed top scene pointer to be a function for safety reasons.
+[0.3] Replaced scene stack impl with an templated array.
 
 
 TODO:
@@ -58,10 +59,14 @@ extern "C" {
 #ifndef BUBBLE_GAME_FRAMEWORK_H
 #define BUBBLE_GAME_FRAMEWORK_H
 
+/*Standard libs*/
 #include <stdio.h>
 
+
+/*Custom libs*/
 #define TH_ALLOCATOR_IMPLEMENTATION
 #include "vendor/th_allocator.h"
+
 
 /*******************************************************************************
  * Common defs
@@ -73,7 +78,9 @@ extern "C" {
 #define BU_SCENE_STACK_SIZE 32
 #define BU_MSG_STACK_SIZE 128
 
+#define BU_IGNORE(i)
   
+
 /*******************************************************************************
  * Error and Message Manager
  *******************************************************************************/
@@ -143,13 +150,15 @@ void BU_msg_callback_stdout();
  * Memory and Allocators
  *******************************************************************************/
 
-
 typedef struct {
     th_stackallocator primary;
     th_stackallocator secondary;
 }BU_double_frameallocator;
 
-BU_API
+
+BU_IGNORE(
+
+ BU_API
 void BU_double_frameallocator_init(uint32_t _n);
 
 BU_BACKEND
@@ -161,8 +170,17 @@ void _BU_double_frameallocator_swap();
 BU_API
 void BU_quickalloc(uint32_t _n);
 
+)
+
 BU_API
 void* BU_malloc(uint32_t _n);
+
+BU_IGNORE(
+        
+BU_API
+void* BU_realloc(void* _p, uint32_t _n);
+
+    )
 
 BU_API
 void BU_free(void* _ptr);
@@ -182,17 +200,28 @@ typedef struct {
     void* data;
     uint32_t data_size;
 
-    BU_double_frameallocator df_allocator;
 }BU_scene;
+
+typedef struct {
+    BU_scene scene; 
+    void* data;
+    BU_double_frameallocator df_allocator;
+}BU_scene_content;
+
+#define TSARRAY_NAME_OVERRIDE
+#define t_type BU_scene
+#define arr_t_name _BU_scene_manager
+#include "vendor/tsarray.h"
 
 /*Create scenes statically so it can be done in scene files at compile time*/
 #define BU_SCENE_NEW(init, update, destroy, data) \
     (BU_scene) {init, update, destroy, NULL, sizeof(data)}
 
-typedef struct {
-    BU_scene scenestack[BU_SCENE_STACK_SIZE];
-    int top;
-}BU_sceneManager;
+BU_API
+void* BU_scene_data_get();
+
+BU_API
+void BU_scene_data_set(void* _scene_data_ptr);
 
 BU_API
 int BU_scene_push(BU_scene _sc);
@@ -203,12 +232,6 @@ void BU_scene_pop();
 BU_API
 int BU_scene_count();
 
-BU_API
-void* BU_scene_data_get();
-
-BU_API
-void BU_scene_data_set(void* _scene_data_ptr);
-
 
 /*******************************************************************************
  * Bubble Context
@@ -217,18 +240,19 @@ void BU_scene_data_set(void* _scene_data_ptr);
 
 struct _BUBBLE_CONTEXT {
     BU_msgManager msg_manager;
-    BU_sceneManager scene_manager;
+    _BU_scene_manager scene_manager;
     th_allocator main_allocator;
 };
 
 /*Global bubble context*/
 struct _BUBBLE_CONTEXT BUBBLE;
 
-struct BUBBLE_config {
+typedef struct {
     void* main_memory;
     uint32_t main_memory_size;
-    uint32_t target_fps;
-};
+    uint32_t target_updates_per_second;
+    int scene_stack_size;
+}BUBBLE_config;
 
 
 BU_API
@@ -287,9 +311,11 @@ BU_API
 void BU_msg_callback_stdout()
 {
     BU_msg top = BU_msg_pop();
-    printf("[%s (no:%d)] %s\n",
+    printf("[%s(%d)]\t(%s L%d) %s\n",
            _BU_STATUSSTR[top.status],
            top.msg_index,
+           top._FILE_,
+           top._LINE_,
            top.msg);
 }
 
@@ -297,17 +323,21 @@ void BU_msg_callback_stdout()
 BU_BACKEND
 BU_scene* _BU_scene_top_ptr()
 {
-    if (BUBBLE.scene_manager.top < 0) {
+    BU_scene* top;
+    if (_BU_scene_manager_len(&BUBBLE.scene_manager) < 0){
         BU_FATAL("Tried to access top scene but none existed.");
         return NULL;
     }
-    return &BUBBLE.scene_manager.scenestack[BUBBLE.scene_manager.top];
+    top =_BU_scene_manager_peek(&BUBBLE.scene_manager, -1);
+    if (top == NULL)
+        BU_FATAL("top element of scene manager is NULL");
+    return top;
 }
 
 BU_API
 void* BU_scene_data_get()
 {
-    if (BUBBLE.scene_manager.top < 0)
+    if (_BU_scene_manager_len(&BUBBLE.scene_manager) < 0)
         return NULL;
     return _BU_scene_top_ptr()->data;
 }
@@ -322,45 +352,45 @@ BU_API
 int
 BU_scene_push(BU_scene _sc)
 {
-    void* tmp = NULL;
     if (_sc.update == NULL)
         BU_ERROR(BU_ERR_INVALID_INPUT);
 
-    BUBBLE.scene_manager.top++;
-    *_BU_scene_top_ptr() = _sc;
+    _BU_scene_manager_push(&BUBBLE.scene_manager, _sc);
 
-    /*Initialize scene data and prepare for running*/
-    tmp = BU_malloc(_sc.data_size);
-    if (tmp == NULL)
+    _BU_scene_top_ptr()->data = BU_malloc(_sc.data_size);
+    if (_BU_scene_top_ptr()->data == NULL)
         BU_FATAL("Could not allocate Scene data.");
-    BU_scene_data_set(tmp);
-    
+
     if (_BU_scene_top_ptr()->init != NULL)
         _BU_scene_top_ptr()->init();
+
     BU_INFO("Pushed a scene to stack!");
-    return BUBBLE.scene_manager.top;
+    return _BU_scene_manager_len(&BUBBLE.scene_manager);
 }
 
 BU_API
 void
 BU_scene_pop()
 {
-    if (BUBBLE.scene_manager.top < 0) {
+    BU_scene pop;
+    if (_BU_scene_manager_len(&BUBBLE.scene_manager) < 1) {
         BU_ERROR("Tried to pop a scene, but no scene existed!");
+        return;
     }
 
-    if (_BU_scene_top_ptr()->destroy != NULL)
-        _BU_scene_top_ptr()->destroy();
-    BU_free(BU_scene_data_get());
-    *_BU_scene_top_ptr() = (BU_scene){0};
-    BUBBLE.scene_manager.top--;
+    pop = _BU_scene_manager_pop(&BUBBLE.scene_manager);
+    if (pop.destroy != NULL)
+        pop.destroy();
+
+    BU_free(pop.data);
+
     BU_INFO("Popped a scene from stack!");
 }
 
 BU_API
 int BU_scene_count()
 {
-    return BUBBLE.scene_manager.top;
+    return _BU_scene_manager_len(&BUBBLE.scene_manager);
 }
 
 BU_API
@@ -373,6 +403,20 @@ BU_malloc(uint32_t _n)
     }
     return th_allocator_malloc(&BUBBLE.main_allocator, _n);
 }
+
+BU_IGNORE(
+
+BU_API
+void*
+BU_realloc(void* _p, uint32_t _n)
+{
+    if (_n < 1) {
+        BU_ERROR("Trying to allocate invalid size!");
+        return NULL;
+    }
+    return th_allocator_realloc(&BUBBLE.main_allocator, _p, _n);
+}
+)
 
 BU_API
 void
@@ -401,12 +445,20 @@ BUBBLE_init(BUBBLE_config _conf)
         BU_FATAL("Could not create the main allocator!");
     BU_INFO("Correctly initialized main allocator.");
 
+    if (_conf.scene_stack_size < 1)
+        _conf.scene_stack_size = 8;
+    BUBBLE.scene_manager = _BU_scene_manager_initn(_conf.scene_stack_size);
+    if (_BU_scene_manager_capacity(&BUBBLE.scene_manager) != _conf.scene_stack_size)
+        BU_FATAL("Could not create a scene manager!");
+    BU_INFO("Created Scene manager.");
+
     BU_INFO("BUBBLE Context Initialized.");
 }
 
 BU_API
 void BUBBLE_destroy()
 {
+    _BU_scene_manager_destroy(&BUBBLE.scene_manager);
     BU_INFO("BUBBLE Context Destroyed.");
 }
 
@@ -415,10 +467,10 @@ BU_API
 void
 BUBBLE_run()
 {
-    if (BUBBLE.scene_manager.top == 0)
+    if (_BU_scene_manager_len(&BUBBLE.scene_manager) < 1)
         BU_FATAL("Running without any scenes.");
 
-    while (BUBBLE.scene_manager.top > 0) {
+    while (_BU_scene_manager_len(&BUBBLE.scene_manager) > 0) {
         if (_BU_scene_top_ptr()->update == NULL)
             BU_ERROR("Top Scene has no update()");
         _BU_scene_top_ptr()->update();

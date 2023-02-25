@@ -15,10 +15,14 @@ int main(int argc, char **argv) {
     if (memory == NULL)
         return -1;
 
-    BUBBLE_context_init(memory, memsize);
+    BUBBLE_config conf = {0};
+    conf.main_memory = memory;
+    conf.main_memory_size = memsize;
+
+    BUBBLE_init(conf);
     BU_scene_push(scene1);
     BUBBLE_run();
-    BUBBLE_context_destroy();
+    BUBBLE_destroy();
 
 	return 0;
 }

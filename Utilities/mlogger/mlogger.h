@@ -86,8 +86,8 @@ int main(int argc, char **argv) {
 extern "C" {
 #endif
 
-#ifndef LOG_H
-#define LOG_H
+#ifndef MLOGGER_H
+#define MLOGGER_H
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -113,6 +113,7 @@ extern "C" {
 
 #define LOG_CLEAN(_FILENAME) fclose(fopen(_FILENAME, "w")); 
 
+#ifndef MLOG_CUSTOM_LOGS
 #define LOG_LOG(_FILENAME, _TYPE, _MSG, ...) \
     _internal_mlog(_FILENAME, _TYPE, __FILE__, __LINE__, _MSG, ##__VA_ARGS__);
 
@@ -127,8 +128,8 @@ extern "C" {
 
 #define LOG_PURE(_FILENAME, _MSG, ...) \
     _internal_mlog_pure(_FILENAME, _MSG, ##__VA_ARGS__)
+#endif /*MLOG_CUSTOM_LOGS*/
 
-#endif /*LOG_H*/
 /******************************************************************************/
 #ifdef LOG_IMPLEMENTATION
 
@@ -203,6 +204,7 @@ _internal_mlog_pure(char* _filename, char* _msg, ...)
 }
 
 #endif /*LOG_IMPLEMENTATION*/
+#endif /*MLOGGER_H*/
 
 #ifdef __cplusplus
 }

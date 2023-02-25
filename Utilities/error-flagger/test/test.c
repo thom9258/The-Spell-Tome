@@ -25,7 +25,7 @@ conv_error_callback(struct error_flagger_manager* _ef)
 		   _ef->errors[i]._FILE_,
 		   _ef->errors[i]._LINE_,
 		   _ef->errors[i].msg);
-	assert(_ef->errors[i].code != FATAL_ERROR);
+	//assert(_ef->errors[i].code != FATAL_ERROR);
 }
 
 

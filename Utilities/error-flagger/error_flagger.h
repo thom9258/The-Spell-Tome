@@ -86,7 +86,7 @@ COOKBOOK:
 #define ERROR_FLAGGER_STACK_SIZE 4
 #include "../error_flagger.h"
 
-enum _ERROR_FLAGS {
+enum _ERRORMSGS {
 	NO_ERROR = 0,
 	INVALID_SIZE_OF_INPUT = 4,
 	UNKNOWN_ERROR = 7,
@@ -157,45 +157,39 @@ extern "C" {
 #ifndef ERROR_FLAGGER_H
 #define ERROR_FLAGGER_H
 
-#ifndef ERROR_FLAGGER_STACK_SIZE
-#define ERROR_FLAGGER_STACK_SIZE 128
-#endif /*error_flagger_manager_SIZE*/
+#ifndef ERRORMSG_STACKSIZE
+#define ERRORMSG_STACKSIZE 128
+#endif /*ERRORMSG_STACKSIZE*/
 
-#ifndef ERROR_FLAGGER_ERROR_TYPE
-#define ERROR_FLAGGER_ERROR_TYPE int
-#endif /*ERROR_FLAGGER_ERROR_TYPE*/
+#define ErrorMSG_new(code, msg)					                                \
+	(_ErrorMSG) {code, msg, __LINE__, __FILE__, -1}
 
-#ifndef ERROR_FLAGGER_DUMMY_ERROR
-#define ERROR_FLAGGER_DUMMY_ERROR                                               \
-	ERROR_FLAG_NEW(-1,"This is a \"Dummy Error\", no errors were in the flagger")
-#endif /*ERROR_FLAGGER_DUMMY_ERROR*/
+#define ErrorMsgManager_new(stacksize, callback) \
+	(ErrorMsgManager) {{{0}}, 0, stacksize, callback}
 
-struct _error_flag {
-	ERROR_FLAGGER_ERROR_TYPE code;
+typedef struct {
+	uint32_t code;
 	char* msg;
 
 	/*Automatic stuff no need to set manually*/
 	int _LINE_;
 	char* _FILE_;
-	int error_index;
-};
-#define ERROR_FLAG_NEW(code, msg)					\
-	(struct _error_flag) {code, msg, __LINE__, __FILE__, -1}
+	uint32_t stack_idx;
+}ErrorMSG;
 
-struct error_flagger_manager {
-	struct _error_flag errors[ERROR_FLAGGER_STACK_SIZE];
-	int head;
-	void (*callback)(struct error_flagger_manager*);
-	int total_error_count;
+typedef struct ErrorMsgManager ErrorMsgManager;
+struct ErrorMsgManager {
+	ErrorMSG errors[ERRORMSG_STACKSIZE];
+	uint32_t top;
+	uint32_t max;
+	void (*fn_callback)(ErrorMsgManager*);
 };
-#define ERROR_FLAGGER_NEW(callback) \
-	(struct error_flagger_manager) {{{0}}, 0, callback, 0}
 
 int
 error_flagger_push(struct error_flagger_manager* _ef,
-                   struct _error_flag _err);
+                   struct _ErrorMSG _err);
 
-struct _error_flag
+struct _ErrorMSG
 error_flagger_pop(struct error_flagger_manager* _ef);
 
 void
@@ -207,15 +201,10 @@ error_flagger_clear(struct error_flagger_manager* _ef);
 
 int
 error_flagger_push(struct error_flagger_manager* _ef,
-                   struct _error_flag _err)
+                   struct _ErrorMSG _err)
 {
-	int i;
-	if (_ef->head >= ERROR_FLAGGER_STACK_SIZE) {
-		/*Relocate stack downwards to fit new error*/
-		for (i = 1; i < ERROR_FLAGGER_STACK_SIZE; i++)
-			_ef->errors[i-1] = _ef->errors[i];
-		_ef->head--;
-	}
+	if (_ef->head >= ERROR_FLAGGER_STACK_SIZE)
+		_ef->head = 0;
 
 	_err.error_index = _ef->total_error_count++;
 	_ef->errors[_ef->head++] = _err;
@@ -227,7 +216,7 @@ error_flagger_push(struct error_flagger_manager* _ef,
 	return _ef->head;
 }
 
-struct _error_flag
+struct _ErrorMSG
 error_flagger_pop(struct error_flagger_manager* _ef)
 {
 	if (_ef->head > 0)
