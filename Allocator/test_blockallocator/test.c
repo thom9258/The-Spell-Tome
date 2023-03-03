@@ -34,10 +34,10 @@ test_custom_struct(void)
 	printf("total blocks = (%d)\n", pos_alloc.block_count);
 	printf("free blocks = (%d)\n", th_blockallocator_n_available(&pos_alloc));
 
-	th_block pos1 = th_blockallocator_take(&pos_alloc);
+	th_handle pos1 = th_blockallocator_take(&pos_alloc);
 	TL_PRINT("pos1 = %d\n", pos1);
 	TL_TEST(pos1 == 1);
-	th_block pos2 = th_blockallocator_take(&pos_alloc);
+	th_handle pos2 = th_blockallocator_take(&pos_alloc);
 	TL_PRINT("pos2 = %d\n", pos2);
 	TL_TEST(pos2 == 2);
 
@@ -76,7 +76,7 @@ test_custom_struct(void)
 
 	TL_TEST(th_blockallocator_n_available(&pos_alloc) == 19);
 
-	th_block pos_new = th_blockallocator_take(&pos_alloc);
+	th_handle pos_new = th_blockallocator_take(&pos_alloc);
 
 	TL_TEST(th_blockallocator_n_available(&pos_alloc) == 18);
 
@@ -108,7 +108,7 @@ test_odd_block_size(void)
 	TL_TEST(pos_alloc.allocator.memory == mem);
 
 	uint32_t i = 0;
-	th_block tmp[blkcount];
+	th_handle tmp[blkcount];
 	for (i = 0; i < blkcount; i++) {
 		tmp[i] = th_blockallocator_take(&pos_alloc);
 	}

@@ -184,7 +184,7 @@ typedef struct {
 	uint32_t block_count;
 }th_blockallocator;
 
-typedef uint32_t th_block;
+typedef uint32_t th_handle;
 
 #define TH_INVALID_BLOCK 0
 
@@ -198,16 +198,16 @@ TH_ALLOCATOR_API
 th_status th_blockallocator_init(th_blockallocator* _ba, uint8_t* _memory, uint32_t _block_size, uint32_t _block_count);
 
 TH_ALLOCATOR_API
-th_block th_blockallocator_take(th_blockallocator* _ba);
+th_handle th_blockallocator_take(th_blockallocator* _ba);
 
 TH_ALLOCATOR_API
-void th_blockallocator_return(th_blockallocator* _ba, th_block _block);
+void th_blockallocator_return(th_blockallocator* _ba, th_handle _handle);
 
 TH_ALLOCATOR_API
 uint32_t th_blockallocator_n_available(th_blockallocator* _ba);
 
 TH_ALLOCATOR_API
-void* th_blockallocator_ptr(th_blockallocator* _ba, th_block _block);
+void* th_blockallocator_ptr(th_blockallocator* _ba, th_handle _handle);
 
 
 /* *****************************************************************************
@@ -603,7 +603,7 @@ th_blockallocator_init(th_blockallocator* _ba,
 }
 
 TH_ALLOCATOR_API
-th_block
+th_handle
 th_blockallocator_take(th_blockallocator* _ba)
 /**
  * th_blockallocator_take() - Take a block from block allocator.
@@ -632,18 +632,18 @@ th_blockallocator_take(th_blockallocator* _ba)
 
 TH_ALLOCATOR_API
 void
-th_blockallocator_return(th_blockallocator* _ba, th_block _block)
+th_blockallocator_return(th_blockallocator* _ba, th_handle _handle)
 /**
  * BLKalloc_return() - free valid block from memory.
  * @arg1: Ptr to block allocator.
  * @arg2: specified block to return.
  */
 {
-	if (_ba == NULL || _block < 1 || _block > _ba->block_count)
+	if (_ba == NULL || _handle < 1 || _handle > _ba->block_count)
 		return;
     _TH_MUTEX_WAIT_THEN_TAKE(_ba->is_in_use);
-	if (_ba->allocator.memory[_block-1] != 0) {
-		_ba->allocator.memory[_block-1] = 0;
+	if (_ba->allocator.memory[_handle-1] != 0) {
+		_ba->allocator.memory[_handle-1] = 0;
         _TH_BOOKKEEPER_DECREMENT(_ba->bookkeeper);
 	}
     _TH_MUTEX_GIVE(_ba->is_in_use);
@@ -673,12 +673,12 @@ th_blockallocator_n_available(th_blockallocator* _ba)
 
 TH_ALLOCATOR_API
 void*
-th_blockallocator_ptr(th_blockallocator* _ba, th_block _block)
+th_blockallocator_ptr(th_blockallocator* _ba, th_handle _handle)
 /**
  * th_blockallocator_ptr() - convert valid block to memory ptr.
  *
  * @arg1: Ptr to block allocator.
- * @arg2: specified block for conversion.
+ * @arg2: specified handle to block for conversion.
  *
  * Warning: Do not save returned ptr if you know block memory 
  *          is liable to be moved, serialized, etc.
@@ -687,13 +687,13 @@ th_blockallocator_ptr(th_blockallocator* _ba, th_block _block)
  */
 {
 	uint32_t offset = 0;
-	if (_ba == NULL || _block == 0 || _block > _ba->block_count)
+	if (_ba == NULL || _handle == 0 || _handle > _ba->block_count)
 		return NULL;
 
     _TH_MUTEX_WAIT_THEN_TAKE(_ba->is_in_use);
-	if (_ba->allocator.memory[_block-1] == 0)
+	if (_ba->allocator.memory[_handle-1] == 0)
 		return NULL;
-	offset = _ba->block_count + (_ba->block_size * (_block-1));
+	offset = _ba->block_count + (_ba->block_size * (_handle-1));
     _TH_MUTEX_GIVE(_ba->is_in_use);
 	return (void*)_TH_ALIGN((unsigned long)(_ba->allocator.memory + offset));
 }
