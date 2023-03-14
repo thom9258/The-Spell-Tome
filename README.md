@@ -30,16 +30,16 @@ library is designed to have the same interface as posix malloc() / free(), and i
 of pointers. The block allocator allows allocation and freeing of individual blocks.
 
 ```c
-    uint8_t memory[4096] = {0};
-	th_stackallocator sa = {0};
-	status = th_stackallocator_setup(&sa, memory, 4096);
+uint8_t memory[4096] = {0};
+th_stackallocator sa = {0};
+status = th_stackallocator_setup(&sa, memory, 4096);
 
-    int* positions[8] = {0};
-    int i;
-    for (i = 0; i < 8; i++) {
-        positions[i] = (int*)th_stackallocator_alloc(&sa, sizeof(int));
-    /*Do something with allocated memory*/
-    th_stackallocator_reset(&sa);
+int* positions[8] = {0};
+int i;
+for (i = 0; i < 8; i++) {
+    positions[i] = (int*)th_stackallocator_alloc(&sa, sizeof(int));
+/*Do something with allocated memory*/
+th_stackallocator_reset(&sa);
 ```
 
 Note in the future all allocators will support a scratch buffer on invalid allocation to ensure no access of invalid memory.
