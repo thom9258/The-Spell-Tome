@@ -8,9 +8,11 @@ for details.
 
 __Original author:__ Thomas Alexgaard Jensen (![https://github.com/thom9258](https://github.com/thom9258))
 
+Below are introductions/overviews of the contained libraries.
+
 ## th_allocator
 
-Library focused on creating easy-to-use memory allocation techniques.
+th_allocator allows the creation of easy-to-use memory allocation techniques.
 The allocators are memory aligned and thread-safe unless specifically disabled.
 The allocators are also stdlib.h free, meaning they are ideal for embedded systems with no
 heap to allocate from.
@@ -44,8 +46,10 @@ void SomeType_print(SomeType _a) { printf("print operator called"); }
 #include "../tsarray.h"
 ```
 
-Note this can be done for as many types as the user wants.
+Note this can be done for as many types as the user wants, as long as the types are created at runtime, and the type/operators are defined before the array include.
 By doing this, the compiler will generate all the appropiate array functionality for 'SomeType', under the name "arr_SomeType".
+
+Note i would like to implement sorting through a "t_operator_larger_than()" define.
 
 ## tstring
 
@@ -60,6 +64,9 @@ printf("text (%d chars) = \"%s\"\n", str.maxlen, str.c_str);
 
 tstring supports useful string functions like comparison, upper-/lower-case conversion, concatenating, memory safe char/string search operations, string extraction etc, see tests
 for full demonstration.
+
+Note in the future i would like to implement simple regex operations and a string_view like
+iterator for better management of strings.
 
 ## testlib
 
