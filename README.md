@@ -8,9 +8,12 @@ for details.
 
 __Original author:__ Thomas Alexgaard Jensen (![https://github.com/thom9258](https://github.com/thom9258))
 
-Below are introductions/overviews of the contained libraries.
+## Overview of libraries
 
-## th_allocator
+Below are introductions/overviews of the contained libraries, and in some cases a quick example
+of usage.
+
+### th_allocator
 
 th_allocator allows the creation of easy-to-use memory allocation techniques.
 The allocators are memory aligned and thread-safe unless specifically disabled.
@@ -26,8 +29,22 @@ library is designed to have the same interface as posix malloc() / free(), and i
 3. __block-allocator__ A fixed size block allocator that supports access through handles instead
 of pointers. The block allocator allows allocation and freeing of individual blocks.
 
+```c
+    uint8_t memory[4096] = {0};
+	th_stackallocator sa = {0};
+	status = th_stackallocator_setup(&sa, memory, 4096);
 
-## tsarray
+    int* positions[8] = {0};
+    int i;
+    for (i = 0; i < 8; i++) {
+        positions[i] = (int*)th_stackallocator_alloc(&sa, sizeof(int));
+    /*Do something with allocated memory*/
+    th_stackallocator_reset(&sa);
+```
+
+Note in the future all allocators will support a scratch buffer on invalid allocation to ensure no access of invalid memory.
+
+### tsarray
 
 A compile-time templated, typesafe dynamic array implementation. Supports any data type, supports constructor/destructor/copy/print operators for the chosen data type. Allows usage of custom memory management by omitting stdlib.h through macro.
 
@@ -51,7 +68,7 @@ By doing this, the compiler will generate all the appropiate array functionality
 
 Note i would like to implement sorting through a "t_operator_larger_than()" define.
 
-## tstring
+### tstring
 
 Simple string library designed to replace standard string.h.
 Creates a string type that is not based on raw char* functionality, but instead uses memory
@@ -68,7 +85,7 @@ for full demonstration.
 Note in the future i would like to implement simple regex operations and a string_view like
 iterator for better management of strings.
 
-## testlib
+### testlib
 
 A unit testing suite I use to test all my libraries. 
 Disclaimer: The library is based on what i find useful in testing, I have not researched what a
@@ -76,16 +93,16 @@ Disclaimer: The library is based on what i find useful in testing, I have not re
 testlib supports multiple tests, has nice formatting of output, counts errors on the fly and
 prints a summary of all the tests at the end of the test run. testlib highlights what tests are wrong, and allows for the user to integrate randomization and timers into testing.
 
-## error-flagger 
+### error-flagger 
 
 Soft error management system allowing the implementor to define error states and eloborate on those
 through an error callback system.
 
-## mlogger 
+### mlogger 
 
 File logging for multiple log files. To be combined with error-flagger to create a more coherent error/logging experience.
 
-## bubble game framework 
+### bubble game framework 
 
 Stack based scene manager ideal for simple multi-layered applications such as games. 
 Note this library is only a simple test of the idea. In the future the framework will be more
