@@ -36,7 +36,7 @@ status = th_stackallocator_setup(&sa, memory, 4096);
 
 int* positions[8] = {0};
 int i;
-for (i = 0; i < 8; i++) {
+for (i = 0; i < 8; i++)
     positions[i] = (int*)th_stackallocator_alloc(&sa, sizeof(int));
 /*Do something with allocated memory*/
 th_stackallocator_reset(&sa);
