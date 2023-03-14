@@ -1,42 +1,89 @@
 # The Spell Tome
 
-A personal spelltome of libraries that greatly improves c codebases.
-The libraries adheres to an ansi-c99 code style, and are stb-like header only
+A personal spelltome of libraries that aim to greatly improve my c/c++ projects.
+The libraries adheres to an ansi-c99 code style, and are mostly stb-like header only
 libraries. For more information, see
 ![stb](https://nothings.org/stb/stb_h.html)
 for details.
 
 __Original author:__ Thomas Alexgaard Jensen (![https://github.com/thom9258](https://github.com/thom9258))
 
-## Allocators
+## th_allocator
 
-Libraries focused on memory allocation.
+Library focused on creating easy-to-use memory allocation techniques.
+The allocators are memory aligned and thread-safe unless specifically disabled.
+The allocators are also stdlib.h free, meaning they are ideal for embedded systems with no
+heap to allocate from.
+Supported allocator types are:
 
-1. __arena-allocator__ An Arena allocator for super simple lifetime management of allocations
+1. __stack-allocator__ An simple allocator for simple lifetime management of grouped variabe-size allocations
 
-2. __block-allocator__ A fixed size block allocator
+2. __dynamic-allocator__ A dynamic size allocator supporting the first-fit allocation scheme. This 
+library is designed to have the same interface as posix malloc() / free(), and is benchmarked in tests to be faster than posix.
 
-3. __dynamic-allocator__ A dynamic size allocator with different fit algorithms
+3. __block-allocator__ A fixed size block allocator that supports access through handles instead
+of pointers. The block allocator allows allocation and freeing of individual blocks.
 
-## Datastructures
 
-1. __typesafe-array__ A templated, typesafe at compile time, dynamic array implementation
+## tsarray
 
-2. __linkedlist__ A simple & standard linked-list implementation
+A compile-time templated, typesafe dynamic array implementation. Supports any data type, supports constructor/destructor/copy/print operators for the chosen data type. Allows usage of custom memory management by omitting stdlib.h through macro.
 
-3. __tstring__ String library for replacing standard string.h
+To create any array type, simply create a datatype and include the header as shown here:
 
-## Utilities
+```c
+typedef struct {
+    /*Fill up your type*/
+}SomeType;
 
-1. __alg-utils__ A simple macro based utility library focused on array manipulation
+/* =Optional= operator functions */
+void SomeType_print(SomeType _a) { printf("print operator called"); }
 
-3. __error-flagger__ Soft error management
+#define t_type SomeType
+#define t_operator_print(a) SomeType_print(a)
+#include "../tsarray.h"
+```
 
-4. __mlogger__ File logging for multiple log files
+Note this can be done for as many types as the user wants.
+By doing this, the compiler will generate all the appropiate array functionality for 'SomeType', under the name "arr_SomeType".
 
-5. __psuedo-random__ Seed based randomization algorithms
+## tstring
 
-6. __testlib__ Unit testing suite for libraries
+Simple string library designed to replace standard string.h.
+Creates a string type that is not based on raw char* functionality, but instead uses memory
+and boundaries to ensure safer operation than raw pointers.
+
+```c
+str = tstring("Hello, World\n");
+printf("text (%d chars) = \"%s\"\n", str.maxlen, str.c_str);
+```
+
+tstring supports useful string functions like comparison, upper-/lower-case conversion, concatenating, memory safe char/string search operations, string extraction etc, see tests
+for full demonstration.
+
+## testlib
+
+A unit testing suite I use to test all my libraries. 
+Disclaimer: The library is based on what i find useful in testing, I have not researched what a
+"pro" unit testing library is capable of doing.
+testlib supports multiple tests, has nice formatting of output, counts errors on the fly and
+prints a summary of all the tests at the end of the test run. testlib highlights what tests are wrong, and allows for the user to integrate randomization and timers into testing.
+
+## error-flagger 
+
+Soft error management system allowing the implementor to define error states and eloborate on those
+through an error callback system.
+
+## mlogger 
+
+File logging for multiple log files. To be combined with error-flagger to create a more coherent error/logging experience.
+
+## bubble game framework 
+
+Stack based scene manager ideal for simple multi-layered applications such as games. 
+Note this library is only a simple test of the idea. In the future the framework will be more
+complicated and have a heavier emphasis on the before-mentioned libraries, and function in style
+of a simple os-inspired service/message manager.
 
 ## License
 

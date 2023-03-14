@@ -36,6 +36,20 @@ For more information, please refer to
         implementation.
         Redefined MEMALLOCATOR_ to TH_ALLOCATOR_
 
+
+TODO: either do:
+1. Pull scratch buffer out of basic-allocator, it does not need to exist in
+all allocators.
+2. Make base-allocator macro that tests the returned memory ptr for NULL and
+it it is, return scratch_buffer instead. This way scratch is used automatically,
+and it will still just return NULL if scratch is empty, thus no downsides.
+something like:
+
+_BASEALLOCATOR_RETURN_SCRATCH_ON_NULL(basealloc, ret_ptr) \
+    ( (ret_ptr == NULL) ? basealloc->scratch_buffer : ret_ptr )
+
+then just use this for all returns in allocators.
+
 */
 #ifndef TH_ALLOCATOR_H
 #define TH_ALLOCATOR_H
@@ -188,8 +202,8 @@ typedef uint32_t th_handle;
 
 #define TH_INVALID_BLOCK 0
 
-#define TH_BLOCK_ACCESS(allocator, block, type)			                       \
-	((type*)th_blockallocator_ptr(allocator, block))
+#define TH_BLOCK_ACCESS(allocator, handle, type)			                       \
+	((type*)th_blockallocator_ptr(allocator, handle))
 
 #define TH_BLOCKALLOCATOR_OPTIMAL_MEMSIZE(n_blocks, block_size)                    \
 	( ((n_blocks) * (_TH_ALIGN(block_size))) + ((sizeof(char) * (n_blocks))) )
