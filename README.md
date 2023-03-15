@@ -15,7 +15,7 @@ of usage.
 
 ### th_allocator
 
-th_allocator allows the creation of easy-to-use memory allocation techniques.
+th_allocator allows the creation of easy-to-use memory allocation strategies for lifetime-management, code-readability and pointer-deobfuscation.
 The allocators are memory aligned and thread-safe unless specifically disabled.
 The allocators are also stdlib.h free, meaning they are ideal for embedded systems with no
 heap to allocate from.
@@ -32,7 +32,7 @@ of pointers. The block allocator allows allocation and freeing of individual blo
 ```c
 uint8_t memory[4096] = {0};
 th_stackallocator sa = {0};
-status = th_stackallocator_setup(&sa, memory, 4096);
+th_stackallocator_setup(&sa, memory, 4096);
 
 int* positions[8] = {0};
 int i;
