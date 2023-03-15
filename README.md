@@ -66,19 +66,20 @@ void SomeType_print(SomeType _a) { printf("print operator called"); }
 Usage of typesafe array with custom type:
 
 ```c
-    SomeType v;
-    arr_SomeType arr = arr_SomeType_initn(2);
-    for (int i = 0; i < 50; i++) {
-        arr_SomeType_push(&arr, v);
-    }
-    for (int i = 0; i < 7; i++)
-        arr_SomeType_pop(&arr)
+SomeType v;
+arr_SomeType arr = arr_SomeType_initn(2);
+for (int i = 0; i < 50; i++) {
+    /*The array grows dynamically when max capacity is reached*/
+    arr_SomeType_push(&arr, v); 
+}
+for (int i = 0; i < 7; i++)
+    arr_SomeType_pop(&arr)
 
-    arr_SomeType_insert(&arr, 2, v);
-    arr_SomeType_remove(&arr, 11);
+arr_SomeType_insert(&arr, 2, v);
+arr_SomeType_remove(&arr, 11);
 
-    arr_SomeType arr2 = arr_SomeType_duplicate(&arr);
-    arr_SomeType_concatenate(&arr, &arr2);
+arr_SomeType arr2 = arr_SomeType_duplicate(&arr);
+arr_SomeType_concatenate(&arr, &arr2);
 ```
 
 Note this can be done for as many types as the user wants, as long as the types are created at runtime, and the type/operators are defined before the array include.
