@@ -1,5 +1,5 @@
-#ifndef ATOMLANG_H
-#define ATOMLANG_H
+#ifndef YAL_H
+#define YAL_H
 
 #include <stdio.h>
 #include <assert.h>
@@ -36,25 +36,15 @@
     YAL_ASSERT(yal_atom(env, atom)->type == YAL_REAL || yal_atom(env, atom)->type == YAL_DECIMAL, \
                "Atom is not a number!")
 
-
-#define YAL_ASSERT_LISTLEN(env, list, op, val) \
+#define YAL_ASSERT_LISTLEN(env, list, check) \
     do { \
         YAL_ASSERT_INV_HANDLE(env, list);          \
         YAL_ASSERT_TYPECHECK(env, list, YAL_LIST);          \
-        YAL_ASSERT(yal_AtomList_len(&yal_atom(env, list)->List) op val, "List len does not comply based on given operator and length!");   \
+        YAL_ASSERT(yal_AtomList_len(&yal_atom(env, list)->List) check, "List len does not comply based on given operator and length!");   \
     } while (0)
 
 #define YAL_ASSERT_ZEROLIST(env, h) \
-    YAL_ASSERT_LISTLEN(env, h, >, 1)
-
-/*
-#define YAL_ASSERT_ZEROLIST(env, h) \
-    do { \
-        YAL_ASSERT_INV_HANDLE(env, h);          \
-        YAL_ASSERT_TYPECHECK(env, h, YAL_LIST);          \
-        YAL_ASSERT(yal_AtomList_len(&yal_atom(env, h)->List) > 0, "List has zero elements!"); \
-    } while (0)
-*/
+    YAL_ASSERT_LISTLEN(env, h, > 0)
 
 enum YAL_TYPE {
     YAL_TYPE_INVALID = 0,
@@ -67,7 +57,6 @@ enum YAL_TYPE {
 
     /*Enviroment function/variable types*/
     YAL_ENV_BUILDIN_FN,
-    YAL_ENV_EXPRESSION_FN,
     YAL_ENV_VARIABLE,
 
     YAL_TYPE_COUNT
@@ -97,7 +86,6 @@ typedef struct {
     tstring_s info;
     union {
         yal_AtomHandle Variable;
-        yal_AtomList Expression;
         yal_buildin_fn Builin;
     };
 }yal_Variable;
@@ -128,6 +116,7 @@ yal_AtomHandle yal_atom_real_new(yal_Environment* _env, int _v);
 yal_AtomHandle yal_atom_decimal_new(yal_Environment* _env, float _v);
 yal_AtomHandle yal_atom_symbol_new(yal_Environment* _env, char* _sym);
 void yal_atom_clear(yal_Environment* _env, yal_AtomHandle _h);
+char yal_atom_equal(yal_Atom* _a, yal_Atom* _b);
 void yal_atom_delete(yal_Environment* _env, yal_AtomHandle _h);
 
 /*Evaluation and Debugging of the languane*/
@@ -135,8 +124,8 @@ void yal_print_chain(yal_Environment* _env, yal_AtomHandle _h);
 void yal_parse(yal_Environment* _env, yal_AtomHandle _h);
 
 /******************************************************************************/
-#define ATOMLANG_IMPLEMENTATION
-#ifdef ATOMLANG_IMPLEMENTATION
+#define YAL_IMPLEMENTATION
+#ifdef YAL_IMPLEMENTATION
 
 yal_AtomHandle
 _yal_atom_memory_alloc(yal_Environment* _env)
@@ -188,64 +177,6 @@ do { \
     else if (a->type == YAL_REAL && b->type == YAL_DECIMAL) { \
         a->type = YAL_DECIMAL; a->Decimal = a->Real; a->Decimal op b->Decimal; } \
 } while (0)
-
-void
-_yal_buildin_plus(yal_Environment* _env, yal_AtomHandle _this)
-{
-    yal_AtomHandle res;
-    yal_AtomHandle tmp;
-    yal_Atom* ths;
-
-    YAL_ASSERT_INV_ENV(_env);
-    YAL_ASSERT_INV_HANDLE(_env, _this);
-    YAL_ASSERT_TYPECHECK(_env, _this, YAL_LIST);
-    YAL_ASSERT_ZEROLIST(_env, _this);
-
-    ths = yal_atom(_env, _this);
-    res = yal_AtomList_pop_front(&ths->List);
-    YAL_ASSERT_INV_HANDLE(_env, res);
-    YAL_ASSERT_NOTNUMBER(_env, res);
-
-
-    while (yal_AtomList_len(&ths->List) > 0) {
-        /*Pop each atom and sum its value*/
-        tmp = yal_AtomList_pop_front(&ths->List);
-        YAL_ASSERT_INV_HANDLE(_env, tmp);
-        YAL_ASSERT_NOTNUMBER(_env, tmp);
-        _YAL_ARIHMETIC_2(+=, yal_atom(_env, res), yal_atom(_env, tmp));
-        yal_atom_delete(_env, tmp);
-    }
-    yal_AtomList_push(&ths->List, res);
-}
-
-void
-_yal_buildin_minus(yal_Environment* _env, yal_AtomHandle _this)
-/*TODO: First number in minus should be multiplied with -1 before negative summation*/
-{
-    yal_AtomHandle res;
-    yal_AtomHandle tmp;
-    yal_Atom* ths;
-
-    YAL_ASSERT_INV_ENV(_env);
-    YAL_ASSERT_INV_HANDLE(_env, _this);
-    YAL_ASSERT_TYPECHECK(_env, _this, YAL_LIST);
-    YAL_ASSERT_ZEROLIST(_env, _this);
-
-    ths = yal_atom(_env, _this);
-    res = yal_AtomList_pop_front(&ths->List);
-    YAL_ASSERT_INV_HANDLE(_env, res);
-    YAL_ASSERT_NOTNUMBER(_env, res);
-
-    while (yal_AtomList_len(&ths->List) > 0) {
-        /*Pop each atom and sum its value*/
-        tmp = yal_AtomList_pop_front(&ths->List);
-        YAL_ASSERT_INV_HANDLE(_env, tmp);
-        YAL_ASSERT_NOTNUMBER(_env, tmp);
-        _YAL_ARIHMETIC_2(-=, yal_atom(_env, res), yal_atom(_env, tmp));
-        yal_atom_delete(_env, tmp);
-    }
-    yal_AtomList_push(&ths->List, res);
-}
 
 void
 _yal_buildin_multiply(yal_Environment* _env, yal_AtomHandle _this)
@@ -302,6 +233,100 @@ _yal_buildin_divide(yal_Environment* _env, yal_AtomHandle _this)
         _YAL_ARIHMETIC_2(/=, yal_atom(_env, res), yal_atom(_env, tmp));
         yal_atom_delete(_env, tmp);
     }
+    yal_AtomList_push(&ths->List, res);
+}
+void
+_yal_buildin_plus(yal_Environment* _env, yal_AtomHandle _this)
+{
+    yal_AtomHandle res;
+    yal_AtomHandle tmp;
+    yal_Atom* ths;
+
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _this);
+    YAL_ASSERT_TYPECHECK(_env, _this, YAL_LIST);
+    YAL_ASSERT_ZEROLIST(_env, _this);
+
+    ths = yal_atom(_env, _this);
+    res = yal_AtomList_pop_front(&ths->List);
+    YAL_ASSERT_INV_HANDLE(_env, res);
+    YAL_ASSERT_NOTNUMBER(_env, res);
+
+
+    while (yal_AtomList_len(&ths->List) > 0) {
+        /*Pop each atom and sum its value*/
+        tmp = yal_AtomList_pop_front(&ths->List);
+        YAL_ASSERT_INV_HANDLE(_env, tmp);
+        YAL_ASSERT_NOTNUMBER(_env, tmp);
+        _YAL_ARIHMETIC_2(+=, yal_atom(_env, res), yal_atom(_env, tmp));
+        yal_atom_delete(_env, tmp);
+    }
+    yal_AtomList_push(&ths->List, res);
+}
+
+void
+_yal_buildin_minus(yal_Environment* _env, yal_AtomHandle _this)
+{
+    yal_AtomHandle res;
+    yal_AtomHandle tmp;
+    yal_Atom* ths;
+
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _this);
+    YAL_ASSERT_TYPECHECK(_env, _this, YAL_LIST);
+    YAL_ASSERT_ZEROLIST(_env, _this);
+
+    /*Minus can act as a negation operator too, meaning that:
+      (- x) is the same as (* x -1)
+     */
+    if (yal_AtomList_len(&yal_atom(_env, _this)->List) == 1) {
+        yal_AtomList_push(&yal_atom(_env, _this)->List, yal_atom_real_new(_env, -1));
+        _yal_buildin_multiply(_env, _this);
+        return;
+    }
+
+    ths = yal_atom(_env, _this);
+    res = yal_AtomList_pop_front(&ths->List);
+    YAL_ASSERT_INV_HANDLE(_env, res);
+    YAL_ASSERT_NOTNUMBER(_env, res);
+
+    while (yal_AtomList_len(&ths->List) > 0) {
+        /*Pop each atom and sum its value*/
+        tmp = yal_AtomList_pop_front(&ths->List);
+        YAL_ASSERT_INV_HANDLE(_env, tmp);
+        YAL_ASSERT_NOTNUMBER(_env, tmp);
+        _YAL_ARIHMETIC_2(-=, yal_atom(_env, res), yal_atom(_env, tmp));
+        yal_atom_delete(_env, tmp);
+    }
+    yal_AtomList_push(&ths->List, res);
+}
+
+void
+_yal_buildin_equal(yal_Environment* _env, yal_AtomHandle _this)
+{
+    yal_AtomHandle res;
+    yal_AtomHandle a;
+    yal_AtomHandle b;
+    yal_Atom* ths;
+
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _this);
+    YAL_ASSERT_TYPECHECK(_env, _this, YAL_LIST);
+    YAL_ASSERT_LISTLEN(_env, _this, == 2);
+    ths = yal_atom(_env, _this);
+
+    a = yal_AtomList_pop_front(&ths->List);
+    b = yal_AtomList_pop_front(&ths->List);
+    YAL_ASSERT_NOTNUMBER(_env, a);
+    YAL_ASSERT_NOTNUMBER(_env, b);
+
+    if (yal_atom_equal(yal_atom(_env, a), yal_atom(_env, b)))
+        res = yal_atom_real_new(_env, 1);
+    else
+        res = yal_atom_real_new(_env, 0);
+
+    yal_atom_delete(_env, a);
+    yal_atom_delete(_env, b);
     yal_AtomList_push(&ths->List, res);
 }
 
@@ -377,6 +402,7 @@ yal_env_add_buildins(yal_Environment* _env)
 - version;
 */
 {
+    yal_env_add_buildin_fn(_env, "equal", "comparison operator.", _yal_buildin_equal);
     yal_env_add_buildin_fn(_env, "+", "Plus operator.", _yal_buildin_plus);
     yal_env_add_buildin_fn(_env, "-", "Minus operator.", _yal_buildin_minus);
     yal_env_add_buildin_fn(_env, "*", "Multiply operator.", _yal_buildin_multiply);
@@ -514,6 +540,19 @@ yal_atom_clear(yal_Environment* _env, yal_AtomHandle _h)
     }
 }
 
+char
+yal_atom_equal(yal_Atom* _a, yal_Atom* _b)
+{
+    if (_a->type == YAL_REAL && _b->type == YAL_REAL)
+        return (_a->Real == _b->Real);
+    else if (_a->type == YAL_DECIMAL && _b->type == YAL_DECIMAL)
+        return (_a->Decimal == _b->Decimal);
+    else if (_a->type == YAL_DECIMAL && _b->type == YAL_REAL)
+        return (_a->Decimal == _b->Real);
+    else 
+        return (_a->Real == _b->Decimal);
+}
+
 void
 yal_atom_delete(yal_Environment* _env, yal_AtomHandle _h)
 {
@@ -527,18 +566,19 @@ yal_atom_delete(yal_Environment* _env, yal_AtomHandle _h)
 void
 yal_print_chain(yal_Environment* _env, yal_AtomHandle _h)
 {
-    if (_env == NULL)
-        return;
     yal_Atom* p = yal_atom(_env, _h);
 
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _h);
+
     if (p->type == YAL_LIST) {
+        printf("( ");
         int i;
         int imax = yal_AtomList_len(&p->List);
-        printf("( ");
         for (i = 0; i < imax; i++) {
             yal_print_chain(_env, *yal_AtomList_peek(&p->List, i));
         }
-        printf(" )");
+        printf(") ");
     } else {
         yal_atom_print(p);
         printf(" ");
@@ -558,6 +598,15 @@ _yal_parse_symbol(yal_Environment* _env, yal_AtomHandle _h)
     *yal_atom(_env, _h) = *yal_atom(_env, var->Variable);
 }
 
+void _yal_parse_sanitize(yal_Environment *_env, yal_AtomHandle _h)
+/*Sanitize list, sanitazion is:
+*/
+{
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_ZEROLIST(_env, _h);
+    
+}
+
 void
 _yal_parse_list(yal_Environment* _env, yal_AtomHandle _h)
 {
@@ -571,22 +620,18 @@ _yal_parse_list(yal_Environment* _env, yal_AtomHandle _h)
     YAL_ASSERT_TYPECHECK(_env, _h, YAL_LIST);
 
     p = yal_atom(_env, _h);
-    //printf("List has %d elements\n", yal_AtomList_len(&p->List));
     YAL_ASSERT_ZEROLIST(_env, _h);
 
     yal_AtomHandle first = yal_AtomList_pop_front(&p->List);
-    //printf("Checking atom "); yal_atom_print(yal_atom(_env, first)); printf(" for buildin_fn!\n");
     if (yal_atom(_env, first)->type == YAL_SYMBOL) {
         /*Save atom for evaluation after all the other elements*/
         var = yal_env_find_buildin(_env, first);
         if (var->type == YAL_ENV_BUILDIN_FN) {
             has_buildin_fn = 1;
-            //printf("Was a function!\n");
         }
     }
     else {
         /*Put first atom back as if nothing happened*/
-        //printf("Was NOT a symbol!\n");
         yal_AtomList_push_front(&p->List, first);
     }
 
@@ -634,5 +679,5 @@ yal_parse(yal_Environment* _env, yal_AtomHandle _h)
     };
 }
 
-#endif /*ATOMLANG_IMPLEMENTATION*/
-#endif /*ATOMLANG_H*/
+#endif /*YAL_IMPLEMENTATION*/
+#endif /*YAL_H*/
