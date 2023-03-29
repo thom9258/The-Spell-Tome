@@ -112,12 +112,11 @@ TODO: Add sorting function, requires "t_operator_largest"
 #define t_operator_largest(a, b) ( (a < b) ? b : a )
 #endif
 
-#ifndef arr_t_name
+#ifndef arr_t_name 
 #define arr_t_name _CAT(arr_, t_type)
 #endif
 
 /*defines for better readability of function names*/
-#define arr_t_struct          arr_t_name
 #define arr_t_initn           _CAT(arr_t_name, _initn)
 #define arr_t_destroy         _CAT(arr_t_name, _destroy)
 #define arr_t_destroy_members _CAT(arr_t_name, _destroy_members)
@@ -145,33 +144,33 @@ typedef struct {
     int count;
     int max;
     float growth_rate;
-}arr_t_struct;
+}arr_t_name;
 
-arr_t_struct
-arr_t_initn(int _n)
+void
+arr_t_initn(arr_t_name* _arr, int _n)
 {
+    if (_arr == NULL)
+        return;
     if (_n < 1) _n = 3;
-    arr_t_struct out = {0};
-    out.members = (t_type*)TSARRAY_MALLOC(sizeof(t_type) * _n);
-    if (out.members == NULL)
-        return out;
-    out.count = 0;
-    out.max = _n;
-    out.growth_rate = 1.5f;
-    return out;
+    _arr->members = (t_type*)TSARRAY_MALLOC(sizeof(t_type) * _n);
+    if (_arr->members == NULL)
+        return;
+    _arr->count = 0;
+    _arr->max = _n;
+    _arr->growth_rate = 1.5f;
 }
 
 void
-arr_t_destroy(arr_t_struct* _arr)
+arr_t_destroy(arr_t_name* _arr)
 {
     if (_arr == NULL || _arr->members == NULL)
         return;
     TSARRAY_FREE(_arr->members);
-    *_arr = (arr_t_struct) {0};
+    *_arr = (arr_t_name) {0};
 }
 
 void
-arr_t_destroy_members(arr_t_struct* _arr)
+arr_t_destroy_members(arr_t_name* _arr)
 {
     int i;
     if (_arr == NULL || _arr->members == NULL)
@@ -182,7 +181,7 @@ arr_t_destroy_members(arr_t_struct* _arr)
 }
 
 int
-arr_t_len(arr_t_struct* _arr)
+arr_t_len(arr_t_name* _arr)
 {
     if (_arr == NULL || _arr->members == NULL)
         return -1;
@@ -190,20 +189,20 @@ arr_t_len(arr_t_struct* _arr)
 }
 
 int
-arr_t_capacity(arr_t_struct* _arr)
+arr_t_capacity(arr_t_name* _arr)
 {
     if (_arr == NULL || _arr->members == NULL)
         return -1;
     return _arr->max;
 }
 
-arr_t_struct*
-arr_t_resize(arr_t_struct* _dst, int _n)
+arr_t_name*
+arr_t_resize(arr_t_name* _dst, int _n)
 {
     if (_dst == NULL)
         return NULL;
     if (_dst->members == NULL) {
-        *_dst = arr_t_initn(_n);
+        arr_t_initn(_dst, _n);
         return _dst;
     }
     _dst->members = (t_type*)TSARRAY_REALLOC(_dst->members, _n * sizeof(t_type));
@@ -214,13 +213,13 @@ arr_t_resize(arr_t_struct* _dst, int _n)
 }
 
 t_type*
-arr_t_push(arr_t_struct* _dst, t_type _push)
+arr_t_push(arr_t_name* _dst, t_type _push)
 {
     int n = 0;
     if (_dst == NULL)
         return NULL;
     if (_dst->members == NULL) {
-        *_dst = arr_t_initn(3);
+        arr_t_initn(_dst, 3);
     }
     if (_dst->count >= _dst->max) {
         n = 1 + (_dst->max * _dst->growth_rate);
@@ -231,7 +230,7 @@ arr_t_push(arr_t_struct* _dst, t_type _push)
 }
 
 t_type*
-arr_t_push_front(arr_t_struct* _dst, t_type _push)
+arr_t_push_front(arr_t_name* _dst, t_type _push)
 {
     int i;
     int n = 0;
@@ -248,7 +247,7 @@ arr_t_push_front(arr_t_struct* _dst, t_type _push)
 }
 
 t_type*
-arr_t_insert(arr_t_struct* _dst, int _idx, t_type _push)
+arr_t_insert(arr_t_name* _dst, int _idx, t_type _push)
 {
     int i;
     int n = 0;
@@ -265,7 +264,7 @@ arr_t_insert(arr_t_struct* _dst, int _idx, t_type _push)
 }
 
 t_type*
-arr_t_peek(arr_t_struct* _arr, int _idx)
+arr_t_peek(arr_t_name* _arr, int _idx)
 {
     if (_arr == NULL || _arr->members == NULL || _arr->count < 1)
         return NULL;
@@ -280,7 +279,7 @@ arr_t_peek(arr_t_struct* _arr, int _idx)
 }
 
 t_type
-arr_t_get(arr_t_struct* _arr, int _idx)
+arr_t_get(arr_t_name* _arr, int _idx)
 {
     int i;
     t_type out = (t_type){0};
@@ -302,19 +301,19 @@ arr_t_get(arr_t_struct* _arr, int _idx)
 }
 
 t_type
-arr_t_pop(arr_t_struct* _arr)
+arr_t_pop(arr_t_name* _arr)
 {
     return arr_t_get(_arr, -1);
 }
 
 t_type
-arr_t_pop_front(arr_t_struct* _arr)
+arr_t_pop_front(arr_t_name* _arr)
 {
     return arr_t_get(_arr, 0);
 }
 
 void
-arr_t_remove(arr_t_struct* _arr, int _idx)
+arr_t_remove(arr_t_name* _arr, int _idx)
 {
     int i;
     if (_arr == NULL || _arr->members == NULL || _arr->count < 1)
@@ -331,7 +330,7 @@ arr_t_remove(arr_t_struct* _arr, int _idx)
 }
 
 void
-arr_t_print(arr_t_struct* _arr)
+arr_t_print(arr_t_name* _arr)
 {
     int i;
     if (_arr == NULL || _arr->members == NULL)
@@ -341,23 +340,23 @@ arr_t_print(arr_t_struct* _arr)
     }
 }
 
-arr_t_struct
-arr_t_duplicate(arr_t_struct* _arr)
+arr_t_name
+arr_t_duplicate(arr_t_name* _arr)
 {
     int i;
-    arr_t_struct dub = {0};
+    arr_t_name dub = {0};
     if (_arr == NULL || _arr->members == NULL)
         return dub;
     
-    dub = arr_t_initn(_arr->count);
+    arr_t_initn(&dub, _arr->count);
     for (i = 0; i < _arr->count; i++)
         arr_t_push(&dub, t_operator_copy(_arr->members[i]));
 
     return dub;
 }
 
-arr_t_struct*
-arr_t_concatenate(arr_t_struct* _dst, arr_t_struct* _src)
+arr_t_name*
+arr_t_concatenate(arr_t_name* _dst, arr_t_name* _src)
 {
     int i;
     if (_dst == NULL || _dst->members == NULL)
