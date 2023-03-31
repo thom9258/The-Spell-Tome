@@ -64,18 +64,17 @@ void test_buildin_write(void)
         );
 }
 
-void test_buildin_equal(void)
+void test_buildin_comparison_ops(void)
 {
     yal_AtomHandle root;
-    YAL_MATH_ENV_TEST( (1),
+    YAL_MATH_ENV_TEST( ( 2 == 2 ),
         root = yal_AST_new_va(&env, 3,
                               yal_atom_symbol_new(&env, "=="),
                               yal_atom_real_new(&env, 2),
                               yal_atom_real_new(&env, 2)
             );
         );
-
-    YAL_MATH_ENV_TEST( (0),
+    YAL_MATH_ENV_TEST( (3 == 5),
         root = yal_AST_new_va(&env, 3,
                               yal_atom_symbol_new(&env, "=="),
                               yal_atom_real_new(&env, 3),
@@ -83,6 +82,80 @@ void test_buildin_equal(void)
             );
         );
 
+    YAL_MATH_ENV_TEST( (2 != 2),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, "!="),
+                              yal_atom_real_new(&env, 2),
+                              yal_atom_real_new(&env, 2)
+            );
+        );
+    YAL_MATH_ENV_TEST( (3 != 5),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, "!="),
+                              yal_atom_real_new(&env, 3),
+                              yal_atom_real_new(&env, 5)
+            );
+        );
+
+    YAL_MATH_ENV_TEST( (2 < 2),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, "<"),
+                              yal_atom_real_new(&env, 2),
+                              yal_atom_real_new(&env, 2)
+            );
+        );
+    YAL_MATH_ENV_TEST( (3 < 5),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, "<"),
+                              yal_atom_real_new(&env, 3),
+                              yal_atom_real_new(&env, 5)
+            );
+        );
+
+    YAL_MATH_ENV_TEST( (2 > 2),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, ">"),
+                              yal_atom_real_new(&env, 2),
+                              yal_atom_real_new(&env, 2)
+            );
+        );
+    YAL_MATH_ENV_TEST( (3 > 5),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, ">"),
+                              yal_atom_real_new(&env, 3),
+                              yal_atom_real_new(&env, 5)
+            );
+        );
+
+    YAL_MATH_ENV_TEST( (2 >= 2),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, ">="),
+                              yal_atom_real_new(&env, 2),
+                              yal_atom_real_new(&env, 2)
+            );
+        );
+    YAL_MATH_ENV_TEST( (3 >= 5),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, ">="),
+                              yal_atom_real_new(&env, 3),
+                              yal_atom_real_new(&env, 5)
+            );
+        );
+
+    YAL_MATH_ENV_TEST( (2 <= 2),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, "<="),
+                              yal_atom_real_new(&env, 2),
+                              yal_atom_real_new(&env, 2)
+            );
+        );
+    YAL_MATH_ENV_TEST( (3 <= 5),
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, "<="),
+                              yal_atom_real_new(&env, 3),
+                              yal_atom_real_new(&env, 5)
+            );
+        );
 }
 
 void test_math_1(void)
@@ -317,7 +390,7 @@ int main(int argc, char **argv) {
 
 	TL(test_init_destroy());
 	TL(test_buildin_write());
-	TL(test_buildin_equal());
+	TL(test_buildin_comparison_ops());
 	TL(test_math_1());
 	TL(test_math_2());
 	TL(test_buildin_marks());

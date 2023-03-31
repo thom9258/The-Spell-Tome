@@ -32,14 +32,10 @@ For more information, please refer to
         Added marked lists and atoms.
         Fixed Evaluation function to work properly.
         Added write, math and equal functions
+        Added remaining comparison operators.
 
 
-
-
-
-
-
-
+## DEVELOPMENT NOTES
 
   Resource for functions and their workings:
   http://www.lispworks.com/documentation/HyperSpec/Front/X_Master.htm
@@ -49,9 +45,13 @@ For more information, please refer to
     at index 0, unless the list is marked -> '(1 2 3)
     I think i can create this feature, so that
 
-  TODO: More Math stuff like less equal not equal etc.
+  TODO: Create a self-growing atom block allocator datastructure.
+  TODO: Add support for keywords nil and t
+  TODO: Math library prefixed with "math." in names, needs:
+        - pi, 2pi, euler vars
+        - sqrt and other functions
   TODO: Defineable variables and AST functions
-  TODO: env variable Constants for math, version, atom types, etc.
+  TODO: env variable Constants for version, atom types, etc.
   TODO: If statements and loops
   TODO: Error and Warning management build into the languange
   TODO: Go through math operators and make sure they are up to date with syntax.
@@ -107,11 +107,7 @@ For more information, please refer to
                "Atom is not a number!")
 
 #define YAL_ASSERT_ASTLEN(env, list, check) \
-    do { \
-        YAL_ASSERT_INV_HANDLE(env, list);          \
-        YAL_ASSERT_TYPECHECK(env, list, YAL_AST);          \
         YAL_ASSERT(yal_AtomArray_len(&yal_atom(env, list)->AST) check, "AST len does not comply based on given operator and length!");   \
-    } while (0)
 
 #define YAL_ASSERT_ZEROAST(env, h) \
     YAL_ASSERT_ASTLEN(env, h, > 0)
@@ -120,8 +116,11 @@ For more information, please refer to
  * AST & Atom Manipulation and management  
  * */
 
-#define YAL_ATOM_GETNUM(atom_ptr) \
+#define YAL_ATOM_NUMBER(atom_ptr) \
     ( (atom_ptr->type == YAL_REAL) ? atom_ptr->real : atom_ptr->decimal )
+
+#define YAL_ATOM_GETNUMBER(env, atom) \
+    YAL_ATOM_NUMBER(yal_atom(env, atom))
 
 #define YAL_AST_INSERT(env, atomast, idx, push) \
     yal_AtomArray_insert(&yal_atom(env, atomast)->AST, idx, push)
@@ -145,6 +144,7 @@ For more information, please refer to
 enum YAL_TYPE {
     YAL_TYPE_INVALID = 0,
     /*Atom types*/
+    YAL_NIL,
     YAL_REAL,
     YAL_DECIMAL,
     YAL_SYMBOL,
@@ -255,6 +255,16 @@ _yal_yal_buildin_add_atom_to_env(yal_Environment* _env, yal_AtomHandle _this)
     return _this;
 }
 
+void
+_yal_buildin_write(yal_Environment* _env, yal_AtomHandle _this)
+{
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _this);
+    YAL_ASSERT_TYPECHECK(_env, _this, YAL_AST);
+    YAL_ASSERT_ASTLEN(_env, _this, == 1);
+    yal_atom_print(yal_atom(_env, *YAL_AST_PEEK(_env, _this, 0)));
+}
+
 #define _YAL_ARIHMETIC_2(op, a, b)        \
 do { \
     if (a->type == YAL_REAL && b->type == YAL_REAL) a->real op b->real; \
@@ -266,7 +276,6 @@ do { \
 
 void
 _yal_buildin_multiply(yal_Environment* _env, yal_AtomHandle _this)
-/*TODO: Does not work!*/
 {
     yal_AtomHandle res;
     yal_AtomHandle tmp;
@@ -295,7 +304,6 @@ _yal_buildin_multiply(yal_Environment* _env, yal_AtomHandle _this)
 
 void
 _yal_buildin_divide(yal_Environment* _env, yal_AtomHandle _this)
-/*TODO: Does not work!*/
 {
     yal_AtomHandle res;
     yal_AtomHandle tmp;
@@ -321,6 +329,7 @@ _yal_buildin_divide(yal_Environment* _env, yal_AtomHandle _this)
     }
     yal_AtomArray_push(&ths->AST, res);
 }
+
 void
 _yal_buildin_plus(yal_Environment* _env, yal_AtomHandle _this)
 {
@@ -388,42 +397,127 @@ _yal_buildin_minus(yal_Environment* _env, yal_AtomHandle _this)
 }
 
 void
-_yal_buildin_equal(yal_Environment* _env, yal_AtomHandle _this)
+_yal_buildin_equal(yal_Environment* _env, yal_AtomHandle _args)
 {
     yal_AtomHandle res;
     yal_AtomHandle a;
     yal_AtomHandle b;
-    yal_Atom* ths;
-
     YAL_ASSERT_INV_ENV(_env);
-    YAL_ASSERT_INV_HANDLE(_env, _this);
-    YAL_ASSERT_TYPECHECK(_env, _this, YAL_AST);
-    YAL_ASSERT_ASTLEN(_env, _this, == 2);
-    ths = yal_atom(_env, _this);
+    YAL_ASSERT_INV_HANDLE(_env, _args);
+    YAL_ASSERT_TYPECHECK(_env, _args, YAL_AST);
+    YAL_ASSERT_ASTLEN(_env, _args, == 2);
+    b = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, b);
+    a = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, a);
 
-    a = yal_AtomArray_pop_front(&ths->AST);
-    b = yal_AtomArray_pop_front(&ths->AST);
-    YAL_ASSERT_NOTNUMBER(_env, a);
-    YAL_ASSERT_NOTNUMBER(_env, b);
-
-    if (yal_atom_equal(yal_atom(_env, a), yal_atom(_env, b)))
+    if (YAL_ATOM_GETNUMBER(_env, a) == YAL_ATOM_GETNUMBER(_env, b))
         res = yal_atom_real_new(_env, 1);
     else
         res = yal_atom_real_new(_env, 0);
 
-    yal_atom_delete(_env, a);
-    yal_atom_delete(_env, b);
-    yal_AtomArray_push(&ths->AST, res);
+    yal_atom_delete(_env, a); yal_atom_delete(_env, b);
+    YAL_AST_PUT(_env, _args, res);
 }
 
 void
-_yal_buildin_write(yal_Environment* _env, yal_AtomHandle _this)
+_yal_buildin_notequal(yal_Environment* _env, yal_AtomHandle _args)
 {
+    yal_AtomHandle res;
     YAL_ASSERT_INV_ENV(_env);
-    YAL_ASSERT_INV_HANDLE(_env, _this);
-    YAL_ASSERT_TYPECHECK(_env, _this, YAL_AST);
-    YAL_ASSERT_ASTLEN(_env, _this, == 1);
-    yal_atom_print(yal_atom(_env, *YAL_AST_PEEK(_env, _this, 0)));
+    YAL_ASSERT_INV_HANDLE(_env, _args);
+    YAL_ASSERT_TYPECHECK(_env, _args, YAL_AST);
+
+    _yal_buildin_equal(_env, _args);
+    res = YAL_AST_POP_FRONT(_env, _args);
+    yal_atom(_env, res)->real = !(yal_atom(_env, res)->real);
+    YAL_AST_PUT(_env, _args, res);
+}
+
+void
+_yal_buildin_lessequal(yal_Environment* _env, yal_AtomHandle _args)
+{
+    yal_AtomHandle res;
+    yal_AtomHandle a;
+    yal_AtomHandle b;
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _args);
+    YAL_ASSERT_TYPECHECK(_env, _args, YAL_AST);
+    YAL_ASSERT_ASTLEN(_env, _args, == 2);
+    b = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, b);
+    a = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, a);
+
+    if (YAL_ATOM_GETNUMBER(_env, a) <= YAL_ATOM_GETNUMBER(_env, b))
+        res = yal_atom_real_new(_env, 1);
+    else
+        res = yal_atom_real_new(_env, 0);
+
+    yal_atom_delete(_env, a); yal_atom_delete(_env, b);
+    YAL_AST_PUT(_env, _args, res);
+}
+
+void
+_yal_buildin_greaterequal(yal_Environment* _env, yal_AtomHandle _args)
+{
+    yal_AtomHandle res;
+    yal_AtomHandle a;
+    yal_AtomHandle b;
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _args);
+    YAL_ASSERT_TYPECHECK(_env, _args, YAL_AST);
+    YAL_ASSERT_ASTLEN(_env, _args, == 2);
+    b = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, b);
+    a = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, a);
+
+    if (YAL_ATOM_GETNUMBER(_env, a) >= YAL_ATOM_GETNUMBER(_env, b))
+        res = yal_atom_real_new(_env, 1);
+    else
+        res = yal_atom_real_new(_env, 0);
+
+    yal_atom_delete(_env, a); yal_atom_delete(_env, b);
+    YAL_AST_PUT(_env, _args, res);
+}
+
+void
+_yal_buildin_greaterthan(yal_Environment* _env, yal_AtomHandle _args)
+{
+    yal_AtomHandle res;
+    yal_AtomHandle a;
+    yal_AtomHandle b;
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _args);
+    YAL_ASSERT_TYPECHECK(_env, _args, YAL_AST);
+    YAL_ASSERT_ASTLEN(_env, _args, == 2);
+    b = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, b);
+    a = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, a);
+
+    if (YAL_ATOM_GETNUMBER(_env, a) > YAL_ATOM_GETNUMBER(_env, b))
+        res = yal_atom_real_new(_env, 1);
+    else
+        res = yal_atom_real_new(_env, 0);
+
+    yal_atom_delete(_env, a); yal_atom_delete(_env, b);
+    YAL_AST_PUT(_env, _args, res);
+}
+
+void
+_yal_buildin_lessthan(yal_Environment* _env, yal_AtomHandle _args)
+{
+    yal_AtomHandle res;
+    yal_AtomHandle a;
+    yal_AtomHandle b;
+    YAL_ASSERT_INV_ENV(_env);
+    YAL_ASSERT_INV_HANDLE(_env, _args);
+    YAL_ASSERT_TYPECHECK(_env, _args, YAL_AST);
+    YAL_ASSERT_ASTLEN(_env, _args, == 2);
+    b = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, b);
+    a = YAL_AST_POP(_env, _args); YAL_ASSERT_NOTNUMBER(_env, a);
+
+    if (YAL_ATOM_GETNUMBER(_env, a) < YAL_ATOM_GETNUMBER(_env, b))
+        res = yal_atom_real_new(_env, 1);
+    else
+        res = yal_atom_real_new(_env, 0);
+
+    yal_atom_delete(_env, a); yal_atom_delete(_env, b);
+    YAL_AST_PUT(_env, _args, res);
 }
 
 yal_Environment
@@ -467,23 +561,23 @@ void yal_env_add_BuildinFn(yal_Environment* _env, char* symbol, char* info, yal_
 
 void
 yal_env_add_buildins(yal_Environment* _env)
-/*TODO: add support for:
-- minus;
-- multiply;
-- divide;
-- var;
-- fn;
-- read;
-- env;
-- version;
-*/
 {
-    yal_env_add_BuildinFn(_env, "==", "comparison operator.", _yal_buildin_equal);
+    /*Comparison Operators*/
+    yal_env_add_BuildinFn(_env, "==", "Equality operator.", _yal_buildin_equal);
+    yal_env_add_BuildinFn(_env, "!=", "Non-equality operator.", _yal_buildin_notequal);
+    yal_env_add_BuildinFn(_env, "<=", "Less-Equal operator.", _yal_buildin_lessequal);
+    yal_env_add_BuildinFn(_env, ">=", "Greater-Equal operator.", _yal_buildin_greaterequal);
+    yal_env_add_BuildinFn(_env, "<", "Less-Then operator.", _yal_buildin_lessthan);
+    yal_env_add_BuildinFn(_env, ">", "Greater-Than operator.", _yal_buildin_greaterthan);
+
+    /*Math Operators*/
     yal_env_add_BuildinFn(_env, "+", "Plus operator.", _yal_buildin_plus);
     yal_env_add_BuildinFn(_env, "-", "Minus operator.", _yal_buildin_minus);
     yal_env_add_BuildinFn(_env, "*", "Multiply operator.", _yal_buildin_multiply);
     yal_env_add_BuildinFn(_env, "/", "Divide operator.", _yal_buildin_divide);
-    yal_env_add_BuildinFn(_env, "write", "Print operator", _yal_buildin_write);
+
+    /*Standard Functions*/
+    yal_env_add_BuildinFn(_env, "write", "Atom print", _yal_buildin_write);
 }
 
 yal_BuildinFn*
@@ -532,15 +626,17 @@ yal_unmark(yal_Environment* _env, yal_AtomHandle _h)
 void
 yal_atom_print(yal_Atom* _a)
 {
-    if (_a == NULL) {
-        printf("<UNPRINTABLE ATOM>");
-        return;
-    }
+    if (_a == NULL)
+        YAL_UNREACHABLE();
+
     if (_a->is_marked)
         printf("#");
     switch (_a->type) {
     case YAL_REAL:
         printf("%d", _a->real);
+        break;
+    case YAL_NIL:
+        printf("NIL");
         break;
     case YAL_DECIMAL:
         printf("%f", _a->decimal);
@@ -556,6 +652,16 @@ yal_atom_print(yal_Atom* _a)
     default:
         YAL_UNREACHABLE();
     }
+}
+
+yal_AtomHandle
+yal_atom_nil_new(yal_Environment* _env)
+{
+    YAL_ASSERT_INV_ENV(_env);
+    yal_AtomHandle h = _yal_atom_memory_alloc(_env);
+    YAL_ASSERT_INV_HANDLE(_env, h);
+    yal_atom(_env, h)->type = YAL_NIL;
+    return h;
 }
 
 yal_AtomHandle
@@ -650,8 +756,8 @@ yal_atom_clear(yal_Environment* _env, yal_AtomHandle _h)
         assert(yal_AtomArray_len(&p->AST) == 0);
         yal_AtomArray_destroy(&p->AST);
         break;
+    case YAL_NIL:
     case YAL_REAL:
-        break;
     case YAL_DECIMAL:
         break;
     default:
@@ -662,7 +768,7 @@ yal_atom_clear(yal_Environment* _env, yal_AtomHandle _h)
 char
 yal_atom_equal(yal_Atom* _a, yal_Atom* _b)
 {
-    return (YAL_ATOM_GETNUM(_a) == YAL_ATOM_GETNUM(_b));
+    return (YAL_ATOM_NUMBER(_a) == YAL_ATOM_NUMBER(_b));
 }
 
 void
@@ -681,15 +787,19 @@ yal_print_chain(yal_Environment* _env, yal_AtomHandle _h)
     int i;
     int imax;
     yal_Atom* p = yal_atom(_env, _h);
+    yal_AtomHandle tmp;
 
+    UNUSED(imax);
     YAL_ASSERT_INV_ENV(_env);
     YAL_ASSERT_INV_HANDLE(_env, _h);
 
     if (p->type == YAL_AST) {
         printf("%s ", (p->is_marked) ? "#[":"(");
-        imax = yal_AtomArray_len(&p->AST);
-        for (i = 0; i < imax; i++) {
-            yal_print_chain(_env, *yal_AtomArray_peek(&p->AST, i));
+        //imax = yal_AtomArray_len(&p->AST);
+        for (i = 0; i < yal_AtomArray_len(&p->AST); i++) {
+            tmp = *yal_AtomArray_peek(&p->AST, i);
+            YAL_ASSERT_INV_HANDLE(_env, tmp);
+            yal_print_chain(_env, tmp);
         }
         printf("%s ", (p->is_marked) ? "]":")");
     } else {
