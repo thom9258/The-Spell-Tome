@@ -53,9 +53,6 @@ CHANGELOG:
 [1.0] Added core functionality.
 [0.0] Initialized library.
 
-TODO: Add error management system or atleast asserting on error.
-TODO: change tstr_length to be a null terminator checker within maxlen bounds.
-
 */
 
 #ifndef TSTR_H
