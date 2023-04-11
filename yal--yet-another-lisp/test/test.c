@@ -2,10 +2,19 @@
 #include "../yal.h"
 
 
+#define YAL_PRINT_AST(env, ast) \
+    do { \
+    tstring_s _tmp = tstring("");                  \
+    yal_AST2str(&env, ast, &_tmp);              \
+    printf("%s\n", _tmp.c_str); \
+    tstring_destroy(&_tmp);      \
+ } while (0)
+
 #define YAL_VISUAL_EVAL(env, root) \
-    yal_print_chain(&env, root); printf("\n"); \
+    YAL_PRINT_AST(env, root);      \
     yal_eval(&env, root); \
-    yal_print_chain(&env, root); printf("\n"); \
+    yal_flush_print_buffer(&env); \
+    YAL_PRINT_AST(env, root);      \
     printf("\n");
 
 
@@ -356,7 +365,6 @@ void test_buildin_marks(void)
                               yal_atom_symbol_new(&env, "+"),
                               yal_atom_decimal_new(&env, 3.1415),
                               yal_atom_decimal_new(&env, 1.2));
-        yal_mark(&env, root);
         yal_atom(&env, root)->is_marked = 1;
         );
 
@@ -365,21 +373,36 @@ void test_buildin_marks(void)
                               yal_atom_real_new(&env, 1),
                               yal_atom_real_new(&env, 2),
                               yal_atom_real_new(&env, 3));
-        yal_mark(&env, root);
         yal_atom(&env, root)->is_marked = 1;
         );
 
     YAL_QUICK_EVAL(
-        root = yal_AST_new_va(&env, 2,
-                              yal_atom_symbol_new(&env, "write"),
-                              yal_atom_string_new(&env, "marks are great at not evaluating!")
-            );
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, "SomeInvalidSymbol"),
+                              yal_atom_decimal_new(&env, 3.1415),
+                              yal_atom_decimal_new(&env, 1.2));
+        yal_atom(&env, root)->is_marked = 1;
         );
 
     YAL_QUICK_EVAL(
+        root = yal_AST_new_va(&env, 3,
+                              yal_atom_symbol_new(&env, "write"),
+                              yal_atom_decimal_new(&env, 3.1415),
+                              yal_atom_decimal_new(&env, 1.2));
+        yal_atom(&env, root)->is_marked = 1;
+        );
+
+
+    YAL_QUICK_EVAL(
+        root = yal_AST_new_va(&env, 2,
+                              yal_atom_symbol_new(&env, "write"),
+                              yal_atom_string_new(&env, "Unmarked write will write!")
+            );
+        );
+    YAL_QUICK_EVAL(
         root = yal_AST_new_va(&env, 2,
                               yal_mark(&env, yal_atom_symbol_new(&env, "write")),
-                              yal_atom_string_new(&env, "marks are great at not evaluating!")
+                              yal_atom_string_new(&env, "marks are great at not evaluating functions!")
             );
         );
 }
