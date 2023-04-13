@@ -1,374 +1,251 @@
-==14515== Memcheck, a memory error detector
-==14515== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
-==14515== Using Valgrind-3.15.0-608cb11914-20190413 and LibVEX; rerun with -h for copyright info
-==14515== Command: ./a.out
-==14515== Parent PID: 1901
-==14515== 
---14515-- 
---14515-- Valgrind options:
---14515--    --leak-check=full
---14515--    --show-leak-kinds=all
---14515--    --track-origins=yes
---14515--    --verbose
---14515--    --log-file=valgrind-out.txt
---14515-- Contents of /proc/version:
---14515--   Linux version 5.15.0-69-generic (buildd@lcy02-amd64-071) (gcc (Ubuntu 9.4.0-1ubuntu1~20.04.1) 9.4.0, GNU ld (GNU Binutils for Ubuntu) 2.34) #76~20.04.1-Ubuntu SMP Mon Mar 20 15:54:19 UTC 2023
---14515-- 
---14515-- Arch and hwcaps: AMD64, LittleEndian, amd64-cx16-lzcnt-rdtscp-sse3-ssse3-avx-avx2-bmi-f16c-rdrand
---14515-- Page sizes: currently 4096, max supported 4096
---14515-- Valgrind library directory: /usr/lib/x86_64-linux-gnu/valgrind
---14515-- Reading syms from /home/th/Git/The-Spell-Tome/yal2/test/a.out
---14515-- Reading syms from /usr/lib/x86_64-linux-gnu/ld-2.31.so
---14515--   Considering /usr/lib/debug/.build-id/45/87364908de169dec62ffa538170118c1c3a078.debug ..
---14515--   .. build-id is valid
---14515-- Reading syms from /usr/lib/x86_64-linux-gnu/valgrind/memcheck-amd64-linux
---14515--    object doesn't have a symbol table
---14515--    object doesn't have a dynamic symbol table
---14515-- Scheduler: using generic scheduler lock implementation.
---14515-- Reading suppressions file: /usr/lib/x86_64-linux-gnu/valgrind/default.supp
-==14515== embedded gdbserver: reading from /tmp/vgdb-pipe-from-vgdb-to-14515-by-th-on-???
-==14515== embedded gdbserver: writing to   /tmp/vgdb-pipe-to-vgdb-from-14515-by-th-on-???
-==14515== embedded gdbserver: shared mem   /tmp/vgdb-pipe-shared-mem-vgdb-14515-by-th-on-???
-==14515== 
-==14515== TO CONTROL THIS PROCESS USING vgdb (which you probably
-==14515== don't want to do, unless you know exactly what you're doing,
-==14515== or are doing some strange experiment):
-==14515==   /usr/lib/x86_64-linux-gnu/valgrind/../../bin/vgdb --pid=14515 ...command...
-==14515== 
-==14515== TO DEBUG THIS PROCESS USING GDB: start GDB like this
-==14515==   /path/to/gdb ./a.out
-==14515== and then give GDB the following command
-==14515==   target remote | /usr/lib/x86_64-linux-gnu/valgrind/../../bin/vgdb --pid=14515
-==14515== --pid is optional if only one valgrind process is running
-==14515== 
---14515-- REDIR: 0x4022e20 (ld-linux-x86-64.so.2:strlen) redirected to 0x580c9ce2 (???)
---14515-- REDIR: 0x4022bf0 (ld-linux-x86-64.so.2:index) redirected to 0x580c9cfc (???)
---14515-- Reading syms from /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_core-amd64-linux.so
---14515--    object doesn't have a symbol table
---14515-- Reading syms from /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so
---14515--    object doesn't have a symbol table
-==14515== WARNING: new redirection conflicts with existing -- ignoring it
---14515--     old: 0x04022e20 (strlen              ) R-> (0000.0) 0x580c9ce2 ???
---14515--     new: 0x04022e20 (strlen              ) R-> (2007.0) 0x0483f060 strlen
---14515-- REDIR: 0x401f600 (ld-linux-x86-64.so.2:strcmp) redirected to 0x483ffd0 (strcmp)
---14515-- REDIR: 0x4023380 (ld-linux-x86-64.so.2:mempcpy) redirected to 0x4843a20 (mempcpy)
---14515-- Reading syms from /usr/lib/x86_64-linux-gnu/libc-2.31.so
---14515--   Considering /usr/lib/debug/.build-id/18/78e6b475720c7c51969e69ab2d276fae6d1dee.debug ..
---14515--   .. build-id is valid
---14515-- REDIR: 0x492b480 (libc.so.6:memmove) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a780 (libc.so.6:strncpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b7b0 (libc.so.6:strcasecmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a0a0 (libc.so.6:strcat) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a7e0 (libc.so.6:rindex) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492cc50 (libc.so.6:rawmemchr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x4947ce0 (libc.so.6:wmemchr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x4947820 (libc.so.6:wcscmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b5e0 (libc.so.6:mempcpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b410 (libc.so.6:bcmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a710 (libc.so.6:strncmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a150 (libc.so.6:strcmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b540 (libc.so.6:memset) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x49477e0 (libc.so.6:wcschr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a670 (libc.so.6:strnlen) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a230 (libc.so.6:strcspn) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b800 (libc.so.6:strncasecmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a1d0 (libc.so.6:strcpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b950 (libc.so.6:memcpy@@GLIBC_2.14) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x4948f50 (libc.so.6:wcsnlen) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x4947860 (libc.so.6:wcscpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a820 (libc.so.6:strpbrk) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a100 (libc.so.6:index) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492a630 (libc.so.6:strlen) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x4933bb0 (libc.so.6:memrchr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b850 (libc.so.6:strcasecmp_l) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b3d0 (libc.so.6:memchr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x4947930 (libc.so.6:wcslen) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492aae0 (libc.so.6:strspn) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b750 (libc.so.6:stpncpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b6f0 (libc.so.6:stpcpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492cc90 (libc.so.6:strchrnul) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x492b8a0 (libc.so.6:strncasecmp_l) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
---14515-- REDIR: 0x4a13500 (libc.so.6:__strrchr_avx2) redirected to 0x483ea10 (rindex)
---14515-- REDIR: 0x49250e0 (libc.so.6:malloc) redirected to 0x483b780 (malloc)
---14515-- REDIR: 0x4a166c0 (libc.so.6:__mempcpy_avx_unaligned_erms) redirected to 0x4843660 (mempcpy)
---14515-- REDIR: 0x4a13310 (libc.so.6:__strchrnul_avx2) redirected to 0x4843540 (strchrnul)
---14515-- REDIR: 0x4a136d0 (libc.so.6:__strlen_avx2) redirected to 0x483ef40 (strlen)
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x109C46: ptrStack_len (tsarray.h:186)
-==14515==    by 0x10A603: sbAllocator_get (alloc.h:82)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A606: sbAllocator_get (alloc.h:82)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A081: ptrStack_get (tsarray.h:286)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A08C: ptrStack_get (tsarray.h:286)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A0A2: ptrStack_get (tsarray.h:289)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A0BA: ptrStack_get (tsarray.h:291)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== Use of uninitialised value of size 8
-==14515==    at 0x10A0EA: ptrStack_get (tsarray.h:296)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== Invalid read of size 8
-==14515==    at 0x10A0EA: ptrStack_get (tsarray.h:296)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Address 0x1fff848d10 is not stack'd, malloc'd or (recently) free'd
-==14515== 
-==14515== 
-==14515== Process terminating with default action of signal 11 (SIGSEGV)
-==14515==  Access not within mapped region at address 0x1FFF848D10
-==14515==    at 0x10A0EA: ptrStack_get (tsarray.h:296)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  If you believe this happened as a result of a stack
-==14515==  overflow in your program's main thread (unlikely but
-==14515==  possible), you can try to increase the size of the
-==14515==  main thread stack using the --main-stacksize= flag.
-==14515==  The main thread stack size used in this run was 8388608.
---14515-- REDIR: 0x49256d0 (libc.so.6:free) redirected to 0x483c9d0 (free)
-==14515== 
-==14515== HEAP SUMMARY:
-==14515==     in use at exit: 4,947 bytes in 8 blocks
-==14515==   total heap usage: 9 allocs, 1 frees, 5,971 bytes allocated
-==14515== 
-==14515== Searching for pointers to 8 not-freed blocks
-==14515== Checked 71,624 bytes
-==14515== 
-==14515== 2 bytes in 1 blocks are indirectly lost in loss record 1 of 8
-==14515==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
-==14515==    by 0x10A890: tstr_n (tstr.h:291)
-==14515==    by 0x10A955: tstr_ (tstr.h:314)
-==14515==    by 0x10ADFB: symbol (yal2.h:148)
-==14515==    by 0x10BF7A: test_print (test.c:37)
-==14515==    by 0x10C45B: main (test.c:145)
-==14515== 
-==14515== 2 bytes in 1 blocks are indirectly lost in loss record 2 of 8
-==14515==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
-==14515==    by 0x10A890: tstr_n (tstr.h:291)
-==14515==    by 0x10A955: tstr_ (tstr.h:314)
-==14515==    by 0x10ADFB: symbol (yal2.h:148)
-==14515==    by 0x10BFE5: test_print (test.c:37)
-==14515==    by 0x10C45B: main (test.c:145)
-==14515== 
-==14515== 2 bytes in 1 blocks are indirectly lost in loss record 3 of 8
-==14515==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
-==14515==    by 0x10A890: tstr_n (tstr.h:291)
-==14515==    by 0x10A955: tstr_ (tstr.h:314)
-==14515==    by 0x10ADFB: symbol (yal2.h:148)
-==14515==    by 0x10C082: test_print (test.c:57)
-==14515==    by 0x10C45B: main (test.c:145)
-==14515== 
-==14515== 6 bytes in 1 blocks are indirectly lost in loss record 4 of 8
-==14515==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
-==14515==    by 0x10A890: tstr_n (tstr.h:291)
-==14515==    by 0x10A955: tstr_ (tstr.h:314)
-==14515==    by 0x10ADFB: symbol (yal2.h:148)
-==14515==    by 0x10BEDD: test_print (test.c:27)
-==14515==    by 0x10C45B: main (test.c:145)
-==14515== 
-==14515== 31 bytes in 1 blocks are still reachable in loss record 5 of 8
-==14515==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
-==14515==    by 0x10A890: tstr_n (tstr.h:291)
-==14515==    by 0x10A955: tstr_ (tstr.h:314)
-==14515==    by 0x10C39A: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515== 
-==14515== 128 bytes in 1 blocks are definitely lost in loss record 6 of 8
-==14515==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
-==14515==    by 0x10A9C6: tstrBuffer_init (tstr.h:599)
-==14515==    by 0x10AB6A: Environment_new (yal2.h:80)
-==14515==    by 0x10BE9F: test_print (test.c:25)
-==14515==    by 0x10C45B: main (test.c:145)
-==14515== 
-==14515== 4,096 bytes in 1 blocks are indirectly lost in loss record 7 of 8
-==14515==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
-==14515==    by 0x109A97: memRegion_new (alloc.h:20)
-==14515==    by 0x10A485: sbAllocator_init (alloc.h:51)
-==14515==    by 0x10AB55: Environment_new (yal2.h:79)
-==14515==    by 0x10BE9F: test_print (test.c:25)
-==14515==    by 0x10C45B: main (test.c:145)
-==14515== 
-==14515== 4,788 (680 direct, 4,108 indirect) bytes in 1 blocks are definitely lost in loss record 8 of 8
-==14515==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
-==14515==    by 0x109B55: ptrStack_initn (tsarray.h:155)
-==14515==    by 0x10A4CD: sbAllocator_init (alloc.h:59)
-==14515==    by 0x10AB55: Environment_new (yal2.h:79)
-==14515==    by 0x10BE9F: test_print (test.c:25)
-==14515==    by 0x10C45B: main (test.c:145)
-==14515== 
-==14515== LEAK SUMMARY:
-==14515==    definitely lost: 808 bytes in 2 blocks
-==14515==    indirectly lost: 4,108 bytes in 5 blocks
-==14515==      possibly lost: 0 bytes in 0 blocks
-==14515==    still reachable: 31 bytes in 1 blocks
-==14515==         suppressed: 0 bytes in 0 blocks
-==14515== 
-==14515== ERROR SUMMARY: 10 errors from 10 contexts (suppressed: 0 from 0)
-==14515== 
-==14515== 1 errors in context 1 of 10:
-==14515== Invalid read of size 8
-==14515==    at 0x10A0EA: ptrStack_get (tsarray.h:296)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Address 0x1fff848d10 is not stack'd, malloc'd or (recently) free'd
-==14515== 
-==14515== 
-==14515== 1 errors in context 2 of 10:
-==14515== Use of uninitialised value of size 8
-==14515==    at 0x10A0EA: ptrStack_get (tsarray.h:296)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== 
-==14515== 1 errors in context 3 of 10:
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A0BA: ptrStack_get (tsarray.h:291)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== 
-==14515== 1 errors in context 4 of 10:
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A0A2: ptrStack_get (tsarray.h:289)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== 
-==14515== 1 errors in context 5 of 10:
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A08C: ptrStack_get (tsarray.h:286)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== 
-==14515== 1 errors in context 6 of 10:
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A081: ptrStack_get (tsarray.h:286)
-==14515==    by 0x10A176: ptrStack_pop (tsarray.h:306)
-==14515==    by 0x10A636: sbAllocator_get (alloc.h:84)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== 
-==14515== 1 errors in context 7 of 10:
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x10A606: sbAllocator_get (alloc.h:82)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== 
-==14515== 1 errors in context 8 of 10:
-==14515== Conditional jump or move depends on uninitialised value(s)
-==14515==    at 0x109C46: ptrStack_len (tsarray.h:186)
-==14515==    by 0x10A603: sbAllocator_get (alloc.h:82)
-==14515==    by 0x10AC14: expr_new (yal2.h:105)
-==14515==    by 0x10AE64: string (yal2.h:156)
-==14515==    by 0x10C3AF: test_eval (test.c:131)
-==14515==    by 0x10C484: main (test.c:148)
-==14515==  Uninitialised value was created by a stack allocation
-==14515==    at 0x10C368: test_eval (test.c:126)
-==14515== 
-==14515== ERROR SUMMARY: 10 errors from 10 contexts (suppressed: 0 from 0)
+==5511== Memcheck, a memory error detector
+==5511== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==5511== Using Valgrind-3.15.0-608cb11914-20190413 and LibVEX; rerun with -h for copyright info
+==5511== Command: ./a.out
+==5511== Parent PID: 1968
+==5511== 
+--5511-- 
+--5511-- Valgrind options:
+--5511--    --leak-check=full
+--5511--    --show-leak-kinds=all
+--5511--    --track-origins=yes
+--5511--    --verbose
+--5511--    --log-file=valgrind-out.txt
+--5511-- Contents of /proc/version:
+--5511--   Linux version 5.15.0-69-generic (buildd@lcy02-amd64-071) (gcc (Ubuntu 9.4.0-1ubuntu1~20.04.1) 9.4.0, GNU ld (GNU Binutils for Ubuntu) 2.34) #76~20.04.1-Ubuntu SMP Mon Mar 20 15:54:19 UTC 2023
+--5511-- 
+--5511-- Arch and hwcaps: AMD64, LittleEndian, amd64-cx16-lzcnt-rdtscp-sse3-ssse3-avx-avx2-bmi-f16c-rdrand
+--5511-- Page sizes: currently 4096, max supported 4096
+--5511-- Valgrind library directory: /usr/lib/x86_64-linux-gnu/valgrind
+--5511-- Reading syms from /home/th/Git/The-Spell-Tome/yal2/test/a.out
+--5511-- Reading syms from /usr/lib/x86_64-linux-gnu/ld-2.31.so
+--5511--   Considering /usr/lib/debug/.build-id/45/87364908de169dec62ffa538170118c1c3a078.debug ..
+--5511--   .. build-id is valid
+--5511-- Reading syms from /usr/lib/x86_64-linux-gnu/valgrind/memcheck-amd64-linux
+--5511--    object doesn't have a symbol table
+--5511--    object doesn't have a dynamic symbol table
+--5511-- Scheduler: using generic scheduler lock implementation.
+--5511-- Reading suppressions file: /usr/lib/x86_64-linux-gnu/valgrind/default.supp
+==5511== embedded gdbserver: reading from /tmp/vgdb-pipe-from-vgdb-to-5511-by-th-on-???
+==5511== embedded gdbserver: writing to   /tmp/vgdb-pipe-to-vgdb-from-5511-by-th-on-???
+==5511== embedded gdbserver: shared mem   /tmp/vgdb-pipe-shared-mem-vgdb-5511-by-th-on-???
+==5511== 
+==5511== TO CONTROL THIS PROCESS USING vgdb (which you probably
+==5511== don't want to do, unless you know exactly what you're doing,
+==5511== or are doing some strange experiment):
+==5511==   /usr/lib/x86_64-linux-gnu/valgrind/../../bin/vgdb --pid=5511 ...command...
+==5511== 
+==5511== TO DEBUG THIS PROCESS USING GDB: start GDB like this
+==5511==   /path/to/gdb ./a.out
+==5511== and then give GDB the following command
+==5511==   target remote | /usr/lib/x86_64-linux-gnu/valgrind/../../bin/vgdb --pid=5511
+==5511== --pid is optional if only one valgrind process is running
+==5511== 
+--5511-- REDIR: 0x4022e20 (ld-linux-x86-64.so.2:strlen) redirected to 0x580c9ce2 (???)
+--5511-- REDIR: 0x4022bf0 (ld-linux-x86-64.so.2:index) redirected to 0x580c9cfc (???)
+--5511-- Reading syms from /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_core-amd64-linux.so
+--5511--    object doesn't have a symbol table
+--5511-- Reading syms from /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so
+--5511--    object doesn't have a symbol table
+==5511== WARNING: new redirection conflicts with existing -- ignoring it
+--5511--     old: 0x04022e20 (strlen              ) R-> (0000.0) 0x580c9ce2 ???
+--5511--     new: 0x04022e20 (strlen              ) R-> (2007.0) 0x0483f060 strlen
+--5511-- REDIR: 0x401f600 (ld-linux-x86-64.so.2:strcmp) redirected to 0x483ffd0 (strcmp)
+--5511-- REDIR: 0x4023380 (ld-linux-x86-64.so.2:mempcpy) redirected to 0x4843a20 (mempcpy)
+--5511-- Reading syms from /usr/lib/x86_64-linux-gnu/libc-2.31.so
+--5511--   Considering /usr/lib/debug/.build-id/18/78e6b475720c7c51969e69ab2d276fae6d1dee.debug ..
+--5511--   .. build-id is valid
+--5511-- REDIR: 0x492b480 (libc.so.6:memmove) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a780 (libc.so.6:strncpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b7b0 (libc.so.6:strcasecmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a0a0 (libc.so.6:strcat) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a7e0 (libc.so.6:rindex) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492cc50 (libc.so.6:rawmemchr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x4947ce0 (libc.so.6:wmemchr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x4947820 (libc.so.6:wcscmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b5e0 (libc.so.6:mempcpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b410 (libc.so.6:bcmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a710 (libc.so.6:strncmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a150 (libc.so.6:strcmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b540 (libc.so.6:memset) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x49477e0 (libc.so.6:wcschr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a670 (libc.so.6:strnlen) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a230 (libc.so.6:strcspn) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b800 (libc.so.6:strncasecmp) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a1d0 (libc.so.6:strcpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b950 (libc.so.6:memcpy@@GLIBC_2.14) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x4948f50 (libc.so.6:wcsnlen) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x4947860 (libc.so.6:wcscpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a820 (libc.so.6:strpbrk) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a100 (libc.so.6:index) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492a630 (libc.so.6:strlen) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x4933bb0 (libc.so.6:memrchr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b850 (libc.so.6:strcasecmp_l) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b3d0 (libc.so.6:memchr) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x4947930 (libc.so.6:wcslen) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492aae0 (libc.so.6:strspn) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b750 (libc.so.6:stpncpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b6f0 (libc.so.6:stpcpy) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492cc90 (libc.so.6:strchrnul) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x492b8a0 (libc.so.6:strncasecmp_l) redirected to 0x48331d0 (_vgnU_ifunc_wrapper)
+--5511-- REDIR: 0x4a13500 (libc.so.6:__strrchr_avx2) redirected to 0x483ea10 (rindex)
+--5511-- REDIR: 0x49250e0 (libc.so.6:malloc) redirected to 0x483b780 (malloc)
+--5511-- REDIR: 0x4a166c0 (libc.so.6:__mempcpy_avx_unaligned_erms) redirected to 0x4843660 (mempcpy)
+--5511-- REDIR: 0x4a13310 (libc.so.6:__strchrnul_avx2) redirected to 0x4843540 (strchrnul)
+--5511-- REDIR: 0x4a136d0 (libc.so.6:__strlen_avx2) redirected to 0x483ef40 (strlen)
+==5511== Invalid read of size 1
+==5511==    at 0x10C527: buildin_read (buildins.h:153)
+==5511==    by 0x10C2CB: buildin_eval (buildins.h:93)
+==5511==    by 0x10CED7: fakerepl (test.c:14)
+==5511==    by 0x10D4E1: test_eval (test.c:147)
+==5511==    by 0x10D559: main (test.c:157)
+==5511==  Address 0x0 is not stack'd, malloc'd or (recently) free'd
+==5511== 
+==5511== 
+==5511== Process terminating with default action of signal 11 (SIGSEGV)
+==5511==  Access not within mapped region at address 0x0
+==5511==    at 0x10C527: buildin_read (buildins.h:153)
+==5511==    by 0x10C2CB: buildin_eval (buildins.h:93)
+==5511==    by 0x10CED7: fakerepl (test.c:14)
+==5511==    by 0x10D4E1: test_eval (test.c:147)
+==5511==    by 0x10D559: main (test.c:157)
+==5511==  If you believe this happened as a result of a stack
+==5511==  overflow in your program's main thread (unlikely but
+==5511==  possible), you can try to increase the size of the
+==5511==  main thread stack using the --main-stacksize= flag.
+==5511==  The main thread stack size used in this run was 8388608.
+--5511-- REDIR: 0x49256d0 (libc.so.6:free) redirected to 0x483c9d0 (free)
+==5511== 
+==5511== HEAP SUMMARY:
+==5511==     in use at exit: 11,547 bytes in 14 blocks
+==5511==   total heap usage: 15 allocs, 1 frees, 12,571 bytes allocated
+==5511== 
+==5511== Searching for pointers to 14 not-freed blocks
+==5511== Checked 72,784 bytes
+==5511== 
+==5511== 2 bytes in 1 blocks are indirectly lost in loss record 1 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x109C9D: tstr_n (tstr.h:221)
+==5511==    by 0x109D62: tstr_ (tstr.h:244)
+==5511==    by 0x10BAB4: symbol (core.h:163)
+==5511==    by 0x10D01B: test_print (test.c:44)
+==5511==    by 0x10D530: main (test.c:154)
+==5511== 
+==5511== 2 bytes in 1 blocks are indirectly lost in loss record 2 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x109C9D: tstr_n (tstr.h:221)
+==5511==    by 0x109D62: tstr_ (tstr.h:244)
+==5511==    by 0x10BAB4: symbol (core.h:163)
+==5511==    by 0x10D086: test_print (test.c:44)
+==5511==    by 0x10D530: main (test.c:154)
+==5511== 
+==5511== 2 bytes in 1 blocks are indirectly lost in loss record 3 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x109C9D: tstr_n (tstr.h:221)
+==5511==    by 0x109D62: tstr_ (tstr.h:244)
+==5511==    by 0x10BAB4: symbol (core.h:163)
+==5511==    by 0x10D129: test_print (test.c:64)
+==5511==    by 0x10D530: main (test.c:154)
+==5511== 
+==5511== 5 bytes in 1 blocks are still reachable in loss record 4 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x109C9D: tstr_n (tstr.h:221)
+==5511==    by 0x109D62: tstr_ (tstr.h:244)
+==5511==    by 0x10BAB4: symbol (core.h:163)
+==5511==    by 0x10D4AF: test_eval (test.c:140)
+==5511==    by 0x10D559: main (test.c:157)
+==5511== 
+==5511== 6 bytes in 1 blocks are indirectly lost in loss record 5 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x109C9D: tstr_n (tstr.h:221)
+==5511==    by 0x109D62: tstr_ (tstr.h:244)
+==5511==    by 0x10BAB4: symbol (core.h:163)
+==5511==    by 0x10CF78: test_print (test.c:34)
+==5511==    by 0x10D530: main (test.c:154)
+==5511== 
+==5511== 10 bytes in 1 blocks are still reachable in loss record 6 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x109C9D: tstr_n (tstr.h:221)
+==5511==    by 0x109D62: tstr_ (tstr.h:244)
+==5511==    by 0x10D46D: test_eval (test.c:140)
+==5511==    by 0x10D559: main (test.c:157)
+==5511== 
+==5511== 128 bytes in 1 blocks are still reachable in loss record 7 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x109EDC: tstrBuffer_init (tstr.h:529)
+==5511==    by 0x10B792: Environment_new (core.h:81)
+==5511==    by 0x10D444: test_eval (test.c:135)
+==5511==    by 0x10D559: main (test.c:157)
+==5511== 
+==5511== 128 bytes in 1 blocks are definitely lost in loss record 8 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x109EDC: tstrBuffer_init (tstr.h:529)
+==5511==    by 0x10B792: Environment_new (core.h:81)
+==5511==    by 0x10CF3A: test_print (test.c:32)
+==5511==    by 0x10D530: main (test.c:154)
+==5511== 
+==5511== 720 bytes in 1 blocks are still reachable in loss record 9 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x10AC55: Buildins_initn (tsarray.h:155)
+==5511==    by 0x10B7A3: Environment_new (core.h:83)
+==5511==    by 0x10D444: test_eval (test.c:135)
+==5511==    by 0x10D559: main (test.c:157)
+==5511== 
+==5511== 720 bytes in 1 blocks are definitely lost in loss record 10 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x10AC55: Buildins_initn (tsarray.h:155)
+==5511==    by 0x10B7A3: Environment_new (core.h:83)
+==5511==    by 0x10CF3A: test_print (test.c:32)
+==5511==    by 0x10D530: main (test.c:154)
+==5511== 
+==5511== 816 bytes in 1 blocks are still reachable in loss record 11 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x10A0DC: ptrStack_initn (tsarray.h:155)
+==5511==    by 0x10AA54: sbAllocator_init (alloc.h:59)
+==5511==    by 0x10B77D: Environment_new (core.h:80)
+==5511==    by 0x10D444: test_eval (test.c:135)
+==5511==    by 0x10D559: main (test.c:157)
+==5511== 
+==5511== 4,096 bytes in 1 blocks are still reachable in loss record 12 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x10A01E: memRegion_new (alloc.h:20)
+==5511==    by 0x10AA0C: sbAllocator_init (alloc.h:51)
+==5511==    by 0x10B77D: Environment_new (core.h:80)
+==5511==    by 0x10D444: test_eval (test.c:135)
+==5511==    by 0x10D559: main (test.c:157)
+==5511== 
+==5511== 4,096 bytes in 1 blocks are indirectly lost in loss record 13 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x10A01E: memRegion_new (alloc.h:20)
+==5511==    by 0x10AA0C: sbAllocator_init (alloc.h:51)
+==5511==    by 0x10B77D: Environment_new (core.h:80)
+==5511==    by 0x10CF3A: test_print (test.c:32)
+==5511==    by 0x10D530: main (test.c:154)
+==5511== 
+==5511== 4,924 (816 direct, 4,108 indirect) bytes in 1 blocks are definitely lost in loss record 14 of 14
+==5511==    at 0x483B7F3: malloc (in /usr/lib/x86_64-linux-gnu/valgrind/vgpreload_memcheck-amd64-linux.so)
+==5511==    by 0x10A0DC: ptrStack_initn (tsarray.h:155)
+==5511==    by 0x10AA54: sbAllocator_init (alloc.h:59)
+==5511==    by 0x10B77D: Environment_new (core.h:80)
+==5511==    by 0x10CF3A: test_print (test.c:32)
+==5511==    by 0x10D530: main (test.c:154)
+==5511== 
+==5511== LEAK SUMMARY:
+==5511==    definitely lost: 1,664 bytes in 3 blocks
+==5511==    indirectly lost: 4,108 bytes in 5 blocks
+==5511==      possibly lost: 0 bytes in 0 blocks
+==5511==    still reachable: 5,775 bytes in 6 blocks
+==5511==         suppressed: 0 bytes in 0 blocks
+==5511== 
+==5511== ERROR SUMMARY: 4 errors from 4 contexts (suppressed: 0 from 0)
+==5511== 
+==5511== 1 errors in context 1 of 4:
+==5511== Invalid read of size 1
+==5511==    at 0x10C527: buildin_read (buildins.h:153)
+==5511==    by 0x10C2CB: buildin_eval (buildins.h:93)
+==5511==    by 0x10CED7: fakerepl (test.c:14)
+==5511==    by 0x10D4E1: test_eval (test.c:147)
+==5511==    by 0x10D559: main (test.c:157)
+==5511==  Address 0x0 is not stack'd, malloc'd or (recently) free'd
+==5511== 
+==5511== ERROR SUMMARY: 4 errors from 4 contexts (suppressed: 0 from 0)

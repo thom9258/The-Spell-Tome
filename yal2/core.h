@@ -33,8 +33,8 @@ For more information, please refer to
 
 */
 
-#ifndef H
-#define H
+#ifndef CORE_H
+#define CORE_H
 
 #include "defs.h"
 #include "tstr.h"
@@ -62,14 +62,15 @@ char is_nil(expr* _e);
 expr* expr_new(Environment *_env);
 expr* cons(Environment *_env, expr* _car, expr* _cdr);
 expr* consN(Environment *_env);
+expr* nil(Environment *_env);
 expr* real(Environment *_env, int _v);
 expr* symbol(Environment *_env, char* _v);
 expr* string(Environment *_env, tstr _v);
 expr* buildin(Environment *_env, buildin_fn _buildin, char* _symbol);
 
 /******************************************************************************/
-#define IMPLEMENTATION
-#ifdef IMPLEMENTATION
+#define CORE_IMPLEMENTATION
+#ifdef CORE_IMPLEMENTATION
 
 
 Environment*
@@ -78,6 +79,8 @@ Environment_new(Environment* _env)
     *_env = (Environment){0};
     sbAllocator_init(&_env->expr_allocator, sizeof(expr));
     tstrBuffer_init(&_env->stdout_buffer, 128);
+    /*TODO: 30 is a arbitrary number, change when you know size of buildins*/
+    Buildins_initn(&_env->buildins, 30);
     return _env;
 }
 
@@ -117,6 +120,18 @@ cons(Environment *_env, expr* _car, expr* _cdr)
     expr* e = expr_new(_env);
     e->car = _car;
     e->cdr = _cdr;
+    return e;
+}
+
+
+expr* nil(Environment *_env)
+{
+    ERROR_INV_ENV(_env);
+    expr* e = expr_new(_env);
+    if (e == NULL) return e;
+    e->type = TYPE_NIL;
+    e->car = NULL;
+    e->cdr = NULL;
     return e;
 }
 
@@ -160,6 +175,7 @@ string(Environment *_env, tstr _v)
     return e;
 }
 
+#if 0
 expr*
 buildin(Environment *_env, buildin_fn _fn, char* _name)
 {
@@ -171,6 +187,7 @@ buildin(Environment *_env, buildin_fn _fn, char* _name)
     e->buildin.name = tstr_(_name);
     return e;
 }
+#endif
 
 void
 print_value(Environment* _env, expr* _e)
@@ -194,9 +211,6 @@ print_value(Environment* _env, expr* _e)
         break;
     case TYPE_STRING:
         printf("%s", _e->string.c_str);
-        break;
-    case TYPE_BUILDIN:
-        printf("_%s", _e->buildin.name.c_str);
         break;
     default:
         ERROR_UNREACHABLE();
@@ -227,6 +241,9 @@ expr_lex(Environment* _env, char* _program, int* _cursor)
 /*TODO: Make more readable!*/
 {
     ERROR_INV_ENV(_env);
+    ERROR(_program != NULL, "Invalid program given to lexer");
+    ERROR(_cursor != NULL, "Invalid cursor given to lexer");
+
     expr* root = consN(_env); 
     expr* curr = root; 
 
@@ -254,10 +271,10 @@ expr_lex(Environment* _env, char* _program, int* _cursor)
                 nump++;
             }
             /*insert found symbol and create space for new ccons*/
-            tstr num = tstr_n(p, numlen);
+            tstr num = tstr_n(p, numlen+1);
             curr->car = symbol(_env, num.c_str);
             tstr_destroy(&num);
-            printf("Created symbol "); print_value(_env, curr->car); printf("\n");
+            //printf("Created number ["); print_value(_env, curr->car); printf("]\n");
             curr->cdr = consN(_env);
             curr = curr->cdr;
             (*_cursor) += numlen;
@@ -272,10 +289,10 @@ expr_lex(Environment* _env, char* _program, int* _cursor)
                 symp++;
             }
             /*insert found symbol and create space for new ccons*/
-            tstr sym = tstr_n(p, symlen);
+            tstr sym = tstr_n(p, symlen+1);
             curr->car = symbol(_env, sym.c_str);
             tstr_destroy(&sym);
-            printf("Created symbol "); print_value(_env, curr->car); printf("\n");
+            //printf("Created symbol ["); print_value(_env, curr->car); printf("]\n");
             curr->cdr = consN(_env);
             curr = curr->cdr;
             (*_cursor) += symlen;
@@ -285,5 +302,5 @@ expr_lex(Environment* _env, char* _program, int* _cursor)
     return root;
 }
 
-#endif /*IMPLEMENTATION*/
-#endif /*H*/
+#endif /*CORE_IMPLEMENTATION*/
+#endif /*CORE_H*/

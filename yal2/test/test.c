@@ -1,10 +1,9 @@
 #include "testlib.h"
 #include "../buildins.h"
-#include "../yal2.h"
+#include "../core.h"
 
 
 /*https://en.wikipedia.org/wiki/S-cconsession*/
-
 
 expr*
 fakerepl(Environment* e, expr *r)
@@ -18,6 +17,14 @@ fakerepl(Environment* e, expr *r)
     printf("\n");
     return r;
 }
+
+/*
+expr*
+repltest(Environment* e, char* prog, char* res)
+{
+
+}
+*/
 
 void test_print(void)
 {
@@ -74,7 +81,7 @@ test_buildin_math(void)
     Environment e;
     Environment_new(&e);
     expr* r = cons(&e,
-                    buildin(&e, buildin_plus, "+"),
+                    symbol(&e, "+"),
                     cons(&e,
                          real(&e, 20),
                          cons(&e,
@@ -86,12 +93,12 @@ test_buildin_math(void)
     fakerepl(&e, r);
 
     r = cons(&e,
-             buildin(&e, buildin_multiply, "*"),
+             symbol(&e, "*"),
              cons(&e,
                   real(&e, 2),
                   cons(&e,
                        cons(&e,
-                            buildin(&e, buildin_minus, "-"),
+                            symbol(&e, "-"),
                             cons(&e,
                                 real(&e, 3),
                                 cons(&e,
@@ -110,7 +117,7 @@ test_buildin_write_car_cdr(void)
 {
     Environment e;
     expr* r = cons(&e,
-                    buildin(&e, buildin_write, "write"),
+                    symbol(&e, "write"),
                     cons(&e,
                          real(&e, -15),
                          NULL
@@ -126,11 +133,12 @@ test_eval(void)
 {
     Environment e;
     Environment_new(&e);
-    char* prog = "write (quote ( + 4 (* 3 2 )) )";
-    //char* prog = "(write 3)";
+    Environment_add_buildins(&e);
+    //char* prog = "write (quote ( + 4 (* 3 2 )) )";
+    char* prog = "(write 3)";
 
     expr* r = cons(&e,
-                    buildin(&e, buildin_read, "read"),
+                    symbol(&e, "read"),
                     cons(&e,
                          string(&e, tstr_(prog)),
                          NULL

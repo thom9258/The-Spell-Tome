@@ -8,7 +8,7 @@
 
 #include "alloc.h"
 
-#define TSTRING_IMPLEMENTATION
+#define TSTR_IMPLEMENTATION
 #include "tstr.h"
 
 enum TYPE {
@@ -20,33 +20,44 @@ enum TYPE {
     TYPE_DECIMAL,
     TYPE_SYMBOL,
     TYPE_STRING,
-    TYPE_BUILDIN,
 
     TYPE_COUNT
 };
 
-typedef struct {
-    /*TODO: Start using the environment as ccons storage, and implement buildin lut*/
-    sbAllocator expr_allocator;
-    tstrBuffer stdout_buffer;
-}Environment;
 
+/*Forward declarations*/
 typedef struct expr expr;
+typedef struct Environment Environment;
+
 typedef expr*(*buildin_fn)(Environment*, expr*);
 
-struct expr{
+typedef struct {
+    tstr name;
+    buildin_fn fn;
+}Buildin;
+#define BUILDIN(name, fn) (Buildin) {tstr_const(name), fn}
+
+#define t_type Buildin
+#define arr_t_name Buildins
+#include "tsarray.h"
+
+struct Environment {
+    Buildins buildins;
+    sbAllocator expr_allocator;
+    tstrBuffer stdout_buffer;
+};
+
+struct expr {
     char type;
     union {
         int real;
         float decimal;
         tstr string;
         tstr symbol;
-        struct {
-            tstr name;
-            buildin_fn fn;
-        }buildin;
+        /*NOTE: Maybe direct buildin functions will exist in the future?
+          with fns put into cell at lexing time*/
+        // Buildin buildin;
     };
-    //int handle;
     struct expr* car;
     struct expr* cdr;
 };
@@ -69,8 +80,14 @@ struct expr{
 #define ERROR_INV_ALLOC(ptr) \
     ERROR(ptr != NULL, "Invalid pointer allocation!")
 
-#define ERROR_TYPECHECK(env, atom, expected) \
-    ERROR(yal_atom(env, atom)->type == expected, "Atom has wrong type!")
+#define ERROR_NIL(expr) \
+    ERROR(!is_nil(expr), "Given expr is NIL!")
+
+#define ERROR_TYPECHECK(expr, expected)                             \
+    do {                                                            \
+        ERROR_NIL(expr);                                            \
+        ERROR(expr->type == expected, "Expr cell has wrong type!"); \
+} while (0)
 
 #define ERROR_NOTNUMBER(env, atom) \
     ERROR(yal_atom(env, atom)->type == REAL || yal_atom(env, atom)->type == DECIMAL, \
@@ -78,8 +95,5 @@ struct expr{
 
 #define ERROR_ASTLEN(env, list, check) \
         ERROR(yal_AtomList_len(&yal_atom(env, list)->AST) check, "AST len does not comply based on given operator and length!");   \
-
-#define ERROR_NIL(expr) \
-    ERROR(!is_nil(expr), "Given expression is NIL!")
 
 #endif /*YAL_DEFS*/

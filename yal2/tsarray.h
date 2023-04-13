@@ -83,7 +83,7 @@ TODO: Add sorting function, requires "t_operator_largest"
 #define TSARRAY_FREE(p) free(p)
 #endif /*TSARRAY_NO_STDLIB*/
 
-/*required type definition. 
+/*default type definition. 
  * If none given, default to int in order to not emit errors*/
 #ifndef t_type
 #define t_type int

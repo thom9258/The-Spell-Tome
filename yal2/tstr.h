@@ -111,101 +111,31 @@ typedef struct {
     float growth_rate;
 }tstrBuffer;
 
-TSTR_API
-char
-tstr_ok(tstr* _str);
+TSTR_API char tstr_ok(tstr* _str);
+TSTR_API void tstr_destroy(tstr* _str);
+TSTR_API tstr tstr_n(TSTR_CHAR* _str, int _n);
+TSTR_API tstr tstr_(TSTR_CHAR* _str);
+TSTR_API tstr tstr_char(TSTR_CHAR _char);
+TSTR_API tstr tstr_file(tstr* _path);
+TSTR_API char tstr_equal(tstr* _a, tstr* _b);
+TSTR_API tstr* tstr_copy(tstr* _src, tstr* _dst);
+TSTR_API tstr* tstr_copyf(tstr* _src, tstr* _dst, int _f, int _n);
+TSTR_API tstr* tstr_cut(tstr* _str, int _f, int _t);
+TSTR_API tstr* tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
+TSTR_API int tstr_find(tstr* _str, tstr* _f); 
+TSTR_API int tstr_findlast(tstr* _str, tstr* _f);
+TSTR_API tstr* tstr_concat(tstr* _str, tstr* _back);
+TSTR_API tstr* tstr_concatva(tstr* _str, int _n, ...);
+TSTR_API tstr* tstr_to_upper(tstr* _str);
+TSTR_API tstr* tstr_to_lower(tstr* _str);
+TSTR_API uint64_t tstr_hash(tstr* _str);
 
-TSTR_API
-void
-tstr_destroy(tstr* _str);
-
-TSTR_API
-tstr
-tstr_n(TSTR_CHAR* _str, int _n);
-
-TSTR_API
-tstr
-tstr_(TSTR_CHAR* _str);
-
-TSTR_API
-tstr
-tstr_char(TSTR_CHAR _char);
-
-TSTR_API
-tstr
-tstr_file(tstr* _path);
-
-TSTR_API
-char
-tstr_equal(tstr* _a, tstr* _b);
-
-TSTR_API
-tstr*
-tstr_copy(tstr* _src, tstr* _dst);
-
-TSTR_API
-tstr*
-tstr_copyf(tstr* _src, tstr* _dst, int _f, int _n);
-
-TSTR_API
-tstr*
-tstr_cut(tstr* _str, int _f, int _t);
-
-TSTR_API
-tstr*
-tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
-
-TSTR_API
-int
-tstr_find(tstr* _str, tstr* _f);
-
-TSTR_API
-int
-tstr_findlast(tstr* _str, tstr* _f);
-
-TSTR_API
-tstr*
-tstr_concat(tstr* _str, tstr* _back);
-
-TSTR_API
-tstr*
-tstr_concatva(tstr* _str, int _n, ...);
-
-TSTR_API
-tstr*
-tstr_to_upper(tstr* _str);
-
-TSTR_API
-tstr*
-tstr_to_lower(tstr* _str);
-
-TSTR_API
-uint64_t
-tstr_hash(tstr* _str);
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_init(tstrBuffer* _buf, int _n);
-
-TSTR_API
-void
-tstrBuffer_destroy(tstrBuffer* _buf);
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_put(tstrBuffer* _buf, TSTR_CHAR _c);
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_putn(tstrBuffer* _buf, TSTR_CHAR* _s, int _n);
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_putts(tstrBuffer* _buf, tstr* _ts);
-
-TSTR_API
-tstr*
-tstrBuffer_2_tstr(tstrBuffer* _buf, tstr* _dst);
+TSTR_API tstrBuffer* tstrBuffer_init(tstrBuffer* _buf, int _n);
+TSTR_API void tstrBuffer_destroy(tstrBuffer* _buf);
+TSTR_API tstrBuffer* tstrBuffer_put(tstrBuffer* _buf, TSTR_CHAR _c);
+TSTR_API tstrBuffer* tstrBuffer_putn(tstrBuffer* _buf, TSTR_CHAR* _s, int _n);
+TSTR_API tstrBuffer* tstrBuffer_putts(tstrBuffer* _buf, tstr* _ts);
+TSTR_API tstr* tstrBuffer_2_tstr(tstrBuffer* _buf, tstr* _dst);
 
 /******************************************************************************/
 #define TSTR_IMPLEMENTATION
