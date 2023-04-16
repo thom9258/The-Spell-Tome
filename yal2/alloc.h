@@ -75,12 +75,21 @@ sbAllocator_destroy(sbAllocator* _a)
     *_a = (sbAllocator) {0};
 }
 
+int
+sbAllocator_n_available(sbAllocator* _a)
+{
+    assert(_a != NULL);
+    return _a->stack.max - ptrStack_len(&_a->stack);
+}
+
 void*
 sbAllocator_get(sbAllocator* _a)
 {
     assert(_a != NULL);
+    //assert(ptrStack_len(&_a->stack) > 0 && "Could not allocate more expr's\n");
     assert(ptrStack_len(&_a->stack) > 0 && "Could not allocate more expr's\n");
     /*TODO: Make a new allocator and throw its ptrs into stack*/
+    //printf("exprs allocated/max: %d/%d\n", ptrStack_len(&_a->stack), _a->stack.max);
     return ptrStack_pop(&_a->stack);
 }
 

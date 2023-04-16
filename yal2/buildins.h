@@ -8,48 +8,36 @@
 expr*
 buildin_car(Environment* _env, expr* _e)
 {
-    /*"Head"*/
     UNUSED(_env);
-    return (_e == NULL) ? _e->car : NULL;
+    return car(_e);
 }
 
 expr*
 buildin_cdr(Environment* _env, expr* _e)
 {
-    /*"Tail"*/
     UNUSED(_env);
-    return (_e == NULL) ? _e->cdr : NULL;
+    return cdr(_e);
 }
 
 expr*
 buildin_first(Environment* _env, expr* _e)
 {
-    if (_e == NULL) return _e;
-    expr* p = buildin_car(_env, _e);
-    if (p == NULL) return p;
-    return buildin_cdr(_env, p);
+    UNUSED(_env);
+    return car(_e);
 }
 
 expr*
 buildin_second(Environment* _env, expr* _e)
 {
-    return buildin_first(_env, buildin_first(_env, _e));
+    UNUSED(_env);
+    return car(cdr(_e));
 }
 
-int
-len(Environment* _env, expr* _e)
+expr*
+buildin_third(Environment* _env, expr* _e)
 {
-    /*http://clhs.lisp.se/Body/f_list_l.htm*/
     UNUSED(_env);
-    int cnt = 0;
-    expr* tmp = _e;
-    while (tmp != NULL) {
-        tmp = buildin_first(_env, tmp);
-        if (tmp == NULL)
-            break;
-        cnt++;
-    }
-    return cnt;
+    return car(cdr(cdr(_e)));
 }
 
 expr*
@@ -57,41 +45,40 @@ buildin_len(Environment* _env, expr* _e)
 {
     /*http://clhs.lisp.se/Body/f_list_l.htm*/
     UNUSED(_env);
-    int cnt = 0;
-    expr* tmp = _e;
-    while (tmp != NULL) {
-        tmp = buildin_first(_env, tmp);
-        if (tmp == NULL)
-            break;
-        cnt++;
-    }
-    return real(_env, cnt);
+    return real(_env, len(_e));
 }
 
 expr*
 buildin_quote(Environment* _env, expr* _e)
+/*TODO: I think quote return CAR, not CDAR!*/
 {
-    ERROR_INV_ENV(_env);
-    ERROR_TYPECHECK(_e, TYPE_CCONS);
+    ERRCHECK_INV_ENV(_env);
+    ERRCHECK_TYPECHECK(_e, TYPE_CCONS);
     if (_e->cdr == NULL || _e->cdr->car == NULL)
-        return nil(_env);
+        return NIL;
     return _e->cdr->car;
 }
 
 expr*
 buildin_eval(Environment* _env, expr* _e)
 {
+    ERRCHECK_INV_ENV(_env);
+    ERRCHECK_NIL(_e);
     int i;
-    Buildin* tmp = NULL;
-    ERROR_INV_ENV(_env);
-    ERROR_TYPECHECK(_e, TYPE_CCONS);
-    if (_e->car != NULL) {
+    Buildin* buildin = NULL;
+    expr* fn = car(_e);
+    expr* args = cdr(_e);
+    //expr* fn = car(car(_e));
+    //expr* args = car(cdr(_e));
+    printf("EVAL function symbol: %s\n", fn->symbol.c_str);
+    printf("EVAL function args:   "); buildin_print(_env, args); printf("\n");
+    ERRCHECK_TYPECHECK(fn, TYPE_SYMBOL);
+    ERRCHECK_TYPECHECK(args, TYPE_CCONS);
+    if (fn != NULL) {
         for (i = 0; i < Buildins_len(&_env->buildins); i++) {
-            tmp = Buildins_peek(&_env->buildins, i);
-            if (tstr_equal(&tmp->name, &_e->car->symbol)) {
-                printf("calling buildin %s\n", tmp->name.c_str);
-                _e = tmp->fn(_env, _e->cdr);
-                break;
+            buildin = Buildins_peek(&_env->buildins, i);
+            if (tstr_equal(&buildin->name, &fn->symbol)) {
+                return buildin->fn(_env, args);
             }
         }
     }
@@ -99,46 +86,46 @@ buildin_eval(Environment* _env, expr* _e)
     //if (CDR(_e) != NULL) {
     //    _e = buildin_eval(_env, CDR(_e));
     //}
+    ERRCHECK_UNREACHABLE();
     return _e;
 }
 
 expr*
 buildin_write(Environment* _env, expr* _e)
 {
-    ERROR_INV_ENV(_env);
-    assert(len(_env, _e) == 1);
-    //print_value(_env, buildin_first(_env, _e));
-    print_value(_env, _e->car);
-    /*TODO: write should not newline!*/
+    ERRCHECK_INV_ENV(_env);
+    ERRCHECK_LEN(_e, 1);
+    print_value(car(_e));
+    /*TODO: write should technically not newline!*/
     printf("\n");
-    return _e->cdr;
+    return _e;
 }
 
 expr*
 buildin_print(Environment* _env, expr* _e)
-/*Check for dotted pair, and print: (a . b) */
+/*Check for dotted pair, and print: (a . b)*/
 {
     if (is_nil(_e))
         return _e;
     /*Handle CAR*/
-    if (_e->car != NULL) {
-         if (_e->car->type != TYPE_CCONS) {
-            print_value(_env, _e->car);
+    if (!is_nil(_e->car)) {
+        if (car(_e)->type != TYPE_CCONS) {
+             /*NOTE: using tprint insead of print here for debugging!*/
+            //print_value(_e->car);
+            tprint_value(_e->car);
             printf(" ");
         }
-        else if (_e->car->type == TYPE_CCONS) {
+        else if (car(_e)->type == TYPE_CCONS) {
             buildin_print(_env, _e->car);
         }
     }
-
     /*Handle CDR*/
-    if (_e->cdr != NULL) {
-            if (_e->cdr->car != NULL && _e->cdr->car->type == TYPE_CCONS)
-                printf("(");
-        buildin_print(_env, _e->cdr);
-            if (_e->cdr->car != NULL && _e->cdr->car->type == TYPE_CCONS)
-                printf(")");
-            //if (_e->cdr->car->type == TYPE_CCONS) printf(")");
+    if (!is_nil(cdr(_e))) {
+        if (!is_nil(car(cdr(_e))))
+            printf("(");
+        buildin_print(_env, cdr(_e));
+        if (!is_nil(car(cdr(_e))))
+            printf(")");
     }
     return _e;
 }
@@ -148,14 +135,11 @@ buildin_read(Environment* _env, expr* _e)
 {
     expr* res;
     int cursor = 0;
-    ERROR_INV_ENV(_env);
-    ERROR_NIL(_e);
-    ERROR_TYPECHECK(_e, TYPE_CCONS);
-    ERROR_TYPECHECK(_e->cdr, TYPE_CCONS);
-    ERROR_TYPECHECK(_e->cdr->car, TYPE_STRING);
-    res = expr_lex(_env, _e->cdr->car->string.c_str, &cursor);
-
-    printf("Tree: "); buildin_print(_env, res); printf("\n");
+    ERRCHECK_INV_ENV(_env);
+    ERRCHECK_NIL(_e);
+    ERRCHECK_TYPECHECK(_e, TYPE_CCONS);
+    ERRCHECK_TYPECHECK(_e->car, TYPE_STRING);
+    res = expr_lex(_env, _e->car->string.c_str, &cursor);
     return res;
 }
 
@@ -165,14 +149,14 @@ buildin_plus(Environment* _env, expr* _e)
     UNUSED(_env);
     int sum = 0;
     expr* tmp = NULL;
-    tmp = CDR(_e);
+    tmp = cdr(_e);
     while (tmp != NULL) {
         /*Eval cons cell to number*/
-        if (CAR(tmp)->type == TYPE_CCONS)
-            tmp->car = buildin_eval(_env, CAR(tmp));
-        assert(CAR(tmp)->type == TYPE_REAL);
-        sum += CAR(tmp)->real;
-        tmp = CDR(tmp);
+        if (car(tmp)->type == TYPE_CCONS)
+            tmp->car = buildin_eval(_env, car(tmp));
+        assert(car(tmp)->type == TYPE_REAL);
+        sum += car(tmp)->real;
+        tmp = car(tmp);
     }
     return real(_env, sum);
 }
@@ -183,19 +167,19 @@ buildin_minus(Environment* _env, expr* _e)
     UNUSED(_env);
     int sum = 0;
     expr* tmp = NULL;
-    /*TODO: if only a single CDR exists, we need to be a negation operator instead*/
-    tmp = CDR(_e);
-    sum = CAR(tmp)->real;
-    tmp = CDR(tmp);
-    if (CAR(tmp) == NULL)
+    /*TODO: if only a single cdr exists, we need to be a negation operator instead*/
+    tmp = cdr(_e);
+    sum = car(tmp)->real;
+    tmp = cdr(tmp);
+    if (car(tmp) == NULL)
         return real(_env, sum);
     while (tmp != NULL) {
         /*Eval cons cell to number*/
-        if (CAR(tmp)->type == TYPE_CCONS)
-            tmp->car = buildin_eval(_env, CAR(tmp));
-        assert(CAR(tmp)->type == TYPE_REAL);
-        sum -= CAR(tmp)->real;
-        tmp = CDR(tmp);
+        if (car(tmp)->type == TYPE_CCONS)
+            tmp->car = buildin_eval(_env, car(tmp));
+        assert(car(tmp)->type == TYPE_REAL);
+        sum -= car(tmp)->real;
+        tmp = cdr(tmp);
     }
     return real(_env, sum);
 }
@@ -206,14 +190,14 @@ buildin_multiply(Environment* _env, expr* _e)
     UNUSED(_env);
     int sum = 1;
     expr* tmp = NULL;
-    tmp = CDR(_e);
+    tmp = cdr(_e);
     while (tmp != NULL) {
         /*Eval cons cell to number*/
-        if (CAR(tmp)->type == TYPE_CCONS)
-            tmp->car = buildin_eval(_env, CAR(tmp));
-        assert(CAR(tmp)->type == TYPE_REAL);
-        sum *= CAR(tmp)->real;
-        tmp = CDR(tmp);
+        if (car(tmp)->type == TYPE_CCONS)
+            tmp->car = buildin_eval(_env, car(tmp));
+        assert(car(tmp)->type == TYPE_REAL);
+        sum *= car(tmp)->real;
+        tmp = cdr(tmp);
     }
     return real(_env, sum);
 }
@@ -224,14 +208,14 @@ buildin_divide(Environment* _env, expr* _e)
     UNUSED(_env);
     int sum = 1;
     expr* tmp = NULL;
-    tmp = CDR(_e);
+    tmp = cdr(_e);
     while (tmp != NULL) {
         /*Eval cons cell to number*/
-        if (CAR(tmp)->type == TYPE_CCONS)
-            tmp->car = buildin_eval(_env, CAR(tmp));
-        assert(CAR(tmp)->type == TYPE_REAL);
-        sum /= CAR(tmp)->real;
-        tmp = CDR(tmp);
+        if (car(tmp)->type == TYPE_CCONS)
+            tmp->car = buildin_eval(_env, car(tmp));
+        assert(car(tmp)->type == TYPE_REAL);
+        sum /= car(tmp)->real;
+        tmp = cdr(tmp);
     }
     return real(_env, sum);
 }
@@ -239,7 +223,7 @@ buildin_divide(Environment* _env, expr* _e)
 Environment*
 Environment_add_buildins(Environment* _env)
 {
-    ERROR_INV_ENV(_env);
+    ERRCHECK_INV_ENV(_env);
     Buildins_push(&_env->buildins, BUILDIN("car", buildin_car));
     Buildins_push(&_env->buildins, BUILDIN("cdr", buildin_cdr));
     Buildins_push(&_env->buildins, BUILDIN("+", buildin_plus));
@@ -251,10 +235,7 @@ Environment_add_buildins(Environment* _env)
     Buildins_push(&_env->buildins, BUILDIN("print", buildin_print));
     Buildins_push(&_env->buildins, BUILDIN("write", buildin_write));
     Buildins_push(&_env->buildins, BUILDIN("quote", buildin_quote));
-
     return _env;
 }
-
-
 
 #endif /*YAL_BUILDINS*/

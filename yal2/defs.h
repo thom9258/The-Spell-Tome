@@ -62,6 +62,10 @@ struct expr {
     struct expr* cdr;
 };
 
+/*Global nil object, so we dont have to allocate a bunch of them at runtime*/
+expr _NIL_OBJECT = (expr){TYPE_NIL, {0}, NULL, NULL};
+expr* NIL = &_NIL_OBJECT;
+
 /* =========================================================
  * Safety and Assertion on error
  * (To be replaced with proper error management & reporting)
@@ -69,31 +73,34 @@ struct expr {
 #define UNUSED(x) (void)(x)
 #define UNIMPLEMENTED(fun) assert(1 && "UNIMPLEMENTED: " && fun)
 
-#define ERROR(ccons, msg) assert((ccons) && msg)
+#define ERRCHECK(ccons, msg) assert((ccons) && msg)
 
-#define ERROR_UNREACHABLE() \
-    assert(1 && "CRITICAL ERROR: REACHED UNREACHABLE CODE!")
+#define ERRCHECK_UNREACHABLE() \
+    ERRCHECK(0, "REACHED UNREACHABLE CODE!")
 
-#define ERROR_INV_ENV(env) \
-    ERROR(env != NULL, "Env Ptr is NULL!")
+#define ERRCHECK_INV_ENV(env) \
+    ERRCHECK(env != NULL, "Env Ptr is NULL!")
 
-#define ERROR_INV_ALLOC(ptr) \
-    ERROR(ptr != NULL, "Invalid pointer allocation!")
+#define ERRCHECK_INV_ALLOC(ptr) \
+    ERRCHECK(ptr != NULL, "Invalid pointer allocation!")
 
-#define ERROR_NIL(expr) \
-    ERROR(!is_nil(expr), "Given expr is NIL!")
+#define ERRCHECK_NIL(expr) \
+    ERRCHECK(!is_nil(expr), "Given expr is NIL!")
 
-#define ERROR_TYPECHECK(expr, expected)                             \
+#define ERRCHECK_LEN(expr, l)                         \
+    ERRCHECK(len(expr) == l, "Given expr len is not expected!")
+
+#define ERRCHECK_TYPECHECK(expr, expected)                             \
     do {                                                            \
-        ERROR_NIL(expr);                                            \
-        ERROR(expr->type == expected, "Expr cell has wrong type!"); \
+        ERRCHECK_NIL(expr);                                            \
+        ERRCHECK(expr->type == expected, "Expr cell has wrong type!"); \
 } while (0)
 
-#define ERROR_NOTNUMBER(env, atom) \
-    ERROR(yal_atom(env, atom)->type == REAL || yal_atom(env, atom)->type == DECIMAL, \
+#define ERRCHECK_NOTNUMBER(env, atom) \
+    ERRCHECK(yal_atom(env, atom)->type == REAL || yal_atom(env, atom)->type == DECIMAL, \
                "Atom is not a number!")
 
-#define ERROR_ASTLEN(env, list, check) \
-        ERROR(yal_AtomList_len(&yal_atom(env, list)->AST) check, "AST len does not comply based on given operator and length!");   \
+#define ERRCHECK_ASTLEN(env, list, check) \
+        ERRCHECK(yal_AtomList_len(&yal_atom(env, list)->AST) check, "AST len does not comply based on given operator and length!");   \
 
 #endif /*YAL_DEFS*/
