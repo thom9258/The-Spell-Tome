@@ -50,9 +50,9 @@ test_eval(void)
                               NULL
                              )
         );
-    //UNUSED(program);
     exprrepl(&e, program);
-    //repl(&e, "(write 20)");
+    repl(&e, "(write 21)");
+    repl(&e, "(write (+ 2 2))");
 
     //repl(&e, "write (quote ( + 4 (* 3 2 )) )");
     //repl(&e, "(write \"Hello, World!\")");

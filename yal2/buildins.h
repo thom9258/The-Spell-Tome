@@ -68,10 +68,7 @@ buildin_eval(Environment* _env, expr* _e)
     Buildin* buildin = NULL;
     expr* fn = car(_e);
     expr* args = cdr(_e);
-    //expr* fn = car(car(_e));
-    //expr* args = car(cdr(_e));
-    printf("EVAL function symbol: %s\n", fn->symbol.c_str);
-    printf("EVAL function args:   "); buildin_print(_env, args); printf("\n");
+    //printf("EVAL fnsym=%s, args=(", fn->symbol.c_str); buildin_print(_env, args); printf(")\n");
     ERRCHECK_TYPECHECK(fn, TYPE_SYMBOL);
     ERRCHECK_TYPECHECK(args, TYPE_CCONS);
     if (fn != NULL) {
@@ -82,10 +79,6 @@ buildin_eval(Environment* _env, expr* _e)
             }
         }
     }
-    /*NOTE: I do not know if this is a good thing*/
-    //if (CDR(_e) != NULL) {
-    //    _e = buildin_eval(_env, CDR(_e));
-    //}
     ERRCHECK_UNREACHABLE();
     return _e;
 }
@@ -94,7 +87,12 @@ expr*
 buildin_write(Environment* _env, expr* _e)
 {
     ERRCHECK_INV_ENV(_env);
-    ERRCHECK_LEN(_e, 1);
+    if (car(_e)->type == TYPE_CCONS)
+        _e->car = buildin_eval(_env, _e->car);
+    ERRCHECK_LEN(car(_e), 1);
+
+    //ERRCHECK_TYPECHECK(car(_e), TYPE_CCONS);
+    ERRCHECK_NIL(car(_e));
     print_value(car(_e));
     /*TODO: write should technically not newline!*/
     printf("\n");
@@ -106,28 +104,17 @@ buildin_print(Environment* _env, expr* _e)
 /*Check for dotted pair, and print: (a . b)*/
 {
     if (is_nil(_e))
-        return _e;
-    /*Handle CAR*/
-    if (!is_nil(_e->car)) {
-        if (car(_e)->type != TYPE_CCONS) {
-             /*NOTE: using tprint insead of print here for debugging!*/
-            //print_value(_e->car);
-            tprint_value(_e->car);
-            printf(" ");
-        }
-        else if (car(_e)->type == TYPE_CCONS) {
-            buildin_print(_env, _e->car);
-        }
+        return NIL;
+    if (_e->type != TYPE_CCONS)
+    {
+        print_value(_e);
+        printf(" ");
     }
-    /*Handle CDR*/
-    if (!is_nil(cdr(_e))) {
-        if (!is_nil(car(cdr(_e))))
-            printf("(");
-        buildin_print(_env, cdr(_e));
-        if (!is_nil(car(cdr(_e))))
-            printf(")");
-    }
-    return _e;
+    if (car(_e)->type == TYPE_CCONS && len(car(_e)) > 1) printf("(");
+    buildin_print(_env, car(_e));
+    if (car(_e)->type == TYPE_CCONS && len(car(_e)) > 1) printf(")");
+    buildin_print(_env, cdr(_e));
+    return NIL;
 }
 
 expr*
@@ -149,9 +136,9 @@ buildin_plus(Environment* _env, expr* _e)
     UNUSED(_env);
     int sum = 0;
     expr* tmp = NULL;
-    tmp = cdr(_e);
-    while (tmp != NULL) {
-        /*Eval cons cell to number*/
+    tmp = _e;
+    while (!is_nil(tmp)) {
+        printf("tmp=");buildin_print(_env, car(tmp)); printf("\n");
         if (car(tmp)->type == TYPE_CCONS)
             tmp->car = buildin_eval(_env, car(tmp));
         assert(car(tmp)->type == TYPE_REAL);

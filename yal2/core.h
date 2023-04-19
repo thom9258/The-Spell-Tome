@@ -81,6 +81,23 @@ expr* str_read(Environment* _e, char* _p);
 expr* buildin_read(Environment* _e, expr* _inp);
 expr* buildin_print(Environment* _e, expr* _inp);
 
+char*
+type_str(char t)
+{
+    switch (t) {
+    case TYPE_NIL: return "TYPE_NIL";
+    case TYPE_CCONS: return "TYPE_CCONS";
+    case TYPE_REAL: return "TYPE_REAL";
+    case TYPE_DECIMAL: return "TYPE_DECIMAL";
+    case TYPE_SYMBOL: return "TYPE_SYMBOL";
+    case TYPE_STRING: return "TYPE_STRING";
+    default:
+        ERRCHECK_UNREACHABLE();
+    };
+    ERRCHECK_UNREACHABLE();
+    return NULL;
+}
+
 Environment*
 Environment_new(Environment* _env)
 {
@@ -238,9 +255,14 @@ buildin(Environment *_env, buildin_fn _fn, char* _name)
 void
 print_value(expr* _e)
 {
-    if (is_nil(_e))
+    //ERRCHECK_NIL(_e);
+    //ERRCHECK_TYPECHECK(_e, TYPE_CCONS);
+    if (_e == NULL)
         return;
     switch (_e->type) {
+    case TYPE_NIL:
+        printf("<NIL>");
+        break;
     case TYPE_REAL:
         printf("%d", _e->real);
         break;
@@ -261,20 +283,22 @@ print_value(expr* _e)
 void
 tprint_value(expr* _e)
 {
+    ERRCHECK_TYPECHECK(_e, TYPE_CCONS);
+    ERRCHECK_TYPECHECK(_e, TYPE_NIL);
     if (is_nil(_e))
         return;
     switch (_e->type) {
     case TYPE_REAL:
-        printf("{TREAL}[%d]", _e->real);
+        printf("{TREAL}[%d]\n", _e->real);
         break;
     case TYPE_DECIMAL:
-        printf("{TDECI}[%f]", _e->decimal);
+        printf("{TDECI}[%f]\n", _e->decimal);
         break;
     case TYPE_SYMBOL:
-        printf("{TSYMB}[%s]", _e->symbol.c_str);
+        printf("{TSYMB}[%s]\n", _e->symbol.c_str);
         break;
     case TYPE_STRING:
-        printf("{TSTRI}[\"%s\"]", _e->string.c_str);
+        printf("{TSTRI}[\"%s\"]\n", _e->string.c_str);
         break;
     default:
         ERRCHECK_UNREACHABLE();
@@ -375,8 +399,11 @@ expr_lex(Environment* _env, char* _program, int* _cursor)
     expr* extracted;
     char* p;
 
-    while (*(p = _program + *_cursor) != '\0') {
-        (*_cursor)++;
+    while (1) {
+        p = _program + (*_cursor)++;
+        if (*p == '\0') {
+            return root;
+        }
         if (_is_whitespace(*p)) {
             continue;
         }
@@ -399,11 +426,13 @@ expr_lex(Environment* _env, char* _program, int* _cursor)
         }
         /*Insert extracted into expression*/
         curr->car = extracted;
+        //curr->cdr = consN(_env);
         curr->cdr = consN(_env);
-        curr = curr->cdr;
+        curr = cdr(curr);
 
     }
-    return root;
+    ERRCHECK_UNREACHABLE();
+    return NIL;
 }
 
 expr*
@@ -423,7 +452,7 @@ str_read(Environment* _e, char* _p)
 
 expr*
 str_readp(Environment* _e, char* _p)
-/*read and parse string and print it*/
+/*read and parse string visually*/
 {
     printf("[char* input] > %s\n", _p);
     expr* out = str_read(_e, _p);

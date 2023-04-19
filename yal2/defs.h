@@ -12,9 +12,7 @@
 #include "tstr.h"
 
 enum TYPE {
-    TYPE_INVALID = 0,
-    /*Atom types*/
-    TYPE_NIL,
+    TYPE_NIL = 0,
     TYPE_CCONS,
     TYPE_REAL,
     TYPE_DECIMAL,
@@ -23,7 +21,6 @@ enum TYPE {
 
     TYPE_COUNT
 };
-
 
 /*Forward declarations*/
 typedef struct expr expr;
