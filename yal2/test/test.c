@@ -29,7 +29,7 @@ test_str2expr(void)
 {
     Environment e;
     Environment_new(&e);
-    Environment_add_buildins(&e);
+    Environment_add_core(&e);
     str_readp(&e, "(\t write  3.14159)");
     str_readp(&e, "(write  ( + 2 4 ))");
     str_readp(&e, "\n(+ \t 2     5 \n  15.432 \n)");
@@ -42,7 +42,7 @@ test_eval(void)
 {
     Environment e;
     Environment_new(&e);
-    Environment_add_buildins(&e);
+    Environment_add_core(&e);
     expr* program = cons(&e,
                          csymbol(&e, "write"),
                          cons(&e,
@@ -52,11 +52,28 @@ test_eval(void)
         );
     exprrepl(&e, program);
     repl(&e, "(write 21)");
-    repl(&e, "(write (+ 2 2))");
-
+    repl(&e, "(quote (write 34))");
+    //repl(&e, "(write (+ 2 2))");
     //repl(&e, "write (quote ( + 4 (* 3 2 )) )");
     //repl(&e, "(write \"Hello, World!\")");
     //repl(&e, "(+ (2 2))");
+    Environment_destroy(&e);
+}
+
+void
+test_accessors(void)
+{
+    Environment e;
+    Environment_new(&e);
+    Environment_add_core(&e);
+    repl(&e, "(car (1 2 3 4) )");
+    repl(&e, "(cdr (1 2 3 4) )");
+    repl(&e, "(first (1 2 3 4) )");
+    repl(&e, "(second (1 2 3 4) )");
+    repl(&e, "(third (1 2 3 4) )");
+    repl(&e, "(seventh (1 2 3 4) )");
+    repl(&e, "(nth 4 (1 2 3 4) )");
+    //repl(&e, "(nth -1 (1 2 3 4) )");
     Environment_destroy(&e);
 }
 
@@ -171,6 +188,7 @@ int main(int argc, char **argv) {
 	TL(test_print());
 	TL(test_str2expr());
 	TL(test_eval());
+	TL(test_accessors());
 	//TL(test_buildin_math());
 	//TL(test_buildin_write_car_cdr());
 

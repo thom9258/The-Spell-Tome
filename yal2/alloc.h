@@ -6,7 +6,10 @@
 #ifndef YAL_ALLOC
 #define YAL_ALLOC
 
-#define REGIONLEN 4096
+/*TODO: Needed size is 4096 for page length match, we need to allocate another
+        region*/
+#define REGIONLEN 4*4096
+//#define REGIONLEN 4096
 
 typedef struct {
     void* mem;

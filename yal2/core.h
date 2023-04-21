@@ -61,16 +61,20 @@ char is_nil(expr* _expr);
 int len(expr* _e);
 expr* car(expr* _expr);
 expr* cdr(expr* _expr);
+expr* first(expr* _expr);
+expr* second(expr* _expr);
+expr* third(expr* _expr);
 expr* expr_new(Environment *_env);
 expr* cons(Environment *_env, expr* _car, expr* _cdr);
-expr* consN(Environment *_env);
 expr* real(Environment *_env, int _v);
 expr* decimal(Environment *_env, float _v);
 expr* csymbol(Environment *_env, char* _v);
 expr* symbol(Environment *_env, tstr _v);
 expr* string(Environment *_env, tstr _v);
+#if 0
 expr* buildin(Environment *_env, buildin_fn _buildin, char* _symbol);
-expr* expr_lex(Environment* _env, char* _program, int* _cursor);
+#endif
+void expr_lex(Environment* _env, expr* _root, char* _program, int* _cursor);
 expr* str_read(Environment* _e, char* _p);
 
 /******************************************************************************/
@@ -81,16 +85,31 @@ expr* str_read(Environment* _e, char* _p);
 expr* buildin_read(Environment* _e, expr* _inp);
 expr* buildin_print(Environment* _e, expr* _inp);
 
+expr*
+_try_nest_sanitize(expr* _e)
+/*Nest sanitization is needed where the list is offset to car of the
+root cell. this means that we need to sanitize ((write 4)) to (write 4)
+*/
+{
+    // printf("this type = %s\n", type2str(car(_e)->type));
+    // printf("first type = %s\n", type2str(first(_e)->type));
+    // printf("second type = %s\n", type2str(second(_e)->type));
+    if (is_nil(_e)) return NIL;
+    if (first(_e)->type == TYPE_CCONS && second(_e)->type == TYPE_NIL)
+        return first(_e);
+    return _e;
+}
+
 char*
-type_str(char t)
+type2str(char t)
 {
     switch (t) {
-    case TYPE_NIL: return "TYPE_NIL";
-    case TYPE_CCONS: return "TYPE_CCONS";
-    case TYPE_REAL: return "TYPE_REAL";
+    case TYPE_NIL:     return "TYPE_NIL";
+    case TYPE_CCONS:   return "TYPE_CCONS";
+    case TYPE_REAL:    return "TYPE_REAL";
     case TYPE_DECIMAL: return "TYPE_DECIMAL";
-    case TYPE_SYMBOL: return "TYPE_SYMBOL";
-    case TYPE_STRING: return "TYPE_STRING";
+    case TYPE_SYMBOL:  return "TYPE_SYMBOL";
+    case TYPE_STRING:  return "TYPE_STRING";
     default:
         ERRCHECK_UNREACHABLE();
     };
@@ -158,16 +177,10 @@ cons(Environment *_env, expr* _car, expr* _cdr)
 {
     ERRCHECK_INV_ENV(_env);
     expr* e = expr_new(_env);
+    ERRCHECK_NIL(e);
     e->car = _car;
     e->cdr = _cdr;
     return e;
-}
-
-expr*
-consN(Environment *_env)
-{
-    ERRCHECK_INV_ENV(_env);
-    return cons(_env, NIL, NIL);
 }
 
 expr*
@@ -184,6 +197,39 @@ cdr(expr* _expr)
     if (is_nil(_expr)) return NIL;
     if (is_nil(_expr->cdr)) return NIL;
     return _expr->cdr;
+}
+
+expr* first(expr* _expr)
+{ return car(_expr); }
+expr* second(expr* _expr)
+{ return car(cdr(_expr)); }
+expr* third(expr* _expr)
+{ return car(cdr(cdr(_expr))); }
+expr* fourth(expr* _expr)
+{ return car(cdr(cdr(cdr(_expr)))); }
+expr* fifth(expr* _expr) 
+{ return car(cdr(cdr(cdr(cdr(_expr))))); }
+expr* sixth(expr* _expr)
+{ return car(cdr(cdr(cdr(cdr(cdr(_expr)))))); }
+expr* seventh(expr* _expr)
+{ return car(cdr(cdr(cdr(cdr(cdr(cdr(_expr))))))); }
+expr* eighth(expr* _expr)
+{ return car(cdr(cdr(cdr(cdr(cdr(cdr(cdr(_expr)))))))); }
+expr* ninth(expr* _expr)
+{ return car(cdr(cdr(cdr(cdr(cdr(cdr(cdr(cdr(_expr))))))))); }
+expr* tenth(expr* _expr)
+{ return car(cdr(cdr(cdr(cdr(cdr(cdr(cdr(cdr(cdr(_expr)))))))))); }
+
+expr*
+nth(int _n, expr* _expr)
+{
+    int i;
+    expr* tmp = _expr;
+    if (_n < 0)
+        return NIL;
+    for (i = 0; i < _n; i++)
+        tmp = cdr(tmp);
+    return car(tmp);
 }
 
 expr*
@@ -255,13 +301,11 @@ buildin(Environment *_env, buildin_fn _fn, char* _name)
 void
 print_value(expr* _e)
 {
-    //ERRCHECK_NIL(_e);
-    //ERRCHECK_TYPECHECK(_e, TYPE_CCONS);
     if (_e == NULL)
         return;
     switch (_e->type) {
     case TYPE_NIL:
-        printf("<NIL>");
+        printf("NIL");
         break;
     case TYPE_REAL:
         printf("%d", _e->real);
@@ -382,7 +426,55 @@ _lex_symbol(Environment *_env, char* _start, int* _cursor)
     (*_cursor) += tstr_length(&str)-1;
     return symbol(_env, str);
 }
+void
+expr_lex(Environment* _env, expr* _root, char* _program, int* _cursor)
+{
+    /*TODO: Does not support special syntax for:
+    quote = '
+    array = []
+    */
+    ERRCHECK_INV_ENV(_env);
+    ERRCHECK(_program != NULL, "Invalid program given to lexer");
+    ERRCHECK(_cursor != NULL, "Invalid cursor given to lexer");
+    ERRCHECK(Buildins_len(&_env->buildins) > 0, "No buildin functions in environment!");
+    expr* curr = _root; 
+    expr* extracted;
+    char* p;
+    while (1) {
+        p = _program + (*_cursor)++;
+        if (*p == '\0') {
+            return;
+        }
+        if (_is_whitespace(*p)) {
+            continue;
+        }
+        else if (*p == ')') {
+            return;
+        }
+        else if (*p ==  '(') {
+            extracted = cons(_env, NIL, NIL);
+            expr_lex(_env, extracted, _program, _cursor);
+        }
+        else if (_can_lex_string(p)) {
+            extracted = _lex_string(_env, p, _cursor);
+        }
+        else if (_can_lex_number(p)) {
+            extracted = _lex_number(_env, p, _cursor);
+        }
+        else {
+          /*We determine that if it is not
+            a string or a number, it must be a symbol*/
+            extracted = _lex_symbol(_env, p, _cursor);
+        }
+        /*Insert extracted into expression*/
+        curr->car = extracted;
+        curr->cdr = cons(_env, NIL, NIL);
+        curr = cdr(curr);
+    }
+    ERRCHECK_UNREACHABLE();
+}
 
+#if 0
 expr*
 expr_lex(Environment* _env, char* _program, int* _cursor)
 {
@@ -394,7 +486,7 @@ expr_lex(Environment* _env, char* _program, int* _cursor)
     ERRCHECK(_program != NULL, "Invalid program given to lexer");
     ERRCHECK(_cursor != NULL, "Invalid cursor given to lexer");
     ERRCHECK(Buildins_len(&_env->buildins) > 0, "No buildin functions in environment!");
-    expr* root = consN(_env);
+    expr* root = cons(_env, NIL, NIL);
     expr* curr = root; 
     expr* extracted;
     char* p;
@@ -426,14 +518,14 @@ expr_lex(Environment* _env, char* _program, int* _cursor)
         }
         /*Insert extracted into expression*/
         curr->car = extracted;
-        //curr->cdr = consN(_env);
-        curr->cdr = consN(_env);
+        curr->cdr = cons(_env, NIL, NIL);
         curr = cdr(curr);
 
     }
     ERRCHECK_UNREACHABLE();
     return NIL;
 }
+#endif
 
 expr*
 str_read(Environment* _e, char* _p)
@@ -445,7 +537,7 @@ str_read(Environment* _e, char* _p)
     ERRCHECK(_p != NULL, "Given program is NULL");
     expr* inp = cons(_e,
                      string(_e, tstr_(_p)),
-                     NULL
+                     NIL
         );
     return buildin_read(_e, inp);
 }
