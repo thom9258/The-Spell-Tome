@@ -7,6 +7,7 @@
 #define YAL_DEFS
 
 #include "alloc.h"
+#include "error.h"
 
 #define TSTR_IMPLEMENTATION
 #include "tstr.h"
@@ -41,7 +42,7 @@ typedef struct {
 struct Environment {
     Buildins buildins;
     sbAllocator expr_allocator;
-    tstrBuffer stdout_buffer;
+    ErrorManager errormanager;
 };
 
 struct expr {
@@ -68,36 +69,44 @@ expr* NIL = &_NIL_OBJECT;
  * (To be replaced with proper error management & reporting)
  * */
 #define UNUSED(x) (void)(x)
-#define UNIMPLEMENTED(fun) assert(1 && "UNIMPLEMENTED: " && fun)
+#define UNIMPLEMENTED(fun) \
+    assert(0 && "UNIMPLEMENTED: " && fun)
 
-#define ERRCHECK(ccons, msg) assert((ccons) && msg)
+#define ASSERT_UNREACHABLE() \
+    assert(0 && "YAL: Fatal Error occoured, reached unreachable code!")
 
-#define ERRCHECK_UNREACHABLE() \
-    ERRCHECK(0, "REACHED UNREACHABLE CODE!")
+#define ASSERT_INV_ENV(env) \
+    assert(env != NULL && "Invalid environment is used in code! Ptr is NULL!")
 
-#define ERRCHECK_INV_ENV(env) \
-    ERRCHECK(env != NULL, "Env Ptr is NULL!")
+#define ERRCHECK_NILALLOC(env, expr) \
+    do { if (is_nil(expr)) { \
+             Error_put(&env->errormanager, \
+                       ERROR(ERROR_ERROR, (char*)"Was unable to allocate new expr cell!")); \
+        }} while (0)
 
-#define ERRCHECK_INV_ALLOC(ptr) \
-    ERRCHECK(ptr != NULL, "Invalid pointer allocation!")
 
-#define ERRCHECK_NIL(expr) \
-    ERRCHECK(!is_nil(expr), "Given expr is NIL!")
+#define ERRCHECK_NIL(env, expr)     \
+    do { if (is_nil(expr)) { \
+             Error_put(&env->errormanager, \
+                        ERROR(ERROR_ERROR, (char*)"Input expr is NIL!")); \
+        }} while (0)
 
-#define ERRCHECK_LEN(expr, l)                         \
-    ERRCHECK(len(expr) == l, "Given expr len is not expected!")
+#define ERRCHECK_LEN(env, expr, expected)        \
+    do { if (len(expr) != expected) { \
+             Error_put(&env->errormanager, \
+                        ERROR(ERROR_ERROR, (char*)"Length of  expr list is not expected!")); \
+        }} while (0)
 
-#define ERRCHECK_TYPECHECK(expr, expected)                             \
-    do {                                                            \
-        ERRCHECK_NIL(expr);                                            \
-        ERRCHECK(expr->type == expected, "Expr cell has wrong type!"); \
-} while (0)
+#define ERRCHECK_TYPE(env, expr, expected)       \
+    do { if (expr->type != expected) { \
+             Error_put(&env->errormanager, \
+                        ERROR(ERROR_ERROR, (char*)"expr has invalid type!")); \
+        }} while (0)
 
-#define ERRCHECK_NOTNUMBER(env, atom) \
-    ERRCHECK(yal_atom(env, atom)->type == REAL || yal_atom(env, atom)->type == DECIMAL, \
-               "Atom is not a number!")
-
-#define ERRCHECK_ASTLEN(env, list, check) \
-        ERRCHECK(yal_AtomList_len(&yal_atom(env, list)->AST) check, "AST len does not comply based on given operator and length!");   \
+#define ERRCHECK_NOTNUMBER(expr) \
+    do { if (expr->type != TYPE_REAL && expr->type != TYPE_DECIMAL) { \
+             Error_put(&env->errormanager, \
+                        ERROR(ERROR_ERROR, (char*)"Given expr is not a number!")); \
+        }} while (0)
 
 #endif /*YAL_DEFS*/

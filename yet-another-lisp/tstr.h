@@ -60,6 +60,7 @@ CHANGELOG:
 
 #include <stdint.h> /*uint32_t + uint8_t*/
 #include <stdio.h>  /*NULL*/
+#include <stdarg.h>  /*va_arg*/
 #include <assert.h>
 
 #ifndef TSTR_NO_STDLIB
@@ -118,8 +119,8 @@ TSTR_API tstr tstr_(TSTR_CHAR* _str);
 TSTR_API tstr tstr_char(TSTR_CHAR _char);
 TSTR_API tstr tstr_file(tstr* _path);
 TSTR_API char tstr_equal(tstr* _a, tstr* _b);
-TSTR_API tstr* tstr_copy(tstr* _src, tstr* _dst);
-TSTR_API tstr* tstr_copyf(tstr* _src, tstr* _dst, int _f, int _n);
+TSTR_API tstr* tstr_substr(tstr* _src, tstr* _dst, int _f, int _n);
+TSTR_API tstr* tstr_duplicate(tstr* _src, tstr* _dst);
 TSTR_API tstr* tstr_cut(tstr* _str, int _f, int _t);
 TSTR_API tstr* tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
 TSTR_API int tstr_find(tstr* _str, tstr* _f); 
@@ -129,6 +130,10 @@ TSTR_API tstr* tstr_concatva(tstr* _str, int _n, ...);
 TSTR_API tstr* tstr_to_upper(tstr* _str);
 TSTR_API tstr* tstr_to_lower(tstr* _str);
 TSTR_API uint64_t tstr_hash(tstr* _str);
+TSTR_API tstr* tstr_from_float(tstr* _str, float _val);
+TSTR_API tstr* tstr_from_int(tstr* _str, int _val);
+TSTR_API float tstr_to_float(tstr* _str);
+TSTR_API int tstr_to_int(tstr* _str);
 
 TSTR_API tstrBuffer* tstrBuffer_init(tstrBuffer* _buf, int _n);
 TSTR_API void tstrBuffer_destroy(tstrBuffer* _buf);
@@ -323,7 +328,7 @@ tstr_equal(tstr* _a, tstr* _b)
 
 TSTR_API
 tstr*
-tstr_copyf(tstr* _src, tstr* _dst, int _f, int _n)
+tstr_substr(tstr* _src, tstr* _dst, int _f, int _n)
 /*TODO: copy cannot create a copy of a const tstring*/
 {
 	int src_len;
@@ -348,9 +353,9 @@ tstr_copyf(tstr* _src, tstr* _dst, int _f, int _n)
 
 TSTR_API
 tstr*
-tstr_copy(tstr* _src, tstr* _dst)
+tstr_duplicate(tstr* _src, tstr* _dst)
 {
-	return tstr_copyf(_src, _dst, 0, tstr_length(_src));
+	return tstr_substr(_src, _dst, 0, 0);
 }
 
 TSTR_API
@@ -382,8 +387,8 @@ tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _split)
 		return NULL;
 	tstr_destroy(_lhs);
 	tstr_destroy(_rhs);
-	tstr_copyf(_src, _lhs, 0, _split);
-	tstr_copyf(_src, _rhs, _split, src_len - _split);
+	tstr_substr(_src, _lhs, 0, _split);
+	tstr_substr(_src, _rhs, _split, src_len - _split);
 	return _src;
 }
 
@@ -443,7 +448,7 @@ tstr_concat(tstr* _str, tstr* _back)
 	if (!tstr_ok(_back))
 		return NULL;
 	if (!tstr_ok(_str))
-		return tstr_copy(_back, _str);
+		return tstr_duplicate(_back, _str);
 
 	str_len = tstr_length(_str);
 	back_len = tstr_length(_back);
@@ -505,6 +510,48 @@ tstr_to_lower(tstr* _str)
 }
 
 TSTR_API
+tstr*
+tstr_from_int(tstr* _str, int _val)
+{
+    char buf[32] = {0};
+	if (tstr_ok(_str))
+		tstr_destroy(_str);
+    sprintf(buf, "%d", _val);
+    *_str = tstr_(buf);
+	return _str;
+}
+
+TSTR_API
+tstr*
+tstr_from_float(tstr* _str, float _val)
+{
+    char buf[32] = {0};
+	if (tstr_ok(_str))
+		tstr_destroy(_str);
+    sprintf(buf, "%f", _val);
+    *_str = tstr_(buf);
+	return _str;
+}
+
+TSTR_API
+int
+tstr_to_int(tstr* _str)
+{
+	if (!tstr_ok(_str))
+        return 0;
+    return atoi(_str->c_str);
+}
+
+TSTR_API
+float
+tstr_to_float(tstr* _str)
+{
+	if (!tstr_ok(_str))
+        return 0.0f;
+    return atof(_str->c_str);
+}
+
+TSTR_API
 uint64_t
 tstr_hash(tstr* _str)
 /*Refrence, "sdbm" hash.*/
@@ -540,6 +587,15 @@ tstrBuffer_destroy(tstrBuffer* _buf)
         return;
     if (_buf->data != NULL) free(_buf->data);
     *_buf = (tstrBuffer) {0};
+}
+
+TSTR_API
+void
+tstrBuffer_reset(tstrBuffer* _buf)
+{
+    if (_buf == NULL)
+        return;
+    _buf->top = 0;
 }
 
 TSTR_BACKEND

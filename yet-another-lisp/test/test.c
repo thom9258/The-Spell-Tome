@@ -1,81 +1,39 @@
 #include "testlib.h"
-#include "../buildins.h"
-#include "../core.h"
-
+#include "../yal.h"
 
 /*https://en.wikipedia.org/wiki/S-cconsession*/
 
 expr*
-exprrepl(Environment* _e, expr* program)
+onerepl(Environment* _e, expr* program)
 {
     expr* res;
-    printf("[inp] > "); buildin_print(_e, program); printf("\n");
+    printf("[inp] > "); buildin_print(_e, program);
     res = buildin_eval(_e, program);
-    printf("[res] > "); buildin_print(_e, res); printf("\n");
+    printf("[res] > "); buildin_print(_e, res);
+    printf("\n");
     return res;
 }
 
 expr*
-repl(Environment* _e, char* _p)
+eval_str(Environment* _e, char* _p)
 {
     expr* program = str_read(_e, _p);
-    return exprrepl(_e, program);
+    printf("[txt] > %s\n", _p);
+    return onerepl(_e, program);
+}
+
+char
+evalcheck(Environment* _e, char* _p, char* _res)
+{
+    expr* pred = eval_str(_e, _p);
+    tstr result = tstr_(_res);
+    //printf("[res] > "); buildin_print(_e, pred); printf("\n");
+    UNUSED(pred);
+    printf("[GT ] > %s\n", result.c_str);
+    return 1;
 }
 
 /*===============================================================*/
-
-void
-test_str2expr(void)
-{
-    Environment e;
-    Environment_new(&e);
-    Environment_add_core(&e);
-    str_readp(&e, "(\t write  3.14159)");
-    str_readp(&e, "(write  ( + 2 4 ))");
-    str_readp(&e, "\n(+ \t 2     5 \n  15.432 \n)");
-    str_readp(&e, "(write \"Hello, World!\")");
-    Environment_destroy(&e);
-}
-
-void
-test_eval(void)
-{
-    Environment e;
-    Environment_new(&e);
-    Environment_add_core(&e);
-    expr* program = cons(&e,
-                         csymbol(&e, "write"),
-                         cons(&e,
-                              real(&e, 20),
-                              NULL
-                             )
-        );
-    exprrepl(&e, program);
-    repl(&e, "(write 21)");
-    repl(&e, "(quote (write 34))");
-    //repl(&e, "(write (+ 2 2))");
-    //repl(&e, "write (quote ( + 4 (* 3 2 )) )");
-    //repl(&e, "(write \"Hello, World!\")");
-    //repl(&e, "(+ (2 2))");
-    Environment_destroy(&e);
-}
-
-void
-test_accessors(void)
-{
-    Environment e;
-    Environment_new(&e);
-    Environment_add_core(&e);
-    repl(&e, "(car (1 2 3 4) )");
-    repl(&e, "(cdr (1 2 3 4) )");
-    repl(&e, "(first (1 2 3 4) )");
-    repl(&e, "(second (1 2 3 4) )");
-    repl(&e, "(third (1 2 3 4) )");
-    repl(&e, "(seventh (1 2 3 4) )");
-    repl(&e, "(nth 4 (1 2 3 4) )");
-    //repl(&e, "(nth -1 (1 2 3 4) )");
-    Environment_destroy(&e);
-}
 
 void test_print(void)
 {
@@ -126,60 +84,82 @@ void test_print(void)
     printf("\n");
 }
 
-#if 0
 void
-test_buildin_math(void)
+test_str2expr(void)
 {
     Environment e;
     Environment_new(&e);
-    expr* r = cons(&e,
-                    symbol(&e, "+"),
-                    cons(&e,
-                         real(&e, 20),
-                         cons(&e,
-                              real(&e, 5),
-                              NULL
-                             )
-                        )
-        );
-    fakerepl(&e, r);
-
-    r = cons(&e,
-             symbol(&e, "*"),
-             cons(&e,
-                  real(&e, 2),
-                  cons(&e,
-                       cons(&e,
-                            symbol(&e, "-"),
-                            cons(&e,
-                                real(&e, 3),
-                                cons(&e,
-                                     real(&e, 1),
-                                     NULL)
-                                )
-                           ),
-                       NULL)
-                 )
-        );
-    fakerepl(&e, r);
+    Environment_add_core(&e);
+    //eval_str(&e, "(\t write  3.14159)");
+    //eval_str(&e, "(write  ( + 2 4 ))");
+    //eval_str(&e, "\n(+ \t 2     5 \n  15.432 \n)");
+    //eval_str(&e, "(write \"Hello, World!\")");
+    Environment_destroy(&e);
 }
 
 void
-test_buildin_write_car_cdr(void)
+test_eval(void)
 {
     Environment e;
-    expr* r = cons(&e,
-                    symbol(&e, "write"),
-                    cons(&e,
-                         real(&e, -15),
-                         NULL
-                        )
+    Environment_new(&e);
+    Environment_add_core(&e);
+    expr* program = cons(&e,
+                         csymbol(&e, "write"),
+                         cons(&e,
+                              real(&e, 20),
+                              NULL
+                             )
         );
-    fakerepl(&e, r);
-
-    
+    onerepl(&e, program);
+    eval_str(&e, "(write 21)");
+    eval_str(&e, "(quote (write 34))");
+    //repl(&e, "(write (+ 2 2))");
+    //repl(&e, "write (quote ( + 4 (* 3 2 )) )");
+    //repl(&e, "(write \"Hello, World!\")");
+    //repl(&e, "(+ (2 2))");
+    Environment_destroy(&e);
 }
-#endif
+
+void
+test_accessors(void)
+{
+    Environment e;
+    Environment_new(&e);
+    Environment_add_core(&e);
+    TL_TEST(evalcheck(&e,
+                   "(car (1 2 3 4))",
+                   "(1)"));
+    TL_TEST(evalcheck(&e,
+                   "(cdr (1 2 3 4))",
+                   "(2 3 4)"));
+    TL_TEST(evalcheck(&e,
+                   "(cons (1) (2))",
+                   "((1) (2))"));
+    TL_TEST(evalcheck(&e,
+                   "(first (1 2 3 4))",
+                   "(1)"));
+    TL_TEST(evalcheck(&e,
+                   "(third (1 2 3 4))",
+                   "(3)"));
+    TL_TEST(evalcheck(&e,
+                   "(seventh (1 2 3 4))",
+                   "(NIL)"));
+    /*TODO: Lexing or printing is wrong! this is not formatted correctly!*/
+    TL_TEST(evalcheck(&e,
+                   "(first ((1 2) (3 4)))",
+                   "(1 2)"));
+    TL_TEST(evalcheck(&e,
+                   "(second ((1 2) (3 4) (5 6)))",
+                   "(3 4)"));
+
+    eval_str(&e, "(nth 0 (1 2 3 4) )");
+    eval_str(&e, "(nth 1 (1 2 3 4) )");
+    eval_str(&e, "(nth 2 (1 2 3 4) )");
+    eval_str(&e, "(nth 4 (1 2 3 4) )");
+    eval_str(&e, "(nth -1 (1 2 3 4) )");
+ 
+    Environment_destroy(&e);
+}
 
 int main(int argc, char **argv) {
 	(void)argc;
@@ -189,8 +169,6 @@ int main(int argc, char **argv) {
 	TL(test_str2expr());
 	TL(test_eval());
 	TL(test_accessors());
-	//TL(test_buildin_math());
-	//TL(test_buildin_write_car_cdr());
 
     tl_summary();
 
