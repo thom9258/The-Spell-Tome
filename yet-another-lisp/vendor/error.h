@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#ifndef ERRORSTACK_SIZE
 #define ERRORSTACK_SIZE 32
+#endif /*ERRORSTACK_SIZE*/
 
 enum ERRORCODE {
     ERROR_NULL = 0,

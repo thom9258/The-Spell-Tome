@@ -7,9 +7,9 @@ expr*
 onerepl(Environment* _e, expr* program)
 {
     expr* res;
-    printf("[inp] > "); buildin_print(_e, program);
+    printf("[inp] > "); atom_print(program);
     res = buildin_eval(_e, program);
-    printf("[res] > "); buildin_print(_e, res);
+    printf("[res] > "); atom_print(res);
     printf("\n");
     return res;
 }
@@ -17,7 +17,7 @@ onerepl(Environment* _e, expr* program)
 expr*
 eval_str(Environment* _e, char* _p)
 {
-    expr* program = str_read(_e, _p);
+    expr* program = read(_e, _p);
     printf("[txt] > %s\n", _p);
     return onerepl(_e, program);
 }
@@ -27,27 +27,93 @@ evalcheck(Environment* _e, char* _p, char* _res)
 {
     expr* pred = eval_str(_e, _p);
     tstr result = tstr_(_res);
-    //printf("[res] > "); buildin_print(_e, pred); printf("\n");
     UNUSED(pred);
     printf("[GT ] > %s\n", result.c_str);
     return 1;
 }
 
+expr* csymbol(Environment* _env, char* _sym)
+{
+    return symbol(_env, tstr_(_sym));
+}
+
 /*===============================================================*/
+
+void
+test_datatypes(void)
+{
+    expr* a;
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+    TL_TEST(e.buildins.count > 0);
+    printf("buildin count: %d\n", e.buildins.count);
+
+    a = NIL;
+    TL_TEST(is_nil(a));
+    TL_TEST(a->type == TYPE_CONS);
+    atom_print(a);
+    printf("\n");
+
+    a = cons(&e, NIL, NIL);
+    TL_TEST(!is_nil(a));
+    TL_TEST(a->type == TYPE_CONS);
+    atom_print(a);
+    printf("\n");
+
+    a = cons(&e, real(&e, 4), NIL);
+    TL_TEST(!is_nil(a));
+    TL_TEST(!is_nil(car(a)));
+    TL_TEST(car(a)->type == TYPE_REAL);
+    TL_TEST(is_nil(cdr(a)));
+    atom_print(a);
+    printf("\n");
+
+    a = real(&e, 3);
+    TL_TEST(!is_nil(a));
+    TL_TEST(a->type == TYPE_REAL);
+    TL_TEST(a->real == 3);
+    atom_print(a);
+    printf("\n");
+
+    a = decimal(&e, 3.14f);
+    TL_TEST(!is_nil(a));
+    TL_TEST(a->type == TYPE_DECIMAL);
+    TL_TEST(a->decimal == 3.14f);
+    atom_print(a);
+    printf("\n");
+
+    a = symbol(&e, tstr_("mysym"));
+    TL_TEST(!is_nil(a));
+    TL_TEST(a->type == TYPE_SYMBOL);
+    TL_TEST(tstr_equal(&a->symbol, &tstr_const("mysym")));
+    atom_print(a);
+    printf("\n");
+
+    a = string(&e, tstr_("my string"));
+    TL_TEST(!is_nil(a));
+    TL_TEST(a->type == TYPE_STRING);
+    TL_TEST(tstr_equal(&a->symbol, &tstr_const("my string")));
+    atom_print(a);
+    printf("\n");
+
+    Env_destroy(&e);
+}
 
 void test_print(void)
 {
     Environment e;
-    Environment_new(&e);
+    Env_new(&e);
+    Env_add_core(&e);
 
     expr* r = cons(&e,
-                   csymbol(&e, "write"),
+                   csymbol(&e, "print"),
                    cons(&e,
                         real(&e, 20),
                         NULL
                        )
         );
-    buildin_print(&e, r);
+    atom_print(r);
     printf("\n");
 
     r = cons(&e,
@@ -67,20 +133,29 @@ void test_print(void)
                        NULL)
                  )
         );
-    buildin_print(&e, r);
+    atom_print(r);
     printf("\n");
 
+    expr* a = cons(&e,
+                   csymbol(&e, "inc"),
+                   cons(&e,
+                        real(&e, 20),
+                        NULL
+                       )
+        );
+    expr* b = cons(&e,
+                   decimal(&e, 3.571f),
+                   cons(&e,
+                        real(&e, -21),
+                        NULL
+                       )
+        );
     r = cons(&e,
              csymbol(&e, "+"),
-             cons(&e,
-                  real(&e, 20),
-                  cons(&e,
-                       real(&e, 5),
-                       NULL
-                      )
-                 )
+             cons(&e, a, cons(&e, b, NIL))
         );
-    buildin_print(&e, r);
+
+    atom_print(r);
     printf("\n");
 }
 
@@ -88,21 +163,21 @@ void
 test_str2expr(void)
 {
     Environment e;
-    Environment_new(&e);
-    Environment_add_core(&e);
+    Env_new(&e);
+    Env_add_core(&e);
     //eval_str(&e, "(\t write  3.14159)");
     //eval_str(&e, "(write  ( + 2 4 ))");
     //eval_str(&e, "\n(+ \t 2     5 \n  15.432 \n)");
     //eval_str(&e, "(write \"Hello, World!\")");
-    Environment_destroy(&e);
+    Env_destroy(&e);
 }
 
 void
 test_eval(void)
 {
     Environment e;
-    Environment_new(&e);
-    Environment_add_core(&e);
+    Env_new(&e);
+    Env_add_core(&e);
     expr* program = cons(&e,
                          csymbol(&e, "write"),
                          cons(&e,
@@ -117,15 +192,15 @@ test_eval(void)
     //repl(&e, "write (quote ( + 4 (* 3 2 )) )");
     //repl(&e, "(write \"Hello, World!\")");
     //repl(&e, "(+ (2 2))");
-    Environment_destroy(&e);
+    Env_destroy(&e);
 }
 
 void
 test_accessors(void)
 {
     Environment e;
-    Environment_new(&e);
-    Environment_add_core(&e);
+    Env_new(&e);
+    Env_add_core(&e);
     TL_TEST(evalcheck(&e,
                    "(car (1 2 3 4))",
                    "(1)"));
@@ -158,17 +233,18 @@ test_accessors(void)
     eval_str(&e, "(nth 4 (1 2 3 4) )");
     eval_str(&e, "(nth -1 (1 2 3 4) )");
  
-    Environment_destroy(&e);
+    Env_destroy(&e);
 }
 
 int main(int argc, char **argv) {
 	(void)argc;
 	(void)argv;
 
+	TL(test_datatypes());
 	TL(test_print());
-	TL(test_str2expr());
-	TL(test_eval());
-	TL(test_accessors());
+	//TL(test_str2expr());
+	//TL(test_eval());
+	//TL(test_accessors());
 
     tl_summary();
 

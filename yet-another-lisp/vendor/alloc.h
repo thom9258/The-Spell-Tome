@@ -38,7 +38,11 @@ memRegion_destroy(memRegion* _m)
 #define arr_t_name ptrStack
 #include "tsarray.h"
 
-/*sb - stack block*/
+/*sb - stack block allocator
+  Block allocator using fixed size blocks,
+  designed to have bigOh(1) allocation speed
+  by having all free blocks in a stack, and thus
+  just put/pop'ing on that stack.*/
 typedef struct {
     memRegion region;
     size_t member_memlen;
@@ -58,7 +62,7 @@ sbAllocator_init(sbAllocator* _a, size_t _blksize)
     //     _a->member_count,
     //     _a->member_memlen);
 
-    /*Setup pointer stack for big oh 1 allocation*/
+    /*Setup pointer stack*/
     ptrStack_initn(&_a->stack, _a->member_count);
     unsigned int i;
     void* p = NULL;
