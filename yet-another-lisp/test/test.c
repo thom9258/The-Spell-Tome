@@ -1,35 +1,36 @@
 #include "testlib.h"
 #include "../yal.h"
 
-/*https://en.wikipedia.org/wiki/S-cconsession*/
-
 expr*
-onerepl(Environment* _e, expr* program)
+read_eval_print(Environment* _e, char* _p)
 {
-    expr* res;
-    printf("[inp] > "); atom_print(program);
-    res = buildin_eval(_e, program);
-    printf("[res] > "); atom_print(res);
-    printf("\n");
-    return res;
-}
-
-expr*
-eval_str(Environment* _e, char* _p)
-{
+    ASSERT_INV_ENV(_e);
     expr* program = read(_e, _p);
-    printf("[txt] > %s\n", _p);
-    return onerepl(_e, program);
+    expr* result = eval(_e, program);
+    print(result); printf("\n");
+    return result;
 }
 
 char
-evalcheck(Environment* _e, char* _p, char* _res)
+read_eval_print_compare(Environment* _e, char* _p, char* _cmp)
 {
-    expr* pred = eval_str(_e, _p);
-    tstr result = tstr_(_res);
-    UNUSED(pred);
-    printf("[GT ] > %s\n", result.c_str);
-    return 1;
+    expr* res = read_eval_print(_e, _p);
+    UNUSED(res);
+    UNUSED(_cmp);
+    /*if res == _cmp
+          return 1
+     */
+    return 0;
+}
+
+expr*
+read_verbose(Environment* _e, char* _p)
+{
+    ASSERT_INV_ENV(_e);
+    printf("string: %s\n", _p);
+    expr* prediction = read(_e, _p);
+    printf("lexed:  "); print(prediction); printf("\n");
+    return prediction;
 }
 
 expr* csymbol(Environment* _env, char* _sym)
@@ -49,52 +50,52 @@ test_datatypes(void)
     TL_TEST(e.buildins.count > 0);
     printf("buildin count: %d\n", e.buildins.count);
 
-    a = NIL;
+    a = NIL();
     TL_TEST(is_nil(a));
     TL_TEST(a->type == TYPE_CONS);
-    atom_print(a);
+    print(a);
     printf("\n");
 
-    a = cons(&e, NIL, NIL);
+    a = cons(&e, NIL(), NIL());
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_CONS);
-    atom_print(a);
+    print(a);
     printf("\n");
 
-    a = cons(&e, real(&e, 4), NIL);
+    a = cons(&e, real(&e, 4), NIL());
     TL_TEST(!is_nil(a));
     TL_TEST(!is_nil(car(a)));
     TL_TEST(car(a)->type == TYPE_REAL);
     TL_TEST(is_nil(cdr(a)));
-    atom_print(a);
+    print(a);
     printf("\n");
 
     a = real(&e, 3);
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_REAL);
     TL_TEST(a->real == 3);
-    atom_print(a);
+    print(a);
     printf("\n");
 
     a = decimal(&e, 3.14f);
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_DECIMAL);
     TL_TEST(a->decimal == 3.14f);
-    atom_print(a);
+    print(a);
     printf("\n");
 
     a = symbol(&e, tstr_("mysym"));
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_SYMBOL);
     TL_TEST(tstr_equal(&a->symbol, &tstr_const("mysym")));
-    atom_print(a);
+    print(a);
     printf("\n");
 
     a = string(&e, tstr_("my string"));
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_STRING);
     TL_TEST(tstr_equal(&a->symbol, &tstr_const("my string")));
-    atom_print(a);
+    print(a);
     printf("\n");
 
     Env_destroy(&e);
@@ -113,7 +114,7 @@ void test_print(void)
                         NULL
                        )
         );
-    atom_print(r);
+    print(r);
     printf("\n");
 
     r = cons(&e,
@@ -133,7 +134,7 @@ void test_print(void)
                        NULL)
                  )
         );
-    atom_print(r);
+    print(r);
     printf("\n");
 
     expr* a = cons(&e,
@@ -152,10 +153,10 @@ void test_print(void)
         );
     r = cons(&e,
              csymbol(&e, "+"),
-             cons(&e, a, cons(&e, b, NIL))
+             cons(&e, a, cons(&e, b, NIL()))
         );
 
-    atom_print(r);
+    print(r);
     printf("\n");
 }
 
@@ -165,10 +166,14 @@ test_str2expr(void)
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
-    //eval_str(&e, "(\t write  3.14159)");
-    //eval_str(&e, "(write  ( + 2 4 ))");
-    //eval_str(&e, "\n(+ \t 2     5 \n  15.432 \n)");
-    //eval_str(&e, "(write \"Hello, World!\")");
+    read_verbose(&e, "(\t write  3.14159)");
+    read_verbose(&e, "(write  ( + 2 10))");
+    read_verbose(&e, "(print  ( + 2 hi))");
+    read_verbose(&e, "\n(+ \t 2     5 \n  15.432 \n)");
+    read_verbose(&e, "(write      \"Hello, World!\")");
+
+    read_verbose(&e, "(- (+ 3 4) 5 )");
+    read_verbose(&e, "(+ (- 3 4) (* 3 5 6 (/ 2 1)) )");
     Env_destroy(&e);
 }
 
@@ -178,20 +183,6 @@ test_eval(void)
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
-    expr* program = cons(&e,
-                         csymbol(&e, "write"),
-                         cons(&e,
-                              real(&e, 20),
-                              NULL
-                             )
-        );
-    onerepl(&e, program);
-    eval_str(&e, "(write 21)");
-    eval_str(&e, "(quote (write 34))");
-    //repl(&e, "(write (+ 2 2))");
-    //repl(&e, "write (quote ( + 4 (* 3 2 )) )");
-    //repl(&e, "(write \"Hello, World!\")");
-    //repl(&e, "(+ (2 2))");
     Env_destroy(&e);
 }
 
@@ -201,37 +192,37 @@ test_accessors(void)
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
-    TL_TEST(evalcheck(&e,
+    TL_TEST(read_eval_print_compare(&e,
                    "(car (1 2 3 4))",
                    "(1)"));
-    TL_TEST(evalcheck(&e,
+    TL_TEST(read_eval_print_compare(&e,
                    "(cdr (1 2 3 4))",
                    "(2 3 4)"));
-    TL_TEST(evalcheck(&e,
+    TL_TEST(read_eval_print_compare(&e,
                    "(cons (1) (2))",
                    "((1) (2))"));
-    TL_TEST(evalcheck(&e,
+    TL_TEST(read_eval_print_compare(&e,
                    "(first (1 2 3 4))",
                    "(1)"));
-    TL_TEST(evalcheck(&e,
+    TL_TEST(read_eval_print_compare(&e,
                    "(third (1 2 3 4))",
                    "(3)"));
-    TL_TEST(evalcheck(&e,
+    TL_TEST(read_eval_print_compare(&e,
                    "(seventh (1 2 3 4))",
                    "(NIL)"));
     /*TODO: Lexing or printing is wrong! this is not formatted correctly!*/
-    TL_TEST(evalcheck(&e,
+    TL_TEST(read_eval_print_compare(&e,
                    "(first ((1 2) (3 4)))",
                    "(1 2)"));
-    TL_TEST(evalcheck(&e,
+    TL_TEST(read_eval_print_compare(&e,
                    "(second ((1 2) (3 4) (5 6)))",
                    "(3 4)"));
 
-    eval_str(&e, "(nth 0 (1 2 3 4) )");
-    eval_str(&e, "(nth 1 (1 2 3 4) )");
-    eval_str(&e, "(nth 2 (1 2 3 4) )");
-    eval_str(&e, "(nth 4 (1 2 3 4) )");
-    eval_str(&e, "(nth -1 (1 2 3 4) )");
+    read_verbose(&e, "(nth 0 (1 2 3 4) )");
+    read_verbose(&e, "(nth 1 (1 2 3 4) )");
+    read_verbose(&e, "(nth 2 (1 2 3 4) )");
+    read_verbose(&e, "(nth 4 (1 2 3 4) )");
+    read_verbose(&e, "(nth -1 (1 2 3 4) )");
  
     Env_destroy(&e);
 }
@@ -242,7 +233,7 @@ int main(int argc, char **argv) {
 
 	TL(test_datatypes());
 	TL(test_print());
-	//TL(test_str2expr());
+	TL(test_str2expr());
 	//TL(test_eval());
 	//TL(test_accessors());
 

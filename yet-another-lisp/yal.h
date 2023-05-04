@@ -109,10 +109,6 @@ struct expr {
     };
 };
 
-/*the global nil object, so we dont have to allocate a bunch of them at runtime*/
-expr _NIL_VALUE = (expr){.type = 0, .car = NULL, .cdr = NULL};
-expr* NIL = &_NIL_VALUE;
-
 /* =========================================================
  * Safety and Assertion on error
  * */
@@ -169,11 +165,17 @@ int len(expr* _args);
 /*List management*/
 expr* car(expr* _args);
 expr* cdr(expr* _args);
-expr* first(expr* _args);
+expr* first(expr* _args); 
 expr* second(expr* _args);
 expr* third(expr* _args);
 expr* fourth(expr* _args);
 expr* nth(int _n, expr* _args);
+/*
+first = car()
+second = cdar()
+third = cddar()
+fourth = cdddar()
+*/
 
 /*Value creation*/
 expr* cons(Environment *_env, expr* _car, expr* _cdr);
@@ -183,8 +185,7 @@ expr* symbol(Environment *_env, tstr _v);
 expr* string(Environment *_env, tstr _v);
 
 /*Printing*/
-expr* cons_print(expr* _args, char _open, char _close);
-expr* atom_print(expr* _args);
+expr* print(expr* _args);
 
 /*Core*/
 expr* read(Environment* _env, char* _program_str);
@@ -215,10 +216,27 @@ Env_destroy(Environment* _env)
     Errors_clear(&_env->errormanager);
 }
 
+/*the global nil object, so we dont have to allocate a bunch of them at runtime*/
+expr _NIL_VALUE = (expr){.type = 0, .car = NULL, .cdr = NULL};
+
+expr*
+NIL(void)
+{
+    return &_NIL_VALUE;
+}
+
 char
 is_nil(expr* _args)
 {
-    if (_args == NULL || _args == NIL)
+    if (_args == NULL || _args == NIL())
+        return 1;
+    return 0;
+}
+
+char
+is_cons(expr* _args)
+{
+    if (!is_nil(_args) && _args->type == TYPE_CONS)
         return 1;
     return 0;
 }
@@ -250,7 +268,7 @@ expr*
 car(expr* _args)
 {
     if (is_nil(_args) || is_val(_args) || is_nil(_args->car))
-        return NIL;
+        return NIL();
     return _args->car;
 }
 
@@ -258,7 +276,7 @@ expr*
 cdr(expr* _args)
 {
     if (is_nil(_args) || is_val(_args) || is_nil(_args->cdr))
-        return NIL;
+        return NIL();
     return _args->cdr;
 }
 
@@ -277,7 +295,7 @@ nth(int _n, expr* _args)
     int i;
     expr* tmp = _args;
     if (_n < 0)
-        return NIL;
+        return NIL();
     for (i = 0; i < _n; i++)
         tmp = cdr(tmp);
     return car(tmp);
@@ -290,6 +308,26 @@ _atom_new(Environment *_env)
     expr* e = (expr*)sbAllocator_get(&_env->expr_allocator);
     ERRCHECK_NILALLOC(_env, e);
     return e;
+}
+
+void
+_atom_delete(Environment *_env, expr* _atom)
+{
+    ASSERT_INV_ENV(_env);
+    if (is_nil(_atom))
+        return;
+
+    switch (_atom->type) {
+    case TYPE_SYMBOL:
+        tstr_destroy(&_atom->symbol);
+        break;
+    case TYPE_STRING:
+        tstr_destroy(&_atom->string);
+        break;
+    default:
+        break;
+    };
+    sbAllocator_return(&_env->expr_allocator, _atom);
 }
 
 expr*
@@ -344,27 +382,29 @@ string(Environment *_env, tstr _v)
 }
 
 expr*
-cons_print(expr* _args, char _open, char _close)
+_cons_print(expr* _args, char _open, char _close)
 {
     /*Handle CAR*/
-    if (car(_args)->type == TYPE_CONS)
+    if (is_cons(car(_args))) {
         printf("%c", _open);
-
-    atom_print(car(_args));
-    if (!is_nil(car(cdr(_args))))
-        printf(" ");
-
-    if (car(_args)->type == TYPE_CONS)
+        if (!is_nil(car(_args)))
+            print(car(_args));
         printf("%c", _close);
+    } else {
+        if (!is_nil(car(_args)))
+            print(car(_args));
+    }
+    if (!is_nil(second(_args)))
+        printf(" ");
 
     /*Handle CDR*/
     if (!is_nil(cdr(_args)))
-        atom_print(cdr(_args));
+        print(cdr(_args));
     return _args;
 }
 
 expr*
-atom_print(expr* _arg)
+print(expr* _arg)
 {
     if (is_nil(_arg)) {
         printf("NIL");
@@ -372,7 +412,7 @@ atom_print(expr* _arg)
     }
     switch (_arg->type) {
     case TYPE_CONS:
-        cons_print(_arg, '(', ')');
+        _cons_print(_arg, '(', ')');
         break;
     case TYPE_REAL:
         printf("%d", _arg->real);
@@ -433,8 +473,7 @@ _lex_number(Environment *_env, char* _start, int* _cursor)
     while (!_is_whitespace(_start[len]) && _start[len] != '(' && _start[len] != ')')
         len++;
     str = tstr_n(_start, len+1);
-    (*_cursor) += tstr_length(&str);
-    //printf("number lexed = %s\n", str.c_str);
+    (*_cursor) += tstr_length(&str)-1;
     type = _is_symbol_real_or_decimal(&str);
     if (type == TYPE_REAL)
         return real(_env, tstr_to_int(&str));
@@ -471,44 +510,47 @@ _expr_lex(Environment* _env, char* _program, int* _cursor)
     /*TODO: Does not support special syntax for:
     quote = '
     array = []
+    NIL and ()
+    t
     */
     ASSERT_INV_ENV(_env);
     assert(_program != NULL && "Invalid program given to lexer");
     assert(_cursor != NULL && "Invalid cursor given to lexer");
     assert(Buildins_len(&_env->buildins) > 0 && "No buildin functions in environment!");
 
-    expr* curr = cons(_env, NIL, NIL);
+    expr* root = cons(_env, NULL, NULL);
+    expr* curr = root;
     expr* extracted;
-    char* p;
+    char* index;
     while (1) {
-        p = _program + (*_cursor)++;
-        if (*p == '\0') {
-            return curr;
-        }
-        if (_is_whitespace(*p)) {
+        index = _program + (*_cursor)++;
+        ERRCHECK_NIL(_env, curr);
+
+        if (_is_whitespace(*index)) {
             continue;
         }
-        else if (*p == ')') {
-            return curr;
+        else if (*index == '\0' || *index == ')') {
+            return root;
         }
-        else if (*p ==  '(') {
+        else if (*index ==  '(') {
             extracted = _expr_lex(_env, _program, _cursor);
         }
-        else if (_can_lex_string(p)) {
-            extracted = _lex_string(_env, p, _cursor);
+        else if (_can_lex_string(index)) {
+            /*NOTE: this is a bad way of giving it index and cursor just for incrementing*/
+            extracted = _lex_string(_env, index, _cursor);
         }
-        else if (_can_lex_number(p)) {
-            extracted = _lex_number(_env, p, _cursor);
+        else if (_can_lex_number(index)) {
+            extracted = _lex_number(_env, index, _cursor);
         }
         else {
           /*We determine that if it is not
             a string or a number, it must be a symbol*/
-            extracted = _lex_symbol(_env, p, _cursor);
+            extracted = _lex_symbol(_env, index, _cursor);
         }
         /*Insert extracted into expression*/
         curr->car = extracted;
-        curr->cdr = cons(_env, NIL, NIL);
-        curr = cdr(curr);
+        curr->cdr = cons(_env, NULL, NULL);
+        curr = curr->cdr;
     }
     ASSERT_UNREACHABLE();
 }
@@ -516,10 +558,36 @@ _expr_lex(Environment* _env, char* _program, int* _cursor)
 expr*
 read(Environment* _env, char* _program_str)
 {
-    int cursor = 0;
     ASSERT_INV_ENV(_env);
-    //printf("read given: %s\n", _program_str);
-    return _expr_lex(_env, _program_str, &cursor);
+    assert(_program_str != NULL && "Given program str is NULL");
+    int cursor = 0;
+    expr* lexed = _expr_lex(_env, _program_str, &cursor);
+    return lexed;
+}
+
+expr*
+eval(Environment* _env, expr* _e)
+{
+    ASSERT_INV_ENV(_env);
+    ERRCHECK_NIL(_env, _e);
+    int i;
+    Buildin* buildin = NULL;
+    expr* fn;
+    expr* args;
+    fn = car(_e);
+    args = cdr(_e);
+    ERRCHECK_TYPE(_env, fn, TYPE_SYMBOL);
+    ERRCHECK_TYPE(_env, args, TYPE_CONS);
+    if (fn != NULL) {
+        for (i = 0; i < Buildins_len(&_env->buildins); i++) {
+            buildin = Buildins_peek(&_env->buildins, i);
+            if (tstr_equal(&buildin->name, &fn->symbol)) {
+                return buildin->fn(_env, args);
+            }
+        }
+    }
+    ASSERT_UNREACHABLE();
+    return _e;
 }
 
 expr*
@@ -588,31 +656,6 @@ buildin_quote(Environment* _env, expr* _e)
 }
 
 expr*
-buildin_eval(Environment* _env, expr* _e)
-{
-    ASSERT_INV_ENV(_env);
-    ERRCHECK_NIL(_env, _e);
-    int i;
-    Buildin* buildin = NULL;
-    expr* fn;
-    expr* args;
-    fn = car(_e);
-    args = cdr(_e);
-    ERRCHECK_TYPE(_env, fn, TYPE_SYMBOL);
-    ERRCHECK_TYPE(_env, args, TYPE_CONS);
-    if (fn != NULL) {
-        for (i = 0; i < Buildins_len(&_env->buildins); i++) {
-            buildin = Buildins_peek(&_env->buildins, i);
-            if (tstr_equal(&buildin->name, &fn->symbol)) {
-                return buildin->fn(_env, args);
-            }
-        }
-    }
-    ASSERT_UNREACHABLE();
-    return _e;
-}
-
-expr*
 buildin_plus(Environment* _env, expr* _e)
 {
     ASSERT_INV_ENV(_env);
@@ -626,7 +669,7 @@ buildin_plus(Environment* _env, expr* _e)
     while (tmp != NULL) {
         /*Eval cons cell to number*/
         if (car(tmp)->type == TYPE_CONS)
-            tmp->car = buildin_eval(_env, car(tmp));
+            tmp->car = eval(_env, car(tmp));
         assert(car(tmp)->type == TYPE_REAL);
         sum += car(tmp)->real;
         tmp = cdr(tmp);
