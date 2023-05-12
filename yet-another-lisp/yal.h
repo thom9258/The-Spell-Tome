@@ -38,6 +38,18 @@ https://buildyourownlisp.com/chapter9_s_expressions#lists_and_lisps
 http://www.ulisp.com/show?1BLW
 */
 
+
+/*
+  TODO: We need to integrate a list cleaning function to make (1 2 3) into 1 2 3
+  TODO: We need to propegate eval call across all arguments in eval call,
+        Rules:
+        - number evals to number
+        - symbol evals to symbol's value
+        - list evals called function
+*/
+
+
+
 #ifndef YAL_H
 #define YAL_H
 
@@ -170,12 +182,6 @@ expr* second(expr* _args);
 expr* third(expr* _args);
 expr* fourth(expr* _args);
 expr* nth(int _n, expr* _args);
-/*
-first = car()
-second = cdar()
-third = cddar()
-fourth = cdddar()
-*/
 
 /*Value creation*/
 expr* cons(Environment *_env, expr* _car, expr* _cdr);
@@ -189,7 +195,7 @@ expr* print(expr* _args);
 
 /*Core*/
 expr* read(Environment* _env, char* _program_str);
-expr* eval(Environment* _env, expr* _program);
+expr* eval(Environment* _env, expr* _e);
 
 
 /******************************************************************************/
@@ -566,28 +572,85 @@ read(Environment* _env, char* _program_str)
 }
 
 expr*
-eval(Environment* _env, expr* _e)
+_eval_function(Environment* _env, expr* _e)
 {
     ASSERT_INV_ENV(_env);
     ERRCHECK_NIL(_env, _e);
     int i;
     Buildin* buildin = NULL;
+    //_e = car(_e);
     expr* fn;
     expr* args;
-    fn = car(_e);
-    args = cdr(_e);
+    /*Extract function symbol and its arguments*/
+    fn = car(car(_e));
+    args = cdr(car(_e));
+    //args = car(cdr(_e));
+    printf("FN:   "); print(fn); printf("\n");
+    printf("ARGS: "); print(args); printf("\n");
+
+    /*evaluate arguments before function call*/
+    expr* tmp = args;
+    while (!is_nil(tmp)) {
+        printf("calling eval on: "); print(tmp); printf("\n");
+        eval(_env, tmp);
+        tmp = first(tmp);
+    }
+
     ERRCHECK_TYPE(_env, fn, TYPE_SYMBOL);
+    assert(fn->type == TYPE_SYMBOL && "Recieved something that was not a symbol!");
     ERRCHECK_TYPE(_env, args, TYPE_CONS);
     if (fn != NULL) {
+        //printf("looking for function %s\n", fn->symbol.c_str);
         for (i = 0; i < Buildins_len(&_env->buildins); i++) {
             buildin = Buildins_peek(&_env->buildins, i);
             if (tstr_equal(&buildin->name, &fn->symbol)) {
                 return buildin->fn(_env, args);
             }
         }
+        assert(0 && "Called Function did not exist in buildins!");
     }
     ASSERT_UNREACHABLE();
     return _e;
+}
+
+expr*
+eval(Environment* _env, expr* _e)
+{
+    ASSERT_INV_ENV(_env);
+    ERRCHECK_NIL(_env, _e);
+
+    switch (_e->type) {
+    case TYPE_CONS:
+        return _eval_function(_env, _e);
+    case TYPE_REAL:
+        /*FALLTHROUGH*/
+    case TYPE_DECIMAL:
+        /*FALLTHROUGH*/
+    case TYPE_STRING:
+        return _e;
+    case TYPE_SYMBOL:
+        /*TODO: Check symbol table and return value of symbo*/
+        return _e;
+    default:
+        ASSERT_UNREACHABLE();
+    };
+    ASSERT_UNREACHABLE();
+}
+
+
+
+expr*
+buildin_quote(Environment* _env, expr* _e)
+{
+    ASSERT_INV_ENV(_env);
+    return _e;
+}
+
+expr*
+buildin_list(Environment* _env, expr* _e)
+{
+    ASSERT_INV_ENV(_env);
+    return cons(_env, _e, NIL());
 }
 
 expr*
@@ -601,7 +664,9 @@ expr*
 buildin_cdr(Environment* _env, expr* _e)
 {
     UNUSED(_env);
+    /*TODO: cdr should return rest of arguments as a list!*/
     return cdr(_e);
+    //return buildin_list(_env, cdr(_e));
 }
 
 expr*
@@ -649,13 +714,6 @@ buildin_len(Environment* _env, expr* _e)
 }
 
 expr*
-buildin_quote(Environment* _env, expr* _e)
-{
-    ASSERT_INV_ENV(_env);
-    return _e;
-}
-
-expr*
 buildin_plus(Environment* _env, expr* _e)
 {
     ASSERT_INV_ENV(_env);
@@ -689,8 +747,8 @@ Env_add_core(Environment* _env)
     /*List management*/
     Env_add_buildin(_env, "car", buildin_car);
     Env_add_buildin(_env, "cdr", buildin_cdr);
+    Env_add_buildin(_env, "quote", buildin_quote);
     //Env_add_buildin(_env, "cons", buildin_cons);
-    //Env_add_buildin(_env, "quote", buildin_quote);
     //Env_add_buildin(_env, "first", buildin_first);
     //Env_add_buildin(_env, "second", buildin_second);
     //Env_add_buildin(_env, "third", buildin_third);

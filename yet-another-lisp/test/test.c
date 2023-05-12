@@ -2,10 +2,21 @@
 #include "../yal.h"
 
 expr*
+read_verbose(Environment* _e, char* _p)
+{
+    ASSERT_INV_ENV(_e);
+    printf("string: %s\n", _p);
+    expr* prediction = read(_e, _p);
+    printf("lexed:  "); print(prediction); printf("\n");
+    return prediction;
+}
+
+expr*
 read_eval_print(Environment* _e, char* _p)
 {
     ASSERT_INV_ENV(_e);
-    expr* program = read(_e, _p);
+    //expr* program = read(_e, _p);
+    expr* program = read_verbose(_e, _p);
     expr* result = eval(_e, program);
     print(result); printf("\n");
     return result;
@@ -23,15 +34,7 @@ read_eval_print_compare(Environment* _e, char* _p, char* _cmp)
     return 0;
 }
 
-expr*
-read_verbose(Environment* _e, char* _p)
-{
-    ASSERT_INV_ENV(_e);
-    printf("string: %s\n", _p);
-    expr* prediction = read(_e, _p);
-    printf("lexed:  "); print(prediction); printf("\n");
-    return prediction;
-}
+
 
 expr* csymbol(Environment* _env, char* _sym)
 {
@@ -193,10 +196,10 @@ test_accessors(void)
     Env_new(&e);
     Env_add_core(&e);
     TL_TEST(read_eval_print_compare(&e,
-                   "(car (1 2 3 4))",
+                   "(car (quote (1 2 3 4)))",
                    "(1)"));
     TL_TEST(read_eval_print_compare(&e,
-                   "(cdr (1 2 3 4))",
+                   "(cdr (quote (1 2 3 4)))",
                    "(2 3 4)"));
     TL_TEST(read_eval_print_compare(&e,
                    "(cons (1) (2))",
@@ -234,8 +237,7 @@ int main(int argc, char **argv) {
 	TL(test_datatypes());
 	TL(test_print());
 	TL(test_str2expr());
-	//TL(test_eval());
-	//TL(test_accessors());
+	TL(test_accessors());
 
     tl_summary();
 

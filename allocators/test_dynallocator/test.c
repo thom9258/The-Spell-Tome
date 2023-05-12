@@ -26,7 +26,7 @@ v2_print(v2* _v)
 }
 
 void
-th_allocator_debug(th_allocator* _da, FILE* _out)
+th_allocator_debug(dynallocator* _da, FILE* _out)
 /**
  * dynAllocator_debug_status() - debug dynamic allocator.
  * @arg1: Ptr to dynamic allocator.
@@ -35,12 +35,12 @@ th_allocator_debug(th_allocator* _da, FILE* _out)
 {
     int i = 0;
 	uint8_t* p = NULL;
-	_th_allocator_header* ph = NULL;
+	_dynalc_header* ph = NULL;
 	if (_da == NULL || _out == NULL)
 		return;
 
 	fprintf(_out,"(memsize=%d, start=%p, aloc_curr=%d, aloc_tot=%d)\n",
-	              _da->allocator.memlen, _da->allocator.memory,
+	              _da->region.len, _da->region.mem,
 	              _da->bookkeeper.curr,
                   _da->bookkeeper.total);
 
@@ -53,9 +53,9 @@ th_allocator_debug(th_allocator* _da, FILE* _out)
 		       ph->size,
                (_TH_IS_ALIGNED((unsigned long)ph)) ? "Y": "N",
                (_TH_IS_ALIGNED((unsigned long)p)) ? "Y": "N",
-		       (uint8_t*)ph - _da->allocator.memory,
-		       (uint8_t*)p + ph->size - _da->allocator.memory,
-		       (uint8_t*)_TH_ALLOCATOR_DATA2HEADER(ph->next) - _da->allocator.memory);
+		       (uint8_t*)ph - _da->region.mem,
+		       (uint8_t*)p + ph->size - _da->region.mem,
+		       (uint8_t*)_TH_ALLOCATOR_DATA2HEADER(ph->next) - _da->region.mem);
 		p = ph->next;
 		ph = _TH_ALLOCATOR_DATA2HEADER(p);
         i++;
@@ -66,10 +66,11 @@ void
 test_init_destroy(void)
 {
     uint8_t memory[TH_MB_2_B(2)] = {0};
-	th_allocator da = {0};
-	th_allocator_init(&da, memory, sizeof(memory));
-	TL_TEST(da.allocator.memory != NULL);
-	TL_TEST(da.allocator.memlen == sizeof(memory));
+	dynallocator da = {0};
+	dynalc_init(&da, region(memory, sizeof(memory)));
+
+	TL_TEST(da.region.mem != NULL);
+	TL_TEST(da.region.len == sizeof(memory));
 	TL_TEST(da.first == NULL);
 	TL_TEST(da.last == NULL);
 	TL_TEST(da.bookkeeper.curr == 0);
@@ -81,10 +82,10 @@ test_first_fit_first_allocation(void)
 {
 	v2* p = NULL;
     uint8_t memory[TH_MB_2_B(2)] = {0};
-	th_allocator da = {0};
-	th_allocator_init(&da, memory, sizeof(memory));
+	dynallocator da = {0};
+	dynalc_init(&da, region(memory, sizeof(memory)));
 
-	p = th_allocator_malloc(&da, sizeof(v2)); 
+	p = dynalc_malloc(&da, sizeof(v2)); 
 	TL_TEST(p != NULL);
 	p->x = 2;
 	p->y = 5;
@@ -97,7 +98,7 @@ test_first_fit_first_allocation(void)
 	TL_TEST(da.bookkeeper.curr == 1);
 	TL_TEST(da.bookkeeper.total == 1);
 
-	th_allocator_free_all(&da);
+	dynalc_free_all(&da);
 
 	TL_TEST(da.first == NULL);
 	TL_TEST(da.bookkeeper.curr == 0);
@@ -109,15 +110,15 @@ test_first_fit_consecutive_allocations(void)
 	unsigned int N = 8;
 
     uint8_t memory[TH_MB_2_B(2)] = {0};
-	th_allocator da = {0};
-	th_allocator_init(&da, memory, sizeof(memory));
+	dynallocator da = {0};
+	dynalc_init(&da, region(memory, sizeof(memory)));
 
 	unsigned int i;
 	unsigned int correct = 0;
 	v2* p[N];
 
 	for (i = 0; i < N; i++) {
-		p[i] = th_allocator_malloc(&da, sizeof(v2)); 
+		p[i] = dynalc_malloc(&da, sizeof(v2)); 
 		if (p[i] != NULL)
 			correct++;
 		else 
@@ -134,7 +135,7 @@ test_first_fit_consecutive_allocations(void)
 	TL_TEST(da.bookkeeper.curr == N);
 	TL_TEST(da.bookkeeper.total == N);
 
-	th_allocator_free_all(&da);
+	dynalc_free_all(&da);
 	TL_TEST(da.bookkeeper.curr == 0);
 	TL_TEST(da.first == NULL);
 }
@@ -146,28 +147,28 @@ test_first_fit_freeing_of_allocations_first_last(void)
 	unsigned int i;
 
     uint8_t memory[TH_MB_2_B(2)] = {0};
-	th_allocator da = {0};
-	th_allocator_init(&da, memory, sizeof(memory));
+	dynallocator da = {0};
+	dynalc_init(&da, region(memory, sizeof(memory)));
 
 	v2* p[N];
 	for (i = 0; i < N; i++) {
-		p[i] = th_allocator_malloc(&da, sizeof(v2)); 
+		p[i] = dynalc_malloc(&da, sizeof(v2)); 
 		if (p[i] == NULL)
 			continue;
 		p[i]->x = i;
 		p[i]->y = i;
 	}
 
-	th_allocator_free(&da, p[0]);
+	dynalc_free(&da, p[0]);
 	TL_TESTM(da.first == (uint8_t*)p[1], "first allocation is removed");
 	TL_TEST(da.bookkeeper.curr == N - 1);
 
-	th_allocator_free(&da, p[N-1]);
+	dynalc_free(&da, p[N-1]);
 	if (p[N-2] != NULL)
 		TL_TESTM(_TH_ALLOCATOR_DATA2HEADER(p[N-2])->next == NULL, "last allocation is removed from chain");
 	TL_TEST(da.bookkeeper.curr == N - 2);
 	th_allocator_debug(&da, stdout);
-	th_allocator_free_all(&da);
+	dynalc_free_all(&da);
 }
 
 void
@@ -178,12 +179,12 @@ test_first_fit_freeing_of_allocations_inside_chain(void)
 	uint32_t allocs = 0;
 
     uint8_t memory[TH_MB_2_B(2)] = {0};
-	th_allocator da = {0};
-	th_allocator_init(&da, memory, sizeof(memory));
+	dynallocator da = {0};
+	dynalc_init(&da, region(memory, sizeof(memory)));
     
 	v2* p[N];
 	for (i = 0; i < N; i++) {
-		p[i] = th_allocator_malloc(&da, sizeof(v2)); 
+		p[i] = dynalc_malloc(&da, sizeof(v2)); 
 		if (p[i] == NULL)
 			continue;
 		p[i]->x = i;
@@ -192,12 +193,12 @@ test_first_fit_freeing_of_allocations_inside_chain(void)
 	allocs = da.bookkeeper.curr;
 	th_allocator_debug(&da, stdout);
 
-	th_allocator_free(&da, p[1]);
+	dynalc_free(&da, p[1]);
 	TL_TESTM(_TH_ALLOCATOR_DATA2HEADER(p[0])->next == (uint8_t*)p[2], "sucessfully removed allocation 2");
 	TL_TEST(da.bookkeeper.curr == allocs - 1);
 	th_allocator_debug(&da, stdout);
 
-	th_allocator_free(&da, p[2]);
+	dynalc_free(&da, p[2]);
 	TL_TESTM(_TH_ALLOCATOR_DATA2HEADER(p[0])->next == (uint8_t*)p[3], "sucessfully removed allocation 3");
 
 	TL_TEST(da.bookkeeper.curr == allocs - 2);
@@ -214,39 +215,39 @@ test_first_fit_allocation_after_free(void)
 	v2* p_new2 = NULL;
 
     uint8_t memory[TH_MB_2_B(2)] = {0};
-	th_allocator da = {0};
-	th_allocator_init(&da, memory, sizeof(memory));
+	dynallocator da = {0};
+	dynalc_init(&da, region(memory, sizeof(memory)));
 
     v2* p[N];
 	for (i = 0; i < N; i++) {
-		p[i] = th_allocator_malloc(&da, sizeof(v2)); 
+		p[i] = dynalc_malloc(&da, sizeof(v2)); 
 		if (p[i] == NULL)
 			continue;
 		*p[i] = v2s(i,2*i);
 	}
 	th_allocator_debug(&da, stdout);
 
-	th_allocator_free(&da, p[1]);
-	th_allocator_free(&da, p[2]);
+	dynalc_free(&da, p[1]);
+	dynalc_free(&da, p[2]);
 	th_allocator_debug(&da, stdout);
 
-	p_new1 = th_allocator_malloc(&da, sizeof(v2)); 
+	p_new1 = dynalc_malloc(&da, sizeof(v2)); 
 	TL_TESTM(p_new1 == p[1], "Fit new allocation inside chain");
 	TL_TEST(p_new1 != NULL || p[1] != NULL);
 	th_allocator_debug(&da, stdout);
 
-	p_new2 = th_allocator_malloc(&da, sizeof(v2)); 
+	p_new2 = dynalc_malloc(&da, sizeof(v2)); 
 	TL_TEST(p_new2 != NULL || p[2] != NULL);
 	TL_TESTM(p_new2 == p[2], "Fit new allocation inside chain");
 	th_allocator_debug(&da, stdout);
 
-	th_allocator_free(&da, p[0]);
-	p_new0 = th_allocator_malloc(&da, sizeof(v2)); 
+	dynalc_free(&da, p[0]);
+	p_new0 = dynalc_malloc(&da, sizeof(v2)); 
 	TL_TEST(p_new0 != NULL || p[0] != NULL);
 	TL_TESTM(p_new0 == p[0], "Fit new allocation before chain");
 	th_allocator_debug(&da, stdout);
 
-	th_allocator_free_all(&da);
+	dynalc_free_all(&da);
 }
 
 void
@@ -256,25 +257,25 @@ test_first_fit_max_allocations(void)
 	int correct = 0;
 	v2* p[10];
 
-    const int entrysize = _TH_ALIGN(sizeof(v2)) + _TH_ALIGN(sizeof(_th_allocator_header));
+    const int entrysize = _TH_ALIGN(sizeof(v2)) + _TH_ALIGN(sizeof(_dynalc_header));
     uint8_t memory[entrysize * 8];
-	th_allocator da = {0};
-	th_allocator_init(&da, memory, sizeof(memory));
+	dynallocator da = {0};
+	dynalc_init(&da, region(memory, sizeof(memory)));
 
 	for (i = 0; i < 10; i++) {
-		p[i] = th_allocator_malloc(&da, sizeof(v2)); 
+		p[i] = dynalc_malloc(&da, sizeof(v2)); 
 		if (p[i] != NULL)
 			correct++;
 	}
 	TL_PRINT("size of entry = %d\n", entrysize);
     printf("used memory = %d\n", correct * entrysize);
-    printf("allocator memory size = %d\n", da.allocator.memlen);
+    printf("allocator memory size = %d\n", da.region.len);
     printf("correct allocations=%d\n", correct);
 	TL_TESTM(correct == 8, "Check if all allocations were successful.");
 	TL_TESTM(p[8] == NULL || p[9] == NULL, "No allocations occours when allocator is full");
 	th_allocator_debug(&da, stdout);
 
-	th_allocator_free_all(&da);
+	dynalc_free_all(&da);
 }
 
 void
@@ -293,10 +294,10 @@ test_fragmentation(int iterations, int _min, int _max)
 	void* p_ma[N];
 
     /*Create memory space for dynamic allocator*/
-	uint32_t da_memsize = N * (_TH_ALIGN(_max) + _TH_ALIGN(sizeof(_th_allocator_header)));
+	uint32_t da_memsize = N * (_TH_ALIGN(_max) + _TH_ALIGN(sizeof(_dynalc_header)));
     uint8_t* memory = (uint8_t*)malloc(da_memsize);
-	th_allocator allocator = {0};
-	th_allocator_init(&allocator, memory, sizeof(memory));
+	dynallocator allocator = {0};
+	dynalc_init(&allocator, region(memory, sizeof(memory)));
 
 	/*Initialize ptrs*/
 	for (i = 0; i < N; i++) {
@@ -311,9 +312,9 @@ test_fragmentation(int iterations, int _min, int _max)
 		/*Dynamic alloator*/
 		tl_timer_start(&timer_da);
 		if (p_da[access] == NULL) {
-			p_da[access] = th_allocator_malloc(&allocator, mem); 
+			p_da[access] = dynalc_malloc(&allocator, mem); 
 		} else {
-			p_da[access] = th_allocator_free(&allocator, p_da); 
+			p_da[access] = dynalc_free(&allocator, p_da); 
 		}
 		tl_timer_stop(&timer_da);
 		/*malloc*/
@@ -329,7 +330,7 @@ test_fragmentation(int iterations, int _min, int _max)
 	}
 
 	/*Cleanup dynamic allocator*/
-	th_allocator_free_all(&allocator);
+	dynalc_free_all(&allocator);
     free(memory);
 	/*Cleanup malloc*/
 	for (i = 0; i < N; i++)

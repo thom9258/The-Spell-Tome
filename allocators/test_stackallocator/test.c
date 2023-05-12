@@ -4,7 +4,6 @@
 #include "testlib.h"
 
 #define TH_ALLOCATOR_IMPLEMENTATION
-//#define MEMALLOCATOR_NO_ASSERT
 #include "../th_allocator.h"
 
 #define memsize 4096
@@ -29,16 +28,15 @@ test_custom_struct(void)
 {
     uint8_t scratch[scratch_size] = {0};
     uint8_t memory[memsize] = {0};
-	th_stackallocator sa = {0};
-	th_status status;
-	status = th_stackallocator_setup_s(&sa, memory, memsize, scratch);
+	stackallocator sa = {0};
+	allocator_status status;
+	status = stackalc_new(&sa, region(memory, memsize), scratch);
 
 	printf("memory ptr = %p\n", memory);
 	printf("scratch ptr = %p\n", scratch);
-	TL_TEST(sa.allocator.memory = memory);
-	TL_TEST(sa.allocator.scratch_buffer = scratch);
-
-	TL_TEST(status == TH_OK);
+	TL_TEST(sa.region.mem = memory);
+	TL_TEST(sa.scratch_buffer = scratch);
+	TL_TEST(status == ALLOCATOR_OK);
 
     pos* positions[8] = {0};
     int i;
@@ -49,7 +47,7 @@ test_custom_struct(void)
     TL_PRINT("Alignment size = %d\n", _TH_ALIGNMENT);
 
     for (i = 0; i < 8; i++) {
-        positions[i] = (pos*)th_stackallocator_alloc(&sa, sizeof(pos));
+        positions[i] = (pos*)stackalc_alloc(&sa, sizeof(pos));
 		TL_TEST(positions[i] != NULL);
 		positions[i]->x = i;
 		positions[i]->y = i*2;
@@ -64,7 +62,7 @@ test_custom_struct(void)
         TL_TEST(positions[i] != NULL && positions[i]->x == i && positions[i]->y == i*2);
         pos_print(positions[i]);
     }
-    th_stackallocator_reset(&sa);
+    stackalc_reset(&sa);
 }
 
 void test_scratch_buffer(void)
@@ -74,8 +72,8 @@ void test_scratch_buffer(void)
 
     uint8_t scratch[scratch_size] = {0};
     uint8_t memory[memsize] = {0};
-	th_stackallocator sa = {0};
-	th_stackallocator_setup_s(&sa, memory, memsize, scratch);
+	stackallocator sa = {0};
+	stackalc_new(&sa, region(memory, memsize), scratch);
 
     void* allocation = NULL;
     int invalid_allocs = 0;
@@ -91,7 +89,7 @@ void test_scratch_buffer(void)
 
     int i;
     for (i = 0; i < alloc_count; i++) {
-        allocation = th_stackallocator_alloc(&sa, alloc_size);
+        allocation = stackalc_alloc(&sa, alloc_size);
 		if (allocation == NULL)
 			invalid_allocs++;
 		else if (allocation == scratch)
@@ -105,7 +103,7 @@ void test_scratch_buffer(void)
     TL_COLOR(TL_BLUE);
     TL_PRINT("scratch allocation count = %d\n", scratch_allocs);
     TL_PRINT("memory allocation count  = %d\n", memory_allocs);
-    th_stackallocator_reset(&sa);
+    stackalc_reset(&sa);
 }
 
 int main(int argc, char **argv) {

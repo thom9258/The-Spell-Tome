@@ -31,10 +31,12 @@ For more information, please refer to
 ![Zlib License](https://choosealicense.com/licenses/zlib/)
 
 ## CHANGELOG
-- [0.0] Initialized library.
+- [1.0] Rewrote lib to be more modern.
+        Updated block allocator to be smarter.
 - [0.1] Ported seperated implementation into a single header file
         implementation.
-        Redefined MEMALLOCATOR_ to TH_ALLOCATOR_
+        Redefined MEMALLOCATOR_ to ALLOCATOR_
+- [0.0] Initialized library.
 
 
 TODO: either do:
@@ -44,23 +46,17 @@ all allocators.
 it it is, return scratch_buffer instead. This way scratch is used automatically,
 and it will still just return NULL if scratch is empty, thus no downsides.
 something like:
-
-_BASEALLOCATOR_RETURN_SCRATCH_ON_NULL(basealloc, ret_ptr) \
-    ( (ret_ptr == NULL) ? basealloc->scratch_buffer : ret_ptr )
-
-then just use this for all returns in allocators.
-
 */
-#ifndef TH_ALLOCATOR_H
-#define TH_ALLOCATOR_H
+#ifndef ALLOCATOR_H
+#define ALLOCATOR_H
 
-#ifndef TH_ALLOCATOR_API 
-#define TH_ALLOCATOR_API static inline
-#endif /*TH_ALLOCATOR_API */
+#ifndef ALLOCATOR_API 
+#define ALLOCATOR_API static inline
+#endif /*ALLOCATOR_API */
 
-#ifndef TH_ALLOCATOR_BACKEND 
-#define TH_ALLOCATOR_BACKEND static
-#endif /*TH_ALLOCATOR_BACKEND */
+#ifndef ALLOCATOR_BACKEND 
+#define ALLOCATOR_BACKEND static
+#endif /*ALLOCATOR_BACKEND */
 
 #include <stdint.h>
 
@@ -72,8 +68,8 @@ then just use this for all returns in allocators.
  * Common Allocator defs
  * ****************************************************************************/
 
-#define TH_KB_2_B(N) ((N)*1024)
-#define TH_MB_2_B(N) ((N)*1024*1024)
+#define ALC_KB_2_B(N) ((N)*1024)
+#define ALC_MB_2_B(N) ((N)*1024*1024)
 
 #ifndef _TH_ALIGNMENT
 #define _TH_ALIGNMENT 16
@@ -102,54 +98,58 @@ typedef char _th_mutex;
 #endif /*TH_NO_MUTEX*/
 
 typedef enum {
-	TH_OK = 0,
-	TH_INVALID_INPUT,
+	ALLOCATOR_OK = 0,
+	ALLOCATOR_INVALID_INPUT,
+	ALLOCATOR_INVALID_REGION,
 
-	TH_STATUS_COUNT
-}th_status;
+	ALLOCATOR_STATUS_COUNT
+}allocator_status;
 	
 typedef struct {
 	uint32_t total;
 	uint32_t curr;
-}_th_bookkeeper;
+}_allocation_bookkeeper;
 
-#define _TH_BOOKKEEPER_NEW(book) ( (book) = (_th_bookkeeper) {0,0} )
-#define _TH_BOOKKEEPER_CLEAR(book) ((book).curr = 0)
-#define _TH_BOOKKEEPER_INCREMENT(book) ( (book).curr++, (book).total++ )
-#define _TH_BOOKKEEPER_DECREMENT(book) ( (book).curr--, (book).total++ )
+#define _ALC_BOOKKEEPER_NEW(book) ( (book) = (_allocation_bookkeeper) {0,0} )
+#define _ALC_BOOKKEEPER_CLEAR(book) ((book).curr = 0)
+#define _ALC_BOOKKEEPER_INCREMENT(book) ( (book).curr++, (book).total++ )
+#define _ALC_BOOKKEEPER_DECREMENT(book) ( (book).curr--, (book).total++ )
+
+/* *****************************************************************************
+ * Memory Region
+ * ****************************************************************************/
 
 typedef struct {
-    uint8_t* memory;
-    uint32_t memlen;
-    uint8_t* scratch_buffer;
-}_th_baseallocator;
+    uint8_t* mem;
+    uint32_t len;
+    uint8_t freeable;
+}memregion;
 
-#define _TH_BASEALLOCATOR_NEW(ba, mem, memlen) \
-	( (ba) = (_th_baseallocator) {mem, memlen, NULL} )
+ALLOCATOR_API
+memregion region(void* _mem, uint32_t _len);
 
+ALLOCATOR_API
+char region_ok(memregion* _r);
 
 /* *****************************************************************************
  * Stack Allocator
  * ****************************************************************************/
 
 typedef struct {
-	_th_baseallocator allocator;
-	_th_bookkeeper bookkeeper;
-    _th_mutex is_in_use;
+	memregion region;
+    void* scratch_buffer;
+	_allocation_bookkeeper bookkeeper;
 	uint32_t offset;
-}th_stackallocator;
+}stackallocator;
 
-TH_ALLOCATOR_API
-th_status th_stackallocator_setup(th_stackallocator* _a, uint8_t* _mem, uint32_t _memsize);
+ALLOCATOR_API
+allocator_status stackalc_new(stackallocator* _a, memregion _mem, void* _scratch);
 
-TH_ALLOCATOR_API
-th_status th_stackallocator_setup_s(th_stackallocator* _a, uint8_t* _mem, uint32_t _memsize, uint8_t* _scratch);
+ALLOCATOR_API
+void* stackalc_alloc(stackallocator* _a, uint32_t _n);
 
-TH_ALLOCATOR_API
-void* th_stackallocator_alloc(th_stackallocator* _a, uint32_t _n);
-
-TH_ALLOCATOR_API
-void th_stackallocator_reset(th_stackallocator* _a);
+ALLOCATOR_API
+void stackalc_reset(stackallocator* _a);
 
 /* *****************************************************************************
  * Dynamic Allocator
@@ -158,139 +158,130 @@ void th_stackallocator_reset(th_stackallocator* _a);
 typedef struct {
 	uint8_t* next;
 	uint32_t size;
-}_th_allocator_header;
+}_dynalc_header;
  
-#define _TH_ALLOCATOR_DATA2HEADER(data) \
-	(((_th_allocator_header*)(data)) - 1)
+#define _ALLOCATOR_DATA2HEADER(data) \
+	(((_dynalc_header*)(data)) - 1)
 
-#define _TH_ALLOCATOR_HEADER2DATA(header) \
-    ((uint8_t*)(header)) + sizeof(_th_allocator_header)
+#define _ALLOCATOR_HEADER2DATA(header) \
+    ((uint8_t*)(header)) + sizeof(_dynalc_header)
 
 typedef struct {
-    _th_baseallocator allocator;
-    _th_bookkeeper bookkeeper;
+    memregion region;
+    _allocation_bookkeeper bookkeeper;
     _th_mutex is_in_use;
     uint8_t* first;
     uint8_t* last;
-}th_allocator;
+}dynallocator;
 
-TH_ALLOCATOR_API
-th_status th_allocator_init(th_allocator* _da, uint8_t* _memory, uint32_t _memsize);
+ALLOCATOR_API
+allocator_status dynalc_init(dynallocator* _da, memregion _region);
 
-TH_ALLOCATOR_API
-void* th_allocator_malloc(th_allocator* _da, int _size);
+ALLOCATOR_API
+void* dynalc_malloc(dynallocator* _da, int _size);
 
-TH_ALLOCATOR_API
-void* th_allocator_free(th_allocator* _da, void* _ptr);
+ALLOCATOR_API
+void* dynalc_free(dynallocator* _da, void* _ptr);
 
-TH_ALLOCATOR_API
-th_status th_allocator_free_all(th_allocator* _da);
+ALLOCATOR_API
+allocator_status dynalc_free_all(dynallocator* _da);
 
 /* *****************************************************************************
  * Block Allocator
  * ****************************************************************************/
 
+typedef struct blk_handle blk_handle;
 typedef struct {
-	_th_baseallocator allocator;
-	_th_bookkeeper bookkeeper;
+	memregion region;
+    blk_handle* handle_stack;
+    uint32_t stack_top;
+	_allocation_bookkeeper bookkeeper;
     _th_mutex is_in_use;
 	uint32_t block_size;
 	uint32_t block_count;
-}th_blockallocator;
+}blkallocator;
 
-typedef uint32_t th_handle;
+struct blk_handle {
+    blkallocator* blkalc;
+    uint32_t blockid;
+};
 
-#define TH_INVALID_BLOCK 0
+#define BLKHANDLE_INVALID (blk_handle) {NULL, 0}
 
-#define TH_BLOCK_ACCESS(allocator, handle, type)			                       \
-	((type*)th_blockallocator_ptr(allocator, handle))
+#define blk_ptr(handle, type) \
+	((type*)_blkalc_ptr(handle))
 
-#define TH_BLOCKALLOCATOR_OPTIMAL_MEMSIZE(n_blocks, block_size)                    \
-	( ((n_blocks) * (_TH_ALIGN(block_size))) + ((sizeof(char) * (n_blocks))) )
+/*Calculates size of block memory and a blockhandle stack*/
+#define BLKALC_OPTIMAL_MEMSIZE(n_blocks, block_size)                    \
+	( ((n_blocks) * (_TH_ALIGN(block_size))) + ((sizeof(blk_handle) * (n_blocks))) )
 
-TH_ALLOCATOR_API
-th_status th_blockallocator_init(th_blockallocator* _ba, uint8_t* _memory, uint32_t _block_size, uint32_t _block_count);
+ALLOCATOR_API
+allocator_status blkalc_init(blkallocator* _ba, uint8_t* _memory, uint32_t _block_size, uint32_t _block_count);
 
-TH_ALLOCATOR_API
-th_handle th_blockallocator_take(th_blockallocator* _ba);
+ALLOCATOR_API
+blk_handle blkalc_take(blkallocator* _ba);
 
-TH_ALLOCATOR_API
-void th_blockallocator_return(th_blockallocator* _ba, th_handle _handle);
+ALLOCATOR_API
+char blk_ok(blk_handle* _h);
 
-TH_ALLOCATOR_API
-uint32_t th_blockallocator_n_available(th_blockallocator* _ba);
+ALLOCATOR_API
+uint32_t blkalc_n_available(blkallocator* _ba);
 
-TH_ALLOCATOR_API
-void* th_blockallocator_ptr(th_blockallocator* _ba, th_handle _handle);
-
+ALLOCATOR_API
+void blk_handle_return(blk_handle _handle);
 
 /* *****************************************************************************
  * Implenentation - define before include:
- * #define TH_ALLOCATOR_IMPLEMENTATION
+ * #define ALLOCATOR_IMPLEMENTATION
  * #include "th_allocator.h"
  * ****************************************************************************/
 
-#ifdef TH_ALLOCATOR_IMPLEMENTATION
+#define ALLOCATOR_IMPLEMENTATION
+#ifdef ALLOCATOR_IMPLEMENTATION
 
-TH_ALLOCATOR_API
-th_status
-th_stackallocator_setup(th_stackallocator* _a,
-					uint8_t* _mem,
-					uint32_t _memlen)
+ALLOCATOR_API
+memregion
+region(void* _mem, uint32_t _len)
+{
+    return (memregion){(uint8_t*)_mem, _len, 0};
+}
+
+ALLOCATOR_API
+char
+region_ok(memregion* _r)
+{
+    if (_r->mem != NULL && _r->len > 0)
+        return 1;
+    return 0;
+}
+
+ALLOCATOR_API
+allocator_status
+stackalc_new(stackallocator* _a, memregion _mem, void* _scratch)
 /**
  * @brief Create stack allocator from provided memory.
- *
  * @param Ptr to stack allocator.
- * @param Ptr to provided arena memory.
- * @param Size of provided memory.
- *
+ * @param memory region.
+ * @param scratch buffer.
  * @return error code on error, TH_OK on clean exit.
  */
 {
-    if (_a == NULL || _mem == NULL || _memlen < 1)
-        return TH_INVALID_INPUT;
-
-	_TH_MUTEX_WAIT_THEN_TAKE(_a->is_in_use);
-	_TH_BASEALLOCATOR_NEW(_a->allocator, _mem, _memlen);
-	_TH_MUTEX_GIVE(_a->is_in_use);
-	_TH_BOOKKEEPER_NEW(_a->bookkeeper);
-    return TH_OK;
+    if (_a == NULL || !region_ok(&_mem))
+        return ALLOCATOR_INVALID_INPUT;
+    _a->scratch_buffer = _scratch;
+    _a->region = _mem;
+	_ALC_BOOKKEEPER_NEW(_a->bookkeeper);
+    return ALLOCATOR_OK;
 }
 
-TH_ALLOCATOR_API
-th_status
-th_stackallocator_setup_s(th_stackallocator* _a,
-				      uint8_t* _mem,
-				      uint32_t _memsize,
-					  uint8_t* _scratch)
-/**
- * @brief Create stack allocator from provided memory
- *        with a scratch buffer.
- *
- * @param Ptr to stack allocator.
- * @param Ptr to provided arena memory.
- * @param Size of provided memory.
- * @param Ptr to scratch buffer.
-*
- * @return error code on error, TH_OK on clean exit.
- */
-{
-	th_status status = th_stackallocator_setup(_a, _mem, _memsize);
-	if (status != TH_OK)
-		return status;
-	_a->allocator.scratch_buffer = _scratch;
-	return TH_OK;
-}
-
-TH_ALLOCATOR_API
+ALLOCATOR_API
 void*
-th_stackallocator_alloc(th_stackallocator* _a, uint32_t _n)
+stackalc_alloc(stackallocator* _a, uint32_t _n)
 /**
  * @brief Allocate block from stack.
  *
  * @param Ptr to stack allocator.
  * @param Size of requested memory.
- *
  * @return if allocation was possible: ptr to allocated block.
  *         NULL otherwise.
  */
@@ -300,43 +291,36 @@ th_stackallocator_alloc(th_stackallocator* _a, uint32_t _n)
     if (_a == NULL)
         return NULL;
 
-	_TH_MUTEX_WAIT_THEN_TAKE(_a->is_in_use);
-
-    if ((_a->offset + _n) < _a->allocator.memlen) {
+    if ((_a->offset + _n) < _a->region.len) {
 		/*Provide a block of aligned memory*/
-		out = (uint8_t*)_TH_ALIGN((unsigned long)_a->allocator.memory +
+		out = (uint8_t*)_TH_ALIGN((unsigned long)_a->region.mem +
 								  _a->offset);
-		_a->offset = out - _a->allocator.memory + _n;
-	} else if (_a->allocator.scratch_buffer != NULL) {
+		_a->offset = out - _a->region.mem + _n;
+	} else {
 		/*Provide scratch buffer on arena being full*/
-        out = (uint8_t*)_TH_ALIGN((unsigned long)_a->allocator.scratch_buffer);
+        out = (uint8_t*)_a->scratch_buffer;
 	}
-    _TH_MUTEX_GIVE(_a->is_in_use);
 	if (out != NULL)
-	   _TH_BOOKKEEPER_INCREMENT(_a->bookkeeper);
+	   _ALC_BOOKKEEPER_INCREMENT(_a->bookkeeper);
 	return out;
 }
 
-TH_ALLOCATOR_API
+ALLOCATOR_API
 void
-th_stackallocator_reset(th_stackallocator* _a)
+stackalc_reset(stackallocator* _a)
 /**
  * @brief Free all allocated memory from arena 
- *
  * @param Ptr to stack allocator.
  */
 {
     if (_a == NULL)
         return;
-
-	_TH_MUTEX_WAIT_THEN_TAKE(_a->is_in_use);
     _a->offset = 0;
-    _TH_MUTEX_GIVE(_a->is_in_use);
 }
 
-TH_ALLOCATOR_API
-th_status
-th_allocator_init(th_allocator* _da, uint8_t* _memory, uint32_t _memsize)
+ALLOCATOR_API
+allocator_status
+dynalc_init(dynallocator* _da, memregion _region)
 /**
  * dynAllocator_set() - Initialize Dynamic Allocator without allocation.
  * @arg1: Ptr to allocator to initialize.
@@ -348,18 +332,18 @@ th_allocator_init(th_allocator* _da, uint8_t* _memory, uint32_t _memsize)
  * Return: error code on error, TH_OK on clean exit.
  */
 {
-	if (_da == NULL || _memory == NULL || _memsize < 1)
-		return TH_INVALID_INPUT;
-    _TH_BASEALLOCATOR_NEW(_da->allocator, _memory, _memsize);
-    _TH_BOOKKEEPER_NEW(_da->bookkeeper);
+	if (_da == NULL || !region_ok(&_region))
+		return ALLOCATOR_INVALID_INPUT;
+    _da->region = _region;
+    _ALC_BOOKKEEPER_NEW(_da->bookkeeper);
     _da->first = NULL;
     _da->last = NULL;
-    return TH_OK;
+    return ALLOCATOR_OK;
 }
 
-TH_ALLOCATOR_BACKEND
+ALLOCATOR_BACKEND
 uint8_t*
-_th_allocator_entry_create(uint8_t* _start, uint8_t* _next, uint32_t _size)
+_dynalc_entry_create(uint8_t* _start, uint8_t* _next, uint32_t _size)
 /**
  * _th_allocator_entry_create() - create chain entry at specified location.
  * @arg1: Ptr to start entry.
@@ -372,19 +356,19 @@ _th_allocator_entry_create(uint8_t* _start, uint8_t* _next, uint32_t _size)
  * Return: NULL on error, entry data ptr on clean exit.
  */
 {
-	_th_allocator_header* hptr = NULL;
+	_dynalc_header* hptr = NULL;
 	if (_start == NULL || _size < 1)
 		return NULL;
 
-	hptr = (_th_allocator_header*)_TH_ALIGN((unsigned long)_start);
+	hptr = (_dynalc_header*)_TH_ALIGN((unsigned long)_start);
 	hptr->next = _next;
 	hptr->size = _size;
-	return _TH_ALLOCATOR_HEADER2DATA(hptr);
+	return _ALLOCATOR_HEADER2DATA(hptr);
 }
 
-TH_ALLOCATOR_API
+ALLOCATOR_API
 void*
-th_allocator_malloc(th_allocator* _da, int _size)
+dynalc_malloc(dynallocator* _da, int _size)
 /**
  * dynAllocator_malloc() - create entry.
  * @arg1: Ptr to dynamic allocator.
@@ -408,25 +392,25 @@ th_allocator_malloc(th_allocator* _da, int _size)
 	uint8_t* next_header_start = NULL;
 	uint8_t* prev = NULL;
 	uint8_t* prev_data_end = NULL;
-	uint32_t total_size = _size + sizeof(_th_allocator_header);
+	uint32_t total_size = _size + sizeof(_dynalc_header);
 
 	if (_da == NULL || _size < 1 ||
-        total_size > _da->allocator.memlen)
+        total_size > _da->region.len)
 		return NULL;
 
     _TH_MUTEX_WAIT_THEN_TAKE(_da->is_in_use);
 	/* Allocation fit as first element in chain
 	 * */
 	if (_da->first == NULL) {
-		fit = _th_allocator_entry_create(_da->allocator.memory, NULL, _size);
+		fit = _dynalc_entry_create(_da->region.mem, NULL, _size);
 		_da->first = fit;
 		_da->last = _da->first;
         goto FOUND_FIT;
 	}
 	/* Allocation fit before first element in chain
 	 * */
-	if (total_size < _da->first - _da->allocator.memory) {
-		fit = _th_allocator_entry_create(_da->allocator.memory, _da->first, _size);
+	if (total_size < _da->first - _da->region.mem) {
+		fit = _dynalc_entry_create(_da->region.mem, _da->first, _size);
 		_da->first = fit;
         goto FOUND_FIT;
 	}
@@ -435,33 +419,33 @@ th_allocator_malloc(th_allocator* _da, int _size)
 	next = _da->first;
 	while (next != NULL) {
 		prev = next;
-		next = _TH_ALLOCATOR_DATA2HEADER(next)->next;
-		prev_data_end = prev + _TH_ALLOCATOR_DATA2HEADER(prev)->size;
-		next_header_start = (uint8_t*)_TH_ALLOCATOR_DATA2HEADER(next);
+		next = _ALLOCATOR_DATA2HEADER(next)->next;
+		prev_data_end = prev + _ALLOCATOR_DATA2HEADER(prev)->size;
+		next_header_start = (uint8_t*)_ALLOCATOR_DATA2HEADER(next);
 		if (next_header_start - prev_data_end >= total_size) {
-			fit = _th_allocator_entry_create(prev_data_end, next, _size);
-			_TH_ALLOCATOR_DATA2HEADER(prev)->next = fit;
+			fit = _dynalc_entry_create(prev_data_end, next, _size);
+			_ALLOCATOR_DATA2HEADER(prev)->next = fit;
             goto FOUND_FIT;
 		}
 	}
 	/* Allocation as last element in chain
 	 * */
-	if (prev_data_end + total_size <= _da->allocator.memory + _da->allocator.memlen) {
-		fit = _th_allocator_entry_create(prev_data_end, NULL, _size);
-		_TH_ALLOCATOR_DATA2HEADER(prev)->next = fit;
+	if (prev_data_end + total_size <= _da->region.mem + _da->region.len) {
+		fit = _dynalc_entry_create(prev_data_end, NULL, _size);
+		_ALLOCATOR_DATA2HEADER(prev)->next = fit;
 		_da->last = fit;
         goto FOUND_FIT;
 	}
 
 FOUND_FIT:
-    _TH_BOOKKEEPER_INCREMENT(_da->bookkeeper);
+    _ALC_BOOKKEEPER_INCREMENT(_da->bookkeeper);
     _TH_MUTEX_GIVE(_da->is_in_use);
     return fit;
 }
 
-TH_ALLOCATOR_BACKEND
+ALLOCATOR_BACKEND
 void*
-_th_allocator_find_entry(th_allocator* _da, void* _ptr, void** _prev_entry)
+_dynalc_find_entry(dynallocator* _da, void* _ptr, void** _prev_entry)
 /**
  * dynAllocator_find_entry() - Find entry in chain.
  * @arg1: Ptr to dynamic allocator.
@@ -487,21 +471,21 @@ _th_allocator_find_entry(th_allocator* _da, void* _ptr, void** _prev_entry)
 	/*Find freeable entry inside entry chain*/
 	prev = _da->first;
 	while (prev != NULL) {
-		if (_ptr == _TH_ALLOCATOR_DATA2HEADER(prev)->next) {
+		if (_ptr == _ALLOCATOR_DATA2HEADER(prev)->next) {
 			if (_prev_entry != NULL)
 				*_prev_entry = prev;
-			return _TH_ALLOCATOR_DATA2HEADER(prev)->next;
+			return _ALLOCATOR_DATA2HEADER(prev)->next;
 		}
-		prev = _TH_ALLOCATOR_DATA2HEADER(prev)->next;
+		prev = _ALLOCATOR_DATA2HEADER(prev)->next;
 	}
 	if (_prev_entry != NULL)
 		*_prev_entry = NULL;
 	return NULL;
 }
 
-TH_ALLOCATOR_API
+ALLOCATOR_API
 void*
-th_allocator_free(th_allocator* _da, void* _ptr)
+dynalc_free(dynallocator* _da, void* _ptr)
 /**
  * dynAllocator_free() - remove entry.
  * @arg1: Ptr to dynamic allocator.
@@ -519,28 +503,28 @@ th_allocator_free(th_allocator* _da, void* _ptr)
     _TH_MUTEX_WAIT_THEN_TAKE(_da->is_in_use);
 
 	if (_da == NULL || _ptr == NULL            ||
-        (uint8_t*)_ptr < _da->allocator.memory ||
-        (uint8_t*)_ptr > _da->allocator.memory + _da->allocator.memlen)
+        (uint8_t*)_ptr < _da->region.mem ||
+        (uint8_t*)_ptr > _da->region.mem + _da->region.len)
         goto HAS_FREED;
 
 
-	entry = _th_allocator_find_entry(_da, _ptr, &prev);
+	entry = _dynalc_find_entry(_da, _ptr, &prev);
 	/*Check if entry is part of chain*/
 	if (prev == NULL && entry == NULL)
         goto HAS_FREED;
 
     /*Remove found entry from allocator
      */
-    _TH_BOOKKEEPER_DECREMENT(_da->bookkeeper);
+    _ALC_BOOKKEEPER_DECREMENT(_da->bookkeeper);
 	if (prev == NULL && entry == _da->first) {
         /*entry is first in chain*/
-		_da->first = _TH_ALLOCATOR_DATA2HEADER(_da->first)->next; 
+		_da->first = _ALLOCATOR_DATA2HEADER(_da->first)->next; 
 		if (_da->last == _da->first)
 			_da->last = NULL;
         goto HAS_FREED;
 	}
 	/*Remove entry from inside chain*/
-	_TH_ALLOCATOR_DATA2HEADER(prev)->next = _TH_ALLOCATOR_DATA2HEADER(entry)->next;
+	_ALLOCATOR_DATA2HEADER(prev)->next = _ALLOCATOR_DATA2HEADER(entry)->next;
 
 
 HAS_FREED:
@@ -548,9 +532,9 @@ HAS_FREED:
     return NULL;
 }
 
-TH_ALLOCATOR_API
-th_status
-th_allocator_free_all(th_allocator* _da)
+ALLOCATOR_API
+allocator_status
+dynalc_free_all(dynallocator* _da)
 /**
  * dynAllocator_reset() - remove all entries.
  * @arg1: Ptr to dynamic allocator.
@@ -562,25 +546,25 @@ th_allocator_free_all(th_allocator* _da)
  */
 {
 	if (_da == NULL)
-		return TH_INVALID_INPUT;
+		return ALLOCATOR_INVALID_INPUT;
 
 	/*TODO: Might cause problems as the internal header->next pointers are the
 	 *      untouched. Solution: iterate though entries, and unlink manually.*/
     _TH_MUTEX_WAIT_THEN_TAKE(_da->is_in_use);
 	_da->first = NULL;
 	_da->last = NULL;
-    _TH_BOOKKEEPER_CLEAR(_da->bookkeeper);
+    _ALC_BOOKKEEPER_CLEAR(_da->bookkeeper);
 
     _TH_MUTEX_GIVE(_da->is_in_use);
-	return TH_OK;
+	return ALLOCATOR_OK;
 }
 
-TH_ALLOCATOR_API
-th_status
-th_blockallocator_init(th_blockallocator* _ba,
-                   uint8_t* _memory,
-                   uint32_t _block_size,
-                   uint32_t _block_count)
+ALLOCATOR_API
+allocator_status
+blkalc_init(blkallocator* _ba,
+            uint8_t* _memory,
+            uint32_t _block_size,
+            uint32_t _block_count)
 /**
  * th_BlockAlloc_init() - Setuo block allocator with provided  memory.
  *
@@ -599,26 +583,32 @@ th_blockallocator_init(th_blockallocator* _ba,
  *         exit.
  */
 {
+    blk_handle tmp_handle;
 	if (_ba == NULL || _memory == NULL ||
         _block_size < 1 || _block_count < 1 ||
         _block_size != _TH_ALIGN(_block_size))
-		return TH_INVALID_INPUT;
+		return ALLOCATOR_INVALID_INPUT;
 
     _TH_MUTEX_WAIT_THEN_TAKE(_ba->is_in_use);
 
 	_ba->block_size = _TH_ALIGN(_block_size);
 	_ba->block_count = _block_count;
-    _TH_BOOKKEEPER_NEW(_ba->bookkeeper);
-    /*NOTE: We set memlen in macro to 0 because we wont use it..*/
-    _TH_BASEALLOCATOR_NEW(_ba->allocator, _memory, 0);
+    _ALC_BOOKKEEPER_NEW(_ba->bookkeeper);
+
+    _ba->handle_stack = (blk_handle*)_memory;
+    _ba->region = region(_memory, _block_size * _block_count);
+    for (_ba->stack_top = 0; _ba->stack_top < _block_count; _ba->stack_top++) {
+        tmp_handle = (blk_handle) {_ba, _ba->stack_top};
+        _ba->handle_stack[_ba->stack_top] = tmp_handle;
+    }
 
     _TH_MUTEX_GIVE(_ba->is_in_use);
-    return TH_OK;
+    return ALLOCATOR_OK;
 }
 
-TH_ALLOCATOR_API
-th_handle
-th_blockallocator_take(th_blockallocator* _ba)
+ALLOCATOR_API
+blk_handle
+blkalc_take(blkallocator* _ba)
 /**
  * th_blockallocator_take() - Take a block from block allocator.
  *
@@ -627,46 +617,49 @@ th_blockallocator_take(th_blockallocator* _ba)
  * Return: Taken block index + 1, BLKALLOC_INVALID_BLOCK on invalid block.
  */
 {
-	uint32_t i;
+    blk_handle out;
 	if (_ba == NULL)
-		return TH_INVALID_BLOCK;
+		return BLKHANDLE_INVALID;
+    if (!region_ok(&_ba->region))
+		return BLKHANDLE_INVALID;
 
     _TH_MUTEX_WAIT_THEN_TAKE(_ba->is_in_use);
-	for (i = 0; i < _ba->block_count; i++) {
-		if (_ba->allocator.memory[i] == 0) {
-			_ba->allocator.memory[i] = 1;
-            _TH_BOOKKEEPER_INCREMENT(_ba->bookkeeper);
-            _TH_MUTEX_GIVE(_ba->is_in_use);
-			return i+1;
-		}
-	}
+    if (_ba->stack_top <= 0)
+        out = BLKHANDLE_INVALID;
+    else
+        out = _ba->handle_stack[_ba->stack_top--];
     _TH_MUTEX_GIVE(_ba->is_in_use);
-	return TH_INVALID_BLOCK;
+    return out;
 }
 
-TH_ALLOCATOR_API
+ALLOCATOR_API
 void
-th_blockallocator_return(th_blockallocator* _ba, th_handle _handle)
+blk_handle_return(blk_handle _handle)
 /**
  * BLKalloc_return() - free valid block from memory.
  * @arg1: Ptr to block allocator.
  * @arg2: specified block to return.
  */
 {
-	if (_ba == NULL || _handle < 1 || _handle > _ba->block_count)
+	if (!blk_ok(&_handle))
 		return;
-    _TH_MUTEX_WAIT_THEN_TAKE(_ba->is_in_use);
-	if (_ba->allocator.memory[_handle-1] != 0) {
-		_ba->allocator.memory[_handle-1] = 0;
-        _TH_BOOKKEEPER_DECREMENT(_ba->bookkeeper);
-	}
-    _TH_MUTEX_GIVE(_ba->is_in_use);
+    _TH_MUTEX_WAIT_THEN_TAKE(_handle.blkalc->is_in_use);
+    _handle.blkalc->handle_stack[++_handle.blkalc->stack_top] = _handle;
+    _TH_MUTEX_GIVE(_handle.blkalc->is_in_use);
 }
 
+ALLOCATOR_API
+char
+blk_ok(blk_handle* _h)
+{
+    if (_h == NULL || _h->blkalc == NULL)
+        return 0;
+    return 1;
+}
 
-TH_ALLOCATOR_API
+ALLOCATOR_API
 uint32_t
-th_blockallocator_n_available(th_blockallocator* _ba)
+blkalc_n_available(blkallocator* _ba)
 /**
  * BLKalloc_n_available() - get available blocks.
  *
@@ -685,9 +678,9 @@ th_blockallocator_n_available(th_blockallocator* _ba)
 	return n;
 }
 
-TH_ALLOCATOR_API
+ALLOCATOR_API
 void*
-th_blockallocator_ptr(th_blockallocator* _ba, th_handle _handle)
+_blkalc_ptr(blk_handle _handle)
 /**
  * th_blockallocator_ptr() - convert valid block to memory ptr.
  *
@@ -701,16 +694,15 @@ th_blockallocator_ptr(th_blockallocator* _ba, th_handle _handle)
  */
 {
 	uint32_t offset = 0;
-	if (_ba == NULL || _handle == 0 || _handle > _ba->block_count)
+    blkallocator* ba;
+	if (!blk_ok(&_handle))
 		return NULL;
-
-    _TH_MUTEX_WAIT_THEN_TAKE(_ba->is_in_use);
-	if (_ba->allocator.memory[_handle-1] == 0)
+    ba = _handle.blkalc;
+	if (!region_ok(&ba->region))
 		return NULL;
-	offset = _ba->block_count + (_ba->block_size * (_handle-1));
-    _TH_MUTEX_GIVE(_ba->is_in_use);
-	return (void*)_TH_ALIGN((unsigned long)(_ba->allocator.memory + offset));
+	offset = (ba->block_count * ba->block_size) + (ba->block_size * (_handle.blockid));
+	return (void*)_TH_ALIGN((unsigned long)(ba->region.mem + offset));
 }
 
-#endif /*TH_ALLOCATOR_IMPLEMENTATION*/
-#endif /*TH_ALLOCATOR_H*/
+#endif /*ALLOCATOR_IMPLEMENTATION*/
+#endif /*ALLOCATOR_H*/
