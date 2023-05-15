@@ -154,6 +154,8 @@ void stackalc_reset(stackallocator* _a);
 /* *****************************************************************************
  * Dynamic Allocator
  * ****************************************************************************/
+/*TODO: Add a sequencial_malloc() function that takes n allocations and forces
+  them to be sequencial in memory*/
 
 typedef struct {
 	uint8_t* next;
@@ -176,13 +178,16 @@ typedef struct {
 
 ALLOCATOR_API
 allocator_status dynalc_init(dynallocator* _da, memregion _region);
-
 ALLOCATOR_API
 void* dynalc_malloc(dynallocator* _da, int _size);
-
+/*
+ALLOCATOR_API
+void* dynalc_sequencial_malloc(dynallocator* _da, int _n, ...);
+ALLOCATOR_API
+void* dynalc_realloc(dynallocator* _da, void* _oldptr, uint32_t _newsize);
+*/
 ALLOCATOR_API
 void* dynalc_free(dynallocator* _da, void* _ptr);
-
 ALLOCATOR_API
 allocator_status dynalc_free_all(dynallocator* _da);
 

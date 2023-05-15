@@ -15,10 +15,21 @@ expr*
 read_eval_print(Environment* _e, char* _p)
 {
     ASSERT_INV_ENV(_e);
-    //expr* program = read(_e, _p);
-    expr* program = read_verbose(_e, _p);
+    expr* program = read(_e, _p);
     expr* result = eval(_e, program);
     print(result); printf("\n");
+    return result;
+}
+
+expr*
+read_eval_print_verbose(Environment* _e, char* _p, char* _gt)
+{
+    ASSERT_INV_ENV(_e);
+    expr* program = read(_e, _p);
+    printf("YAL> "); print(program); printf("\n");
+    printf("EXP> "); printf("%s\n", _gt);
+    expr* result = eval(_e, program);
+    printf("RES> "); print(result); printf("\n");
     return result;
 }
 
@@ -26,6 +37,7 @@ char
 read_eval_print_compare(Environment* _e, char* _p, char* _cmp)
 {
     expr* res = read_eval_print(_e, _p);
+    printf("===\n");
     UNUSED(res);
     UNUSED(_cmp);
     /*if res == _cmp
@@ -195,38 +207,36 @@ test_accessors(void)
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
-    TL_TEST(read_eval_print_compare(&e,
-                   "(car (quote (1 2 3 4)))",
-                   "(1)"));
-    TL_TEST(read_eval_print_compare(&e,
-                   "(cdr (quote (1 2 3 4)))",
-                   "(2 3 4)"));
-    TL_TEST(read_eval_print_compare(&e,
-                   "(cons (1) (2))",
-                   "((1) (2))"));
-    TL_TEST(read_eval_print_compare(&e,
-                   "(first (1 2 3 4))",
-                   "(1)"));
-    TL_TEST(read_eval_print_compare(&e,
-                   "(third (1 2 3 4))",
-                   "(3)"));
-    TL_TEST(read_eval_print_compare(&e,
-                   "(seventh (1 2 3 4))",
-                   "(NIL)"));
-    /*TODO: Lexing or printing is wrong! this is not formatted correctly!*/
-    TL_TEST(read_eval_print_compare(&e,
-                   "(first ((1 2) (3 4)))",
-                   "(1 2)"));
-    TL_TEST(read_eval_print_compare(&e,
-                   "(second ((1 2) (3 4) (5 6)))",
-                   "(3 4)"));
 
-    read_verbose(&e, "(nth 0 (1 2 3 4) )");
-    read_verbose(&e, "(nth 1 (1 2 3 4) )");
-    read_verbose(&e, "(nth 2 (1 2 3 4) )");
-    read_verbose(&e, "(nth 4 (1 2 3 4) )");
-    read_verbose(&e, "(nth -1 (1 2 3 4) )");
- 
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(quote (1 2 3 4))",
+                    "(1 2 3 4)"));
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(+ 1 2)",
+                    "(3)"));
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(- 7 3)",
+                    "(4)"));
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(+ 2 (- 5 6) 1)",
+                    "(2)"));
+
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(car (quote (1 2 3 4)))",
+                    "(1)"));
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(cdr (quote (1 2 3 4)))",
+                    "(2 3 4)"));
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(cons (quote (1)) (quote (2)))",
+                    "((1) (2))"));
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(first (quote (1 2 3 4)))",
+                    "(1)"));
+        TL_TEST(read_eval_print_verbose(&e,
+                    "(second (quote ((1 2) (3 4) (5 6)) ))",
+                    "(3 4)"));
+
     Env_destroy(&e);
 }
 
