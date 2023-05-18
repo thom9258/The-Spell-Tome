@@ -23,11 +23,8 @@ int main(void) {
 
 
 
-
-    Mat44 transform = mat44_identity();
     Vec3 t = vec3(1.2, 0, 4.7);
-    mat44_translate(&transform, t);
-    printf("transform:\n" MAT44_PSTRING, MAT44_EXPAND(transform));
+    printf(VEC3_PSTRING "\n", VEC3_EXPAND(t));
     return 0;
 }
 

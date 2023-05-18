@@ -76,6 +76,20 @@ typedef struct {
 typedef struct {
     union {
         struct {    
+            float x, y;
+        };
+        float v[2];
+    };
+}Vec2;
+
+#define VEC2_PSTRING \
+    "V2[ " PFMT ", " PFMT " ]"
+#define VEC2_EXPAND(v) \
+    v.x, v.y
+
+typedef struct {
+    union {
+        struct {    
             float x, y, z;
         };
         float v[3];
@@ -84,6 +98,7 @@ typedef struct {
 
 #define VEC3_PSTRING \
     "V3[ " PFMT ", " PFMT ", " PFMT " ]"
+
 #define VEC3_EXPAND(v) \
     v.x, v.y, v.z
 
@@ -127,6 +142,13 @@ float clampf(float min, float max, float val);
 Quat quat(float w, float x, float y, float z);
 
 /*Vectors*/
+Vec2 vec2_zero(void);
+Vec2 vec2(float x, float y);
+char vec2_equal(Vec2 a, Vec2 b);
+Vec2 vec2_plus(Vec2 a, Vec2 b);
+Vec2 vec2_minus(Vec2 a, Vec2 b);
+Vec2 vec2_multiply(Vec2 a, Vec2 b);
+
 Vec3 vec3_zero(void);
 Vec3 vec3(float x, float y, float z);
 char vec3_equal(Vec3 a, Vec3 b);
@@ -186,6 +208,86 @@ clampf(float min, float max, float val)
     return minf(maxf(val, min), max);
 }
 
+Vec2
+vec2_zero(void)
+{
+    return vec2(0, 0);
+}
+
+Vec2
+vec2(float x, float y)
+{
+    Vec2 v = {0};
+    v.x = x; v.y = y;
+    return v;
+}
+
+char
+vec2_equal(Vec2 a, Vec2 b)
+{
+    if (a.x == b.x && a.y == b.y)
+        return 1;
+    return 0;
+}
+
+Vec2
+vec2_plus(Vec2 a, Vec2 b)
+{
+    return vec2(a.x + b.x, a.y + b.y);
+}
+
+Vec2
+vec2_minus(Vec2 a, Vec2 b)
+{
+    return vec2(a.x - b.x, a.y - b.y);
+}
+
+Vec2
+vec2_multiply(Vec2 a, Vec2 b)
+{
+    return vec2(a.x * b.x, a.y * b.y);
+}
+
+Vec3
+vec3_zero(void)
+{
+    return vec3(0, 0, 0);
+}
+
+Vec3
+vec3(float x, float y, float z)
+{
+    Vec3 v = {0};
+    v.x = x; v.y = y; v.z = z;
+    return v;
+}
+
+char
+vec3_equal(Vec3 a, Vec3 b)
+{
+    if (a.x == b.x && a.y == b.y && a.z == b.z)
+        return 1;
+    return 0;
+}
+
+Vec3
+vec3_plus(Vec3 a, Vec3 b)
+{
+    return vec3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+Vec3
+vec3_minus(Vec3 a, Vec3 b)
+{
+    return vec3(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+Vec3
+vec3_multiply(Vec3 a, Vec3 b)
+{
+    return vec3(a.x * b.x, a.y * b.y, a.z * b.z);
+}
+
 Mat44
 mat44_zero(void)
 {
@@ -199,22 +301,10 @@ mat44(float v11, float v12, float v13, float v14,
       float v41, float v42, float v43, float v44)
 {
     Mat44 c = mat44_zero();
-    c.m11 =  v11;
-    c.m21 =  v21;
-    c.m31 =  v31;
-    c.m41 =  v41;
-    c.m12 =  v12;
-    c.m22 =  v22;
-    c.m32 =  v32;
-    c.m42 =  v42;
-    c.m13 =  v13;
-    c.m23 =  v23;
-    c.m33 =  v33;
-    c.m43 =  v43;
-    c.m14 =  v14;
-    c.m24 =  v24;
-    c.m34 =  v34;
-    c.m44 =  v44;
+    c.m11 = v11; c.m21 = v21; c.m31 = v31; c.m41 = v41;
+    c.m12 = v12; c.m22 = v22; c.m32 = v32; c.m42 = v42;
+    c.m13 = v13; c.m23 = v23; c.m33 = v33; c.m43 = v43;
+    c.m14 = v14; c.m24 = v24; c.m34 = v34; c.m44 = v44;
     return c;
 }
 
