@@ -64,11 +64,14 @@ http://www.ulisp.com/show?1BLW
 #define TSTR_IMPLEMENTATION
 #include "vendor/tstr.h"
 
+#define _IS_WHITESPACE(C)     (((C) == ' ' || (C) == '\t' || (C) == '\n') ? 1 : 0)
+#define _LOOKS_LIKE_NUMBER(C) (((C) > '0' && (C) < '9') ? 1 : 0)
+#define _LOOKS_LIKE_STRING(C) (((C) == '"') ? 1 : 0)
 
 #define DBPRINT(before, expr) \
     printf(before); print(expr);  printf("\n");
 
-#define foreach_in_list(expr) while (!is_nil(cdr(expr)))
+#define while_not_nil(expr) while (!is_nil(cdr(expr)))
 
 enum TYPE {
     TYPE_CONS = 0,
@@ -76,6 +79,8 @@ enum TYPE {
     TYPE_DECIMAL,
     TYPE_SYMBOL,
     TYPE_STRING,
+    TYPE_ARRAY,
+    TYPE_DICTIONARY,
 
     TYPE_COUNT
 };
@@ -85,14 +90,21 @@ const char* TYPE_TO_STR[TYPE_COUNT] = {
     "TYPE_REAL",
     "TYPE_DECIMAL",
     "TYPE_SYMBOL",
-    "TYPE_STRING"
+    "TYPE_STRING", 
+    "TYPE_ARRAY",
+    "TYPE_DICTIONARY"
 };
+
+typedef struct {
+    char type;
+    char* info;
+}usermsg;
 
 /*Forward declarations*/
 typedef struct expr expr;
 typedef struct Environment Environment;
 
-typedef expr*(*buildin_fn)(Environment*, expr*);
+typedef usermsg(*buildin_fn)(Environment* _env, expr** _out, expr* _in);
 
 typedef struct {
     tstr name;
@@ -106,7 +118,6 @@ typedef struct {
 struct Environment {
     Buildins buildins;
     sbAllocator expr_allocator;
-    ErrorManager errormanager;
 };
 
 struct expr {
@@ -131,45 +142,31 @@ struct expr {
  * Safety and Assertion on error
  * */
 #define UNUSED(x) (void)(x)
-#define UNIMPLEMENTED(fun) \
-    assert(0 && "UNIMPLEMENTED: " && fun)
+#define UNIMPLEMENTED(fun) assert(0 && "UNIMPLEMENTED: " && fun)
 
 #define ASSERT_UNREACHABLE() \
-    assert(0 && "YAL: Fatal Error occoured, reached unreachable code!")
+    assert(0 && "Fatal Error occoured, reached unreachable code!")
 
 #define ASSERT_INV_ENV(env) \
     assert(env != NULL && "Invalid environment is used in code! Ptr is NULL!")
 
-#define ERRCHECK_NILALLOC(env, expr) \
-    do { if (is_nil(expr)) { \
-             Error_put(&env->errormanager, \
-                       ERROR(ERROR_ERROR, (char*)"Was unable to allocate new expr cell!")); \
-        }} while (0)
+#define ASSERT_NOMOREMEMORY(env) \
+    assert(0 && "Was unable to allocate more memory!")
 
+#define USERERR(msg) (usermsg) {1, msg}
 
-#define ERRCHECK_NIL(env, expr)     \
-    do { if (is_nil(expr)) { \
-             Error_put(&env->errormanager, \
-                        ERROR(ERROR_ERROR, (char*)"Input expr is NIL!")); \
-        }} while (0)
+#define USERMSG_OK() (usermsg) {0, "OK"}
 
-#define ERRCHECK_LEN(env, expr, expected)        \
-    do { if (len(expr) != expected) { \
-             Error_put(&env->errormanager, \
-                        ERROR(ERROR_ERROR, (char*)"Length of  expr list is not expected!")); \
-        }} while (0)
+#define USERERR_LEN(fn, expected) \
+    USERERR("LENGTH OF INPUT IS INVALID, EXPECTED " #expected, fn)
 
-#define ERRCHECK_TYPE(env, expr, expected)       \
-    do { if (expr->type != expected) { \
-             Error_put(&env->errormanager, \
-                        ERROR(ERROR_ERROR, (char*)"expr has invalid type!")); \
-        }} while (0)
+#define USERERR_TYPE(fn, expected) \
+    USERERR("TYPE OF INPUT IS INVALID, EXPECTED " #expected, fn)
 
-#define ERRCHECK_NOTNUMBER(expr) \
-    do { if (expr->type != TYPE_REAL && expr->type != TYPE_DECIMAL) { \
-             Error_put(&env->errormanager, \
-                        ERROR(ERROR_ERROR, (char*)"Given expr is not a number!")); \
-        }} while (0)
+#define USERERR_NUMBER(fn) \
+    USERERR("INPUT WAS NOT A NUMVER", fn)
+
+#define USERMSG_IS_ERROR(MSGPTR) (((MSGPTR)->type == 0) ? 0 : 1)
 
 /*Environment management*/
 Environment* Env_new(Environment* _env);
@@ -202,13 +199,15 @@ expr* string(Environment *_env, tstr _v);
 expr* print(expr* _args);
 
 /*Core*/
-expr* read(Environment* _env, char* _program_str);
-expr* eval(Environment* _env, expr* _e);
+usermsg read(Environment* _env, expr** _out, char* _program_str);
+usermsg eval(Environment* _env, expr** _out, expr* _in);
+usermsg eval_all_args(Environment* _env, expr** _inout);
 
 
 /******************************************************************************/
 #define YAL_IMPLEMENTATION
 #ifdef YAL_IMPLEMENTATION
+
 
 Environment*
 Env_new(Environment* _env)
@@ -217,7 +216,6 @@ Env_new(Environment* _env)
     sbAllocator_init(&_env->expr_allocator, sizeof(expr));
     /*TODO: 30 is a arbitrary number, change when you know size of buildins*/
     Buildins_initn(&_env->buildins, 30);
-    _env->errormanager = (ErrorManager) {0};
     return _env;
 }
 
@@ -227,7 +225,6 @@ Env_destroy(Environment* _env)
     if (_env == NULL)
         return;
     sbAllocator_destroy(&_env->expr_allocator);
-    Errors_clear(&_env->errormanager);
 }
 
 /*the global nil object, so we dont have to allocate a bunch of them at runtime*/
@@ -263,16 +260,16 @@ is_symbol(expr* _args)
     return 0;
 }
 
-char
-car_is_list(expr* _args)
-{
-    if (!is_nil(_args) &&
-        _args->type == TYPE_CONS &&
-        is_cons(_args->car)
-        )
-        return 1;
-    return 0;
-}
+//char
+//car_is_list(expr* _args)
+//{
+//    if (!is_nil(_args) &&
+//        _args->type == TYPE_CONS &&
+//        is_cons(_args->car)
+//        )
+//        return 1;
+//    return 0;
+//}
 
 char
 is_dotted(expr* _args)
@@ -301,7 +298,7 @@ len(expr* _args)
     if (is_val(_args)) return 1;
     int cnt = 0;
     expr* tmp = _args;
-    foreach_in_list(tmp) {
+    while_not_nil(tmp) {
         tmp = cdr(tmp);
         cnt++;
     }
@@ -350,7 +347,8 @@ _atom_new(Environment *_env)
 {
     ASSERT_INV_ENV(_env);
     expr* e = (expr*)sbAllocator_get(&_env->expr_allocator);
-    ERRCHECK_NILALLOC(_env, e);
+    if (e == NULL)
+        ASSERT_NOMOREMEMORY(env);
     return e;
 }
 
@@ -425,24 +423,40 @@ string(Environment *_env, tstr _v)
     return e;
 }
 
-expr*
-_cons_print(expr* _args, char _open, char _close)
-{
-    /*Handle CAR*/
-    if (is_cons(car(_args))) {
-        printf("%c", _open);
-        print(car(_args));
-        printf("%c", _close);
-    } else {
-        if (!is_nil(car(_args)))
-            print(car(_args));
-    }
-    if (!is_nil(second(_args)))
-        printf(" ");
+//expr*
+//_cons_print(expr* _args, char* _open, char* _close)
+//{
+//    /*Handle CAR*/
+//    if (is_cons(car(_args))) {
+//        printf("%s", _open);
+//        print(car(_args));
+//        printf("%s", _close);
+//    } else {
+//        if (!is_nil(car(_args)))
+//            print(car(_args));
+//    }
+//    if (!is_nil(second(_args)))
+//        printf(" ");
+//
+//    /*Handle CDR*/
+//    if (!is_nil(cdr(_args)))
+//        print(cdr(_args));
+//    return _args;
+//}
 
-    /*Handle CDR*/
-    if (!is_nil(cdr(_args)))
-        print(cdr(_args));
+expr*
+_list_print(expr* _args, char* _open, char* _close)
+{
+    while_not_nil(_args) {
+        if (is_cons(car(_args)))
+            printf("%s", _open);
+        print(car(_args));
+        if (is_cons(car(_args)) && !is_nil(car(_args)))
+            printf("%s", _close);
+        if (!is_nil(second(_args)))
+            printf(" ");
+        _args = cdr(_args);
+    }
     return _args;
 }
 
@@ -453,17 +467,23 @@ print(expr* _arg)
         printf("NIL");
         return _arg;
     }
-    //if (is_dotted(_arg)) {
-    //    print(car(_arg));
-    //    printf(" . ");
-    //    print(cdr(_arg));
-    //}
-    //if (car_is_list(_arg)) {
-    //    _list_print(car(_arg), '(', ')');
-    //}
+    if (is_dotted(_arg)) {
+        printf("(");
+        print(car(_arg));
+        printf(" . ");
+        print(cdr(_arg));
+        printf(")");
+        return _arg;
+    }
     switch (_arg->type) {
     case TYPE_CONS:
-        _cons_print(_arg, '(', ')');
+        _list_print(_arg, "(", ")");
+        break;
+    case TYPE_ARRAY:
+        _list_print(_arg, "[", "]");
+        break;
+    case TYPE_DICTIONARY:
+        _list_print(_arg, "#{", "}");
         break;
     case TYPE_REAL:
         printf("%d", _arg->real);
@@ -481,29 +501,30 @@ print(expr* _arg)
     return _arg;
 }
 
-char
-_is_whitespace(char _c)
-{
-    if (_c == ' ' || _c == '\t' || _c == '\n' )
-        return 1;
-    return 0;
-}
+//char
+//_is_whitespace(char _c)
+//{
+//    if (_c == ' ' || _c == '\t' || _c == '\n' )
+//        return 1;
+//    return 0;
+//}
+//
+//char
+//_looks_like_number(char* _start)
+//{
+//    if (*_start > '0' && *_start < '9')
+//        return 1; 
+//    return 0;
+//}
+//
+//char
+//_looks_like_string(char* _start)
+//{
+//    if (*_start == '"')
+//        return 1;
+//    return 0;
+//}
 
-char
-_looks_like_number(char* _start)
-{
-    if (*_start > '0' && *_start < '9')
-        return 1; 
-    return 0;
-}
-
-char
-_looks_like_string(char* _start)
-{
-    if (*_start == '"')
-        return 1;
-    return 0;
-}
 
 char
 _is_symbol_real_or_decimal(tstr* _num)
@@ -521,7 +542,7 @@ _lex_number(Environment *_env, char* _start, int* _cursor)
     tstr str;
     int len = 0;
     char type;
-    while (!_is_whitespace(_start[len]) && _start[len] != '(' && _start[len] != ')')
+    while (!_IS_WHITESPACE(_start[len]) && _start[len] != '(' && _start[len] != ')')
         len++;
     str = tstr_n(_start, len+1);
     (*_cursor) += tstr_length(&str)-1;
@@ -548,62 +569,12 @@ _lex_symbol(Environment *_env, char* _start, int* _cursor)
 {
     int len = 0;
     tstr str;
-    while (!_is_whitespace(_start[len]) && _start[len] != '(' && _start[len] != ')')
+    while (!_IS_WHITESPACE(_start[len]) && _start[len] != '(' && _start[len] != ')')
         len++;
     str = tstr_n(_start, len+1);
     (*_cursor) += tstr_length(&str)-1;
     return symbol(_env, str);
 }
-
-#if 0
-expr*
-_expr_lex(Environment* _env, char* _program, int* _cursor)
-{
-    /*TODO: Does not support special syntax for:
-    quote = '
-    array = []
-    NIL and t
-    */
-    ASSERT_INV_ENV(_env);
-    assert(_program != NULL && "Invalid program given to lexer");
-    assert(_cursor != NULL && "Invalid cursor given to lexer");
-    assert(Buildins_len(&_env->buildins) > 0 && "No buildin functions in environment!");
-
-    expr* root = cons(_env, NULL, NULL);
-    expr* curr = root;
-    expr* extracted;
-    char* index;
-    while (1) {
-        index = _program + (*_cursor)++;
-        ERRCHECK_NIL(_env, curr);
-
-        if (_is_whitespace(*index)) {
-            continue;
-        }
-        else if (*index == '\0' || *index == ')') {
-            return root;
-        }
-        else if (*index ==  '(') {
-            extracted = _expr_lex(_env, _program, _cursor);
-        }
-        else if (_looks_like_string(index)) {
-            /*NOTE: this is a bad way of giving it index and cursor just for incrementing*/
-            extracted = _lex_string(_env, index, _cursor);
-        }
-        else if (_looks_like_number(index)) {
-            extracted = _lex_number(_env, index, _cursor);
-        }
-        else {
-            extracted = _lex_symbol(_env, index, _cursor);
-        }
-        /*Insert extracted into expression*/
-        curr->car = extracted;
-        curr->cdr = cons(_env, NULL, NULL);
-        curr = curr->cdr;
-    }
-    ASSERT_UNREACHABLE();
-}
-#endif
 
 expr*
 _lex(Environment* _env, char* _program, int* _cursor)
@@ -625,9 +596,7 @@ _lex(Environment* _env, char* _program, int* _cursor)
     char* index;
     while (1) {
         index = _program + (*_cursor)++;
-        ERRCHECK_NIL(_env, curr);
-
-        if (_is_whitespace(*index)) {
+        if (_IS_WHITESPACE(*index)) {
             continue;
         }
         else if (*index == '\0' || *index == ')') {
@@ -636,11 +605,11 @@ _lex(Environment* _env, char* _program, int* _cursor)
         else if (*index ==  '(') {
             extracted = _lex(_env, _program, _cursor);
         }
-        else if (_looks_like_string(index)) {
+        else if (_LOOKS_LIKE_STRING(*index)) {
             /*NOTE: this is a bad way of giving it index and cursor just for incrementing*/
             extracted = _lex_string(_env, index, _cursor);
         }
-        else if (_looks_like_number(index)) {
+        else if (_LOOKS_LIKE_NUMBER(*index)) {
             extracted = _lex_number(_env, index, _cursor);
         }
         else {
@@ -656,175 +625,211 @@ _lex(Environment* _env, char* _program, int* _cursor)
     ASSERT_UNREACHABLE();
 }
 
-expr*
-read(Environment* _env, char* _program_str)
+
+usermsg
+read(Environment* _env, expr** _out, char* _program_str)
 {
     ASSERT_INV_ENV(_env);
     assert(_program_str != NULL && "Given program str is NULL");
     int cursor = 0;
     expr* lexed = _lex(_env, _program_str, &cursor);
-    return lexed;
+    *_out = lexed;
+    return USERMSG_OK();
 }
 
 Buildin*
-_find_buildin(Environment* _env, expr* _fnsym)
+_find_buildin(Environment* _env, expr* _sym)
+// This function cannot assert or break, on error we return a NULL ptr.
+// It is up to the user of this function to show an error if NULL is returned.
 {
     Buildin* buildin = NULL;
     int i;
-    if (_fnsym == NULL) ASSERT_UNREACHABLE();
-    assert(is_symbol(_fnsym));
-    ERRCHECK_TYPE(_env, _fnsym, TYPE_SYMBOL);
-
-    //printf("looking for buildin '%s'\n", _fnsym->symbol.c_str);
+    if (is_nil(_sym) || !is_symbol(_sym))
+        return NULL;
+    printf("looking for buildin '%s'\n", _sym->symbol.c_str);
     for (i = 0; i < Buildins_len(&_env->buildins); i++) {
         buildin = Buildins_peek(&_env->buildins, i);
-        if (tstr_equal(&buildin->name, &_fnsym->symbol)) {
-            //printf("found '%s'\n", buildin->name.c_str);
+        if (tstr_equal(&buildin->name, &_sym->symbol)) {
+            printf("found '%s'\n", buildin->name.c_str);
             return buildin;
         }
     }
-    assert(0 && "Given Function did not exist in buildins!");
-    ASSERT_UNREACHABLE();
+    return NULL;
 }
 
-expr*
-eval_all_args(Environment* _env, expr* _e)
+usermsg
+eval_all_args(Environment* _env, expr** _inout)
 {
-    expr* tmp;
-    if (!is_cons(_e))
-        return eval(_env, _e);
-    tmp = _e;
-    foreach_in_list(tmp) {
-        //printf("calling eval_all_args on: "); print(car(tmp)); printf("\n");
-        /*TODO: Error in this fn, look at quote (a b) evaling to ((a b))*/
-        tmp->car = eval(_env, car(tmp));
+    usermsg msg;
+    expr* tmp = *_inout;
+    if (!is_cons(tmp)) {
+        return eval(_env, _inout, tmp);
+    }
+    while_not_nil(tmp) {
+        msg = eval(_env, &tmp->car, car(tmp));
+        if (USERMSG_IS_ERROR(&msg))
+            return msg;
         tmp = cdr(tmp);
     }
-    return _e;
+    return USERMSG_OK();
 }
 
-expr*
-_eval_function(Environment* _env, expr* _e)
+//usermsg
+//_eval_function(Environment* _env, expr** _out, expr* _in)
+//{
+//    expr* fn;
+//    expr* args;
+//    Buildin* buildin;
+//    ASSERT_INV_ENV(_env);
+//    assert(!is_nil(_in) &&
+//        "_eval_function() recieved a nil '_in' argument, this should be impossible!");
+//    /*Extract function symbol and its arguments*/
+//    fn = car(_in);
+//    args = cdr(_in);
+//    DBPRINT("(_eval_function) FN:    ", fn);
+//    DBPRINT("(_eval_function) ARGS:  ", args);
+//
+//    assert(fn->type == TYPE_SYMBOL && "Recieved something that was not a symbol!");
+//    buildin = _find_buildin(_env, fn);
+//    if (buildin == NULL)
+//        return USERERR( "Given function symbol does not match any known functions!");
+//    return buildin->fn(_env, _out, args);
+//}
+
+usermsg
+eval(Environment* _env, expr** _out, expr* _in)
 {
+
     expr* fn;
     expr* args;
     Buildin* buildin;
+
     ASSERT_INV_ENV(_env);
-    if (is_nil(_e))
-        return _e;
-    /*Extract function symbol and its arguments*/
-    /*NOTE: this should not be done*/
-    //_e = car(_e);
-    fn = car(_e);
-    args = cdr(_e);
-    //DBPRINT("(_eval_function) INPUT: ", _e);
-    DBPRINT("(_eval_function) FN:    ", fn);
-    DBPRINT("(_eval_function) ARGS:  ", args);
-
-    assert(fn->type == TYPE_SYMBOL && "Recieved something that was not a symbol!");
-    ERRCHECK_TYPE(_env, args, TYPE_CONS);
-    buildin = _find_buildin(_env, fn);
-    return buildin->fn(_env, args);
-}
-
-expr*
-eval(Environment* _env, expr* _e)
-{
-    ASSERT_INV_ENV(_env);
-    if (is_nil(_e))
-        return _e;
-
+    if (is_nil(_in))
+        return USERERR("Expected non-nil input for function 'eval'.");
     /*We are sanitizing inputs here by removing a cons cell*/
-    if (is_cons(_e) && is_cons(car(_e)))
-        return _eval_function(_env, car(_e));
-    else if (is_cons(_e))
-        return _eval_function(_env, _e);
+    /*TODO: This is what i think goes wrong*/
+    //if (is_cons(_in) && is_cons(car(_in)))
+    //return _eval_function(_env, car(_e));
+    _in = car(_in);
+
+    if (is_cons(_in)) {
+        //return _eval_function(_env, _out, _in);
+        /*Extract function symbol and its arguments*/
+        fn = car(_in);
+        args = cdr(_in);
+        DBPRINT("(_eval_function) FN:   ", fn);
+        DBPRINT("(_eval_function) ARGS: ", args);
+        if (fn->type != TYPE_SYMBOL)
+            return USERERR("First value in list to eval was not a callable symbol!");
+        buildin = _find_buildin(_env, fn);
+        return buildin->fn(_env, _out, args);
+    }
 
     /*TODO: Check symbol table and return value of symbol*/
-    if (is_symbol(_e))
-        return _e;
-    return _e;
+    if (is_symbol(_in))
+        *_out =  _in;
+
+    return USERMSG_OK();
 }
 
-expr*
-buildin_quote(Environment* _env, expr* _e)
+/*********************************************************************/
+/* Buildin Functions */
+/*********************************************************************/
+
+usermsg
+buildin_quote(Environment* _env, expr** _out, expr* _in)
 {
     ASSERT_INV_ENV(_env);
     printf("buidlin quote called\n");
-    return _e;
+    *_out = _in;
+    return USERMSG_OK();
 }
 
-expr*
-buildin_list(Environment* _env, expr* _e)
+usermsg
+buildin_list(Environment* _env, expr** _out, expr* _in)
 {
     ASSERT_INV_ENV(_env);
-    return cons(_env, _e, NIL());
+    *_out = cons(_env, _in, NIL());
+    return USERMSG_OK();
 }
 
-expr*
-buildin_car(Environment* _env, expr* _e)
+usermsg
+buildin_car(Environment* _env, expr** _out, expr* _in)
 {
-    UNUSED(_env);
-    printf("buidlin car called\n");
-    _e = eval_all_args(_env, _e);
-    DBPRINT("result of eval in car: ", _e);
-    return car(_e);
-    /*TODO: This cant be right, lots of nesting errors!*/
-    //return car(car(car(_e)));
-}
-
-expr*
-buildin_cdr(Environment* _env, expr* _e)
-{
-    UNUSED(_env);
-    _e = eval_all_args(_env, _e);
-    DBPRINT("result of eval in cdr: ", _e);
-    return cdr(_e);
-    /*TODO: This cant be right, lots of nesting errors!*/
-    //return cdr(car(car(_e)));
-}
-
-expr*
-buildin_cons(Environment* _env, expr* _e)
-{
-    UNUSED(_env);
-    _e = eval_all_args(_env, _e);
-    DBPRINT("result of eval in consr: ", _e);
-    return cons(_env, first(_e), second(_e));
-}
-
-expr*
-buildin_plus(Environment* _env, expr* _e)
-{
+    usermsg msg;
     ASSERT_INV_ENV(_env);
+    msg = eval_all_args(_env, &_in);
+    if (USERMSG_IS_ERROR(&msg)) return msg;
+    DBPRINT("result of eval in car: ", _in);
+    *_out =  car(_in);
+    return USERMSG_OK();
+}
+
+usermsg
+buildin_cdr(Environment* _env, expr** _out, expr* _in)
+{
+    usermsg msg;
+    ASSERT_INV_ENV(_env);
+    msg = eval_all_args(_env, &_in);
+    if (USERMSG_IS_ERROR(&msg)) return msg;
+    DBPRINT("result of eval in cdr: ", _in);
+    *_out =  cdr(_in);
+    return USERMSG_OK();
+}
+
+usermsg
+buildin_cons(Environment* _env, expr** _out, expr* _in)
+{
+    usermsg msg;
+    ASSERT_INV_ENV(_env);
+    msg = eval_all_args(_env, &_in);
+    if (USERMSG_IS_ERROR(&msg)) return msg;
+    DBPRINT("result of eval in cons: ", _in);
+    *_out =  cons(_env, first(_in), second(_in));
+    return USERMSG_OK();
+}
+
+usermsg
+buildin_plus(Environment* _env, expr** _out, expr* _in)
+{
+    usermsg msg;
     int sum = 0;
     expr* tmp = NULL;
-    tmp = eval_all_args(_env, _e);
+    ASSERT_INV_ENV(_env);
+    msg = eval_all_args(_env, &_in);
+    if (USERMSG_IS_ERROR(&msg)) return msg;
+    DBPRINT("result of eval in plus: ", _in);
 
-    foreach_in_list(tmp) {
-        assert(car(tmp)->type == TYPE_REAL);
+    while_not_nil(tmp) {
+        if (!is_val(tmp))
+            return USERERR("Unable to call 'plus' on non-value argument");
         sum += car(tmp)->real;
         tmp = cdr(tmp);
     }
-    return real(_env, sum);
+    *_out = real(_env, sum); 
+    return USERMSG_OK();
 }
 
-expr*
-buildin_minus(Environment* _env, expr* _e)
+usermsg
+buildin_minus(Environment* _env, expr** _out, expr* _in)
 {
-    ASSERT_INV_ENV(_env);
+    usermsg msg;
     int sum = 0;
     expr* tmp = NULL;
-    tmp = eval_all_args(_env, _e);
-    sum = car(tmp)->real;
-    tmp = cdr(tmp);
+    ASSERT_INV_ENV(_env);
+    msg = eval_all_args(_env, &_in);
+    if (USERMSG_IS_ERROR(&msg)) return msg;
+    DBPRINT("result of eval in minus: ", _in);
 
-    foreach_in_list(tmp) {
-        assert(car(tmp)->type == TYPE_REAL);
+    while_not_nil(tmp) {
+        if (!is_val(tmp))
+            return USERERR("Unable to call 'minus' on non-value argument");
         sum -= car(tmp)->real;
         tmp = cdr(tmp);
     }
-    return real(_env, sum);
+    *_out = real(_env, sum); 
+    return USERMSG_OK();
 }
 
 void

@@ -1,12 +1,16 @@
 #include "testlib.h"
 #include "../yal.h"
 
+#define PRINT_IF_ERROR(MSGPTR) \
+    if (USERMSG_IS_ERROR((MSGPTR))) printf("USER ERROR:\n\t%s\n", (MSGPTR)->info)
+
 expr*
 read_verbose(Environment* _e, char* _p)
 {
+    expr* prediction;
     ASSERT_INV_ENV(_e);
     printf("string: %s\n", _p);
-    expr* prediction = read(_e, _p);
+    read(_e, &prediction, _p);
     printf("lexed:  "); print(prediction); printf("\n");
     return prediction;
 }
@@ -14,9 +18,14 @@ read_verbose(Environment* _e, char* _p)
 expr*
 read_eval_print(Environment* _e, char* _p)
 {
+    usermsg msg;
+    expr* program;
+    expr* result;
     ASSERT_INV_ENV(_e);
-    expr* program = read(_e, _p);
-    expr* result = eval(_e, program);
+    msg = read(_e, &program, _p);
+    PRINT_IF_ERROR(&msg);
+    msg = eval(_e, &result, program);
+    PRINT_IF_ERROR(&msg);
     print(result); printf("\n");
     return result;
 }
@@ -24,11 +33,16 @@ read_eval_print(Environment* _e, char* _p)
 expr*
 read_eval_print_verbose(Environment* _e, char* _p, char* _gt)
 {
+    usermsg msg;
+    expr* program;
+    expr* result;
     ASSERT_INV_ENV(_e);
-    expr* program = read(_e, _p);
+    msg = read(_e, &program, _p);
+    PRINT_IF_ERROR(&msg);
     printf("YAL> "); print(program); printf("\n");
-    printf("EXP> "); printf("%s\n", _gt);
-    expr* result = eval(_e, program);
+    msg = eval(_e, &result, program);
+    PRINT_IF_ERROR(&msg);
+    printf("EXPECTED> "); printf("%s\n", _gt);
     printf("RES> "); print(result); printf("\n");
     return result;
 }
@@ -45,8 +59,6 @@ read_eval_print_compare(Environment* _e, char* _p, char* _cmp)
      */
     return 0;
 }
-
-
 
 expr* csymbol(Environment* _env, char* _sym)
 {
@@ -133,6 +145,14 @@ void test_print(void)
     printf("\n");
 
     r = cons(&e,
+             csymbol(&e, "mydottedlistvar"),
+             real(&e, 22)
+        );
+    print(r);
+    printf("\n");
+
+
+    r = cons(&e,
              csymbol(&e, "*"),
              cons(&e,
                   real(&e, 2),
@@ -213,23 +233,22 @@ test_accessors(void)
                     "(1 2 3 4)"));
         TL_TEST(read_eval_print_verbose(&e,
                     "(+ 1 2)",
-                    "(3)"));
+                    "3"));
         TL_TEST(read_eval_print_verbose(&e,
                     "(- 7 3)",
-                    "(4)"));
+                    "4"));
         TL_TEST(read_eval_print_verbose(&e,
                     "(+ 2 (- 5 6) 1)",
-                    "(2)"));
-
+                    "2"));
         TL_TEST(read_eval_print_verbose(&e,
                     "(car (quote (1 2 3 4)))",
-                    "(1)"));
+                    "1"));
         TL_TEST(read_eval_print_verbose(&e,
                     "(cdr (quote (1 2 3 4)))",
                     "(2 3 4)"));
         TL_TEST(read_eval_print_verbose(&e,
-                    "(cons (quote (1)) (quote (2)))",
-                    "((1) (2))"));
+                    "(cons 1 2)",
+                    "(1 . 2)"));
         TL_TEST(read_eval_print_verbose(&e,
                     "(first (quote (1 2 3 4)))",
                     "(1)"));
