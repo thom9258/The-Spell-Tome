@@ -69,7 +69,7 @@ http://www.ulisp.com/show?1BLW
 #define _LOOKS_LIKE_STRING(C) (((C) == '"') ? 1 : 0)
 
 #define DBPRINT(before, expr) \
-    printf(before); print(expr);  printf("\n");
+    printf(before); printexpr(expr);  printf("\n");
 
 #define while_not_nil(expr) while (!is_nil(cdr(expr)))
 
@@ -168,6 +168,13 @@ struct expr {
 
 #define USERMSG_IS_ERROR(MSGPTR) (((MSGPTR)->type == 0) ? 0 : 1)
 
+#define return_if_error(msgdst, call)                                   \
+    do {                                                                \
+    (msgdst) = call;                                                    \
+    if (USERMSG_IS_ERROR(&(msgdst)))                                    \
+        return (msgdst);                                                \
+    } while (0)
+
 /*Environment management*/
 Environment* Env_new(Environment* _env);
 void Env_destroy(Environment* _env);
@@ -196,12 +203,13 @@ expr* symbol(Environment *_env, tstr _v);
 expr* string(Environment *_env, tstr _v);
 
 /*Printing*/
-expr* print(expr* _args);
+expr* printexpr(expr* _args);
+tstr stringifyexpr(expr* _args);
 
 /*Core*/
 usermsg read(Environment* _env, expr** _out, char* _program_str);
 usermsg eval(Environment* _env, expr** _out, expr* _in);
-usermsg eval_all_args(Environment* _env, expr** _inout);
+usermsg progc(Environment* _env, expr** _out, expr* _in);
 
 
 /******************************************************************************/
@@ -450,7 +458,7 @@ _list_print(expr* _args, char* _open, char* _close)
     while_not_nil(_args) {
         if (is_cons(car(_args)))
             printf("%s", _open);
-        print(car(_args));
+        printexpr(car(_args));
         if (is_cons(car(_args)) && !is_nil(car(_args)))
             printf("%s", _close);
         if (!is_nil(second(_args)))
@@ -461,7 +469,7 @@ _list_print(expr* _args, char* _open, char* _close)
 }
 
 expr*
-print(expr* _arg)
+printexpr(expr* _arg)
 {
     if (is_nil(_arg)) {
         printf("NIL");
@@ -469,9 +477,9 @@ print(expr* _arg)
     }
     if (is_dotted(_arg)) {
         printf("(");
-        print(car(_arg));
+        printexpr(car(_arg));
         printf(" . ");
-        print(cdr(_arg));
+        printexpr(cdr(_arg));
         printf(")");
         return _arg;
     }
@@ -499,6 +507,88 @@ print(expr* _arg)
         break;
     };
     return _arg;
+}
+
+tstr
+_stringify_list(expr* _args, char* _open, char* _close)
+{
+    tstr space = tstr_const(" ");
+    tstr open = tstr_(_open);
+    tstr close = tstr_(_close);
+    tstr dst;
+    tstr tmp;
+
+    while_not_nil(_args) {
+        if (is_cons(car(_args)))
+            tstr_concat(&dst, &open);
+
+        tmp = stringifyexpr(car(_args));
+        tstr_concat(&dst, &tmp);
+        tstr_destroy(&tmp);
+
+        if (is_cons(car(_args)) && !is_nil(car(_args)))
+            tstr_concat(&dst, &close);
+
+        if (!is_nil(second(_args)))
+            tstr_concat(&dst, &space);
+
+        _args = cdr(_args);
+    }
+
+    tstr_destroy(&open);
+    tstr_destroy(&close);
+    return dst;
+}
+
+tstr
+stringifyexpr(expr* _arg)
+{
+    tstr lparen = tstr_const("(");
+    tstr rparen = tstr_const(")");
+    tstr dotted = tstr_const(" . ");
+    tstr quote = tstr_const("\"");
+    tstr nilstr = tstr_const("NIL");
+    tstr dst;
+
+    if (is_nil(_arg)) {
+        tstr_concat(&dst, &nilstr);
+        return dst;
+    }
+    if (is_dotted(_arg)) {
+        tstr carstr = stringifyexpr(car(_arg));
+        tstr cdrstr = stringifyexpr(cdr(_arg));
+        tstr_concatva(&dst, 5,
+                      &lparen, carstr, &dotted, cdrstr, &rparen);
+        tstr_destroy(&carstr);
+        tstr_destroy(&cdrstr);
+        return dst;
+    }
+    switch (_arg->type) {
+    case TYPE_CONS:
+        dst = _stringify_list(_arg, "(", ")");
+        break;
+    case TYPE_ARRAY:
+        dst  =_stringify_list(_arg, "(", ")");
+        break;
+    case TYPE_DICTIONARY:
+        dst = _stringify_list(_arg, "(", ")");
+        break;
+    case TYPE_REAL:
+        tstr_from_int(&dst, _arg->real);
+        break;
+    case TYPE_DECIMAL:
+        tstr_from_float(&dst, _arg->decimal);
+        break;
+    case TYPE_SYMBOL:
+        tstr_duplicate(&_arg->symbol, &dst);
+        printf("%s", _arg->symbol.c_str);
+        break;
+    case TYPE_STRING:
+        tstr_concatva(&dst, 3,
+                      &quote, &_arg->string, &quote);
+        break;
+    };
+    return dst;
 }
 
 //char
@@ -582,8 +672,7 @@ _lex(Environment* _env, char* _program, int* _cursor)
     /*TODO: Does not support special syntax for:
     quote = '
     array = []
-    NIL and ()
-    t
+    dotted lists (a . 34)
     */
     ASSERT_INV_ENV(_env);
     assert(_program != NULL && "Invalid program given to lexer");
@@ -658,55 +747,41 @@ _find_buildin(Environment* _env, expr* _sym)
 }
 
 usermsg
-eval_all_args(Environment* _env, expr** _inout)
+progc(Environment* _env, expr** _out, expr* _in)
 {
     usermsg msg;
-    expr* tmp = *_inout;
-    if (!is_cons(tmp)) {
-        return eval(_env, _inout, tmp);
-    }
+    expr* root = cons(_env, NULL, NULL);
+    expr* outtmp = root;
+    expr* tmp = _in;
+    ASSERT_INV_ENV(_env);
+    DBPRINT("input to progc: ", _in);
+    if (!is_cons(_in))
+        return USERERR("'progc' Expected a list of eval'able arguments!");
     while_not_nil(tmp) {
-        msg = eval(_env, &tmp->car, car(tmp));
-        if (USERMSG_IS_ERROR(&msg))
-            return msg;
+        return_if_error(msg, eval(_env, &(outtmp->car), car(tmp)));
+        DBPRINT("progc evalled: ", car(tmp));
+        DBPRINT("to ", car(outtmp));
+        outtmp->cdr = cons(_env, NULL, NULL);
+        outtmp = cdr(outtmp);
         tmp = cdr(tmp);
     }
+    *_out = root;
+    DBPRINT("result of progc: ", *_out);
     return USERMSG_OK();
 }
-
-//usermsg
-//_eval_function(Environment* _env, expr** _out, expr* _in)
-//{
-//    expr* fn;
-//    expr* args;
-//    Buildin* buildin;
-//    ASSERT_INV_ENV(_env);
-//    assert(!is_nil(_in) &&
-//        "_eval_function() recieved a nil '_in' argument, this should be impossible!");
-//    /*Extract function symbol and its arguments*/
-//    fn = car(_in);
-//    args = cdr(_in);
-//    DBPRINT("(_eval_function) FN:    ", fn);
-//    DBPRINT("(_eval_function) ARGS:  ", args);
-//
-//    assert(fn->type == TYPE_SYMBOL && "Recieved something that was not a symbol!");
-//    buildin = _find_buildin(_env, fn);
-//    if (buildin == NULL)
-//        return USERERR( "Given function symbol does not match any known functions!");
-//    return buildin->fn(_env, _out, args);
-//}
 
 usermsg
 eval(Environment* _env, expr** _out, expr* _in)
 {
-
     expr* fn;
     expr* args;
+    usermsg msg;
     Buildin* buildin;
 
     ASSERT_INV_ENV(_env);
     if (is_nil(_in))
         return USERERR("Expected non-nil input for function 'eval'.");
+    if (is_val(_in))
     /*We are sanitizing inputs here by removing a cons cell*/
     /*TODO: This is what i think goes wrong*/
     //if (is_cons(_in) && is_cons(car(_in)))
@@ -723,7 +798,9 @@ eval(Environment* _env, expr** _out, expr* _in)
         if (fn->type != TYPE_SYMBOL)
             return USERERR("First value in list to eval was not a callable symbol!");
         buildin = _find_buildin(_env, fn);
-        return buildin->fn(_env, _out, args);
+        msg = buildin->fn(_env, _out, args);
+        *_out =  _in;
+        return msg;
     }
 
     /*TODO: Check symbol table and return value of symbol*/
@@ -758,11 +835,10 @@ usermsg
 buildin_car(Environment* _env, expr** _out, expr* _in)
 {
     usermsg msg;
+    expr* args;
     ASSERT_INV_ENV(_env);
-    msg = eval_all_args(_env, &_in);
-    if (USERMSG_IS_ERROR(&msg)) return msg;
-    DBPRINT("result of eval in car: ", _in);
-    *_out =  car(_in);
+    return_if_error(msg, progc(_env, &args, _in));
+    *_out =  car(args);
     return USERMSG_OK();
 }
 
@@ -770,11 +846,12 @@ usermsg
 buildin_cdr(Environment* _env, expr** _out, expr* _in)
 {
     usermsg msg;
+    expr* args;
     ASSERT_INV_ENV(_env);
-    msg = eval_all_args(_env, &_in);
+    msg = progc(_env, &args, _in);
     if (USERMSG_IS_ERROR(&msg)) return msg;
-    DBPRINT("result of eval in cdr: ", _in);
-    *_out =  cdr(_in);
+    DBPRINT("result of eval in cdr: ", args);
+    *_out =  cdr(args);
     return USERMSG_OK();
 }
 
@@ -782,28 +859,46 @@ usermsg
 buildin_cons(Environment* _env, expr** _out, expr* _in)
 {
     usermsg msg;
+    expr* args;
     ASSERT_INV_ENV(_env);
-    msg = eval_all_args(_env, &_in);
+    msg = progc(_env, &args, _in);
     if (USERMSG_IS_ERROR(&msg)) return msg;
-    DBPRINT("result of eval in cons: ", _in);
-    *_out =  cons(_env, first(_in), second(_in));
+    DBPRINT("result of eval in cons: ", args);
+    *_out =  cons(_env, first(args), second(args));
     return USERMSG_OK();
+}
+
+void
+_arimetric_type_convert(Environment* _env, expr** _target, expr* _new)
+{
+    expr* tmp;
+    if (!is_val(*_target) || !is_val(_new))
+        return;
+    else if ((*_target)->type == TYPE_DECIMAL)
+        return;
+    else if (_new->type == TYPE_DECIMAL && (*_target)->type == TYPE_REAL) {
+        tmp = *_target;
+        *_target = decimal(_env, tmp->real);
+    }
 }
 
 usermsg
 buildin_plus(Environment* _env, expr** _out, expr* _in)
 {
     usermsg msg;
+    expr* args;
     int sum = 0;
-    expr* tmp = NULL;
+    expr* tmp;
     ASSERT_INV_ENV(_env);
-    msg = eval_all_args(_env, &_in);
+    msg = progc(_env, &args, _in);
     if (USERMSG_IS_ERROR(&msg)) return msg;
-    DBPRINT("result of eval in plus: ", _in);
+    DBPRINT("result of progc in + ", args);
 
+    tmp = args;
     while_not_nil(tmp) {
-        if (!is_val(tmp))
+        if (!is_val(car(tmp)))
             return USERERR("Unable to call 'plus' on non-value argument");
+        DBPRINT("plus added ", car(tmp))
         sum += car(tmp)->real;
         tmp = cdr(tmp);
     }
@@ -815,16 +910,29 @@ usermsg
 buildin_minus(Environment* _env, expr** _out, expr* _in)
 {
     usermsg msg;
+    expr* args;
     int sum = 0;
-    expr* tmp = NULL;
+    expr* tmp;
     ASSERT_INV_ENV(_env);
-    msg = eval_all_args(_env, &_in);
+    msg = progc(_env, &args, _in);
     if (USERMSG_IS_ERROR(&msg)) return msg;
-    DBPRINT("result of eval in minus: ", _in);
+    tmp = args;
 
+    /*Check for non-numbers*/
     while_not_nil(tmp) {
-        if (!is_val(tmp))
+        if (!is_val(car(tmp)))
             return USERERR("Unable to call 'minus' on non-value argument");
+        tmp = cdr(tmp);
+    }
+    /*Make sure to return if there are no numbers in list*/
+    tmp = _in;
+    if (is_nil(car(tmp))) {
+        *_out = real(_env, sum); 
+        return USERMSG_OK();
+    }
+    sum += car(tmp)->real;
+    tmp = cdr(tmp);
+    while_not_nil(tmp) {
         sum -= car(tmp)->real;
         tmp = cdr(tmp);
     }

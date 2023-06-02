@@ -118,6 +118,7 @@ TODO: Add sorting function, requires "t_operator_largest"
 
 /*defines for better readability of function names*/
 #define arr_t_initn           _CAT(arr_t_name, _initn)
+#define arr_t_ok              _CAT(arr_t_name, _ok)
 #define arr_t_destroy         _CAT(arr_t_name, _destroy)
 #define arr_t_destroy_members _CAT(arr_t_name, _destroy_members)
 #define arr_t_len             _CAT(arr_t_name, _len)
@@ -160,10 +161,18 @@ arr_t_initn(arr_t_name* _arr, int _n)
     _arr->growth_rate = 1.5f;
 }
 
+char
+arr_t_ok(arr_t_name* _arr)
+{
+    if (_arr != NULL && _arr->members != NULL)
+        return 1;
+    return 0;
+}
+
 void
 arr_t_destroy(arr_t_name* _arr)
 {
-    if (_arr == NULL || _arr->members == NULL)
+    if (!arr_t_ok(_arr))
         return;
     TSARRAY_FREE(_arr->members);
     *_arr = (arr_t_name) {0};
@@ -173,7 +182,7 @@ void
 arr_t_destroy_members(arr_t_name* _arr)
 {
     int i;
-    if (_arr == NULL || _arr->members == NULL)
+    if (!arr_t_ok(_arr))
         return;
     for (i = 0; i < _arr->count; i++) {
         t_operator_destroy(_arr->members[i]);
@@ -183,17 +192,17 @@ arr_t_destroy_members(arr_t_name* _arr)
 int
 arr_t_len(arr_t_name* _arr)
 {
-    if (_arr == NULL || _arr->members == NULL)
-        return -1;
-    return _arr->count;
+    if (arr_t_ok(_arr))
+        return _arr->count;
+    return -1;
 }
 
 int
 arr_t_capacity(arr_t_name* _arr)
 {
-    if (_arr == NULL || _arr->members == NULL)
-        return -1;
-    return _arr->max;
+    if (arr_t_ok(_arr))
+        return _arr->max;
+    return -1;
 }
 
 arr_t_name*

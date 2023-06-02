@@ -46,7 +46,6 @@ Future work:
 CHANGELOG:
 [2.0] Reformatted library to adhere to newly-defined filosophy
       Shorter name, tstring_s -> tstr
-      Added declarations of tstrBuffer, the string construction buffer.
 [1.1] Reformatted copy function.
       Added tstr_format() declaration.
       added todo list to complete library.
@@ -105,17 +104,11 @@ typedef struct {
 	char is_const;
 }tstr;
 
-typedef struct {
-	TSTR_CHAR* data;
-	int top;
-	int max;
-    float growth_rate;
-}tstrBuffer;
-
 TSTR_API char tstr_ok(tstr* _str);
 TSTR_API void tstr_destroy(tstr* _str);
 TSTR_API tstr tstr_n(TSTR_CHAR* _str, int _n);
 TSTR_API tstr tstr_(TSTR_CHAR* _str);
+TSTR_API tstr tstr_fmt(TSTR_CHAR* _fmt, ...);
 TSTR_API tstr tstr_char(TSTR_CHAR _char);
 TSTR_API tstr tstr_file(tstr* _path);
 TSTR_API char tstr_equal(tstr* _a, tstr* _b);
@@ -134,13 +127,6 @@ TSTR_API tstr* tstr_from_float(tstr* _str, float _val);
 TSTR_API tstr* tstr_from_int(tstr* _str, int _val);
 TSTR_API float tstr_to_float(tstr* _str);
 TSTR_API int tstr_to_int(tstr* _str);
-
-TSTR_API tstrBuffer* tstrBuffer_init(tstrBuffer* _buf, int _n);
-TSTR_API void tstrBuffer_destroy(tstrBuffer* _buf);
-TSTR_API tstrBuffer* tstrBuffer_put(tstrBuffer* _buf, TSTR_CHAR _c);
-TSTR_API tstrBuffer* tstrBuffer_putn(tstrBuffer* _buf, TSTR_CHAR* _s, int _n);
-TSTR_API tstrBuffer* tstrBuffer_putts(tstrBuffer* _buf, tstr* _ts);
-TSTR_API tstr* tstrBuffer_2_tstr(tstrBuffer* _buf, tstr* _dst);
 
 /******************************************************************************/
 #define TSTR_IMPLEMENTATION
@@ -247,6 +233,21 @@ tstr_(TSTR_CHAR* _str)
 	if (n == TSTR_INVALID)
 		return (tstr){0};
 	return tstr_n(_str, n+1);
+}
+
+TSTR_API
+tstr
+tstr_fmt(TSTR_CHAR* _fmt, ...)
+{
+    tstr out = {0};
+    va_list argptr;
+    va_start(argptr, _fmt);
+    out.maxlen = sprintf(NULL, _fmt, argptr);
+    out.c_str = (TSTR_CHAR*)malloc(sizeof(TSTR_CHAR) * (out.maxlen+1));
+    sprintf(out.c_str, _fmt, argptr);
+    va_end(argptr);   
+    out.c_str[out.maxlen] = '\n';
+    return out;
 }
 
 TSTR_API
@@ -565,90 +566,6 @@ tstr_hash(tstr* _str)
 	return out;
 }
 
-TSTR_API
-tstrBuffer*
-tstrBuffer_init(tstrBuffer* _buf, int _n)
-{
-    assert(_buf != NULL);
-    if (_n < 1) _n = 10;
-
-    *_buf = (tstrBuffer) {0};
-    _buf->data = (TSTR_CHAR*)malloc(sizeof(TSTR_CHAR) * _n);
-    _buf->max = _n;
-    _buf->growth_rate = 1.5f;
-    return _buf;
-}
-
-TSTR_API
-void
-tstrBuffer_destroy(tstrBuffer* _buf)
-{
-    if (_buf == NULL)
-        return;
-    if (_buf->data != NULL) free(_buf->data);
-    *_buf = (tstrBuffer) {0};
-}
-
-TSTR_API
-void
-tstrBuffer_reset(tstrBuffer* _buf)
-{
-    if (_buf == NULL)
-        return;
-    _buf->top = 0;
-}
-
-TSTR_BACKEND
-tstrBuffer*
-_tstrBuffer_maybegrow(tstrBuffer* _buf)
-{
-    assert(_buf != NULL);
-    if (_buf->top >= _buf->max) {
-        int n = 1 + (_buf->max * _buf->growth_rate);
-        _buf->data = (TSTR_CHAR*)realloc(_buf->data, sizeof(TSTR_CHAR) * n);
-        _buf->max = n;
-    }
-    return _buf;
-}
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_put(tstrBuffer* _buf, TSTR_CHAR _c)
-{
-    assert(_buf != NULL);
-    _tstrBuffer_maybegrow(_buf);
-    _buf->data[_buf->top++] = _c;
-    return _buf;
-}
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_putn(tstrBuffer* _buf, TSTR_CHAR* _s, int _n)
-{
-    int i;
-    for (i = 0; i < _n; i++)
-        tstrBuffer_put(_buf, _s[i]);
-    return _buf;
-}
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_putts(tstrBuffer* _buf, tstr* _ts)
-{
-    int len = tstr_length(_ts);
-    tstrBuffer_putn(_buf, _ts->c_str, len);
-    return _buf;
-}
-
-TSTR_API
-tstr*
-tstrBuffer_2_tstr(tstrBuffer* _buf, tstr* _dst)
-{
-    tstr_destroy(_dst);
-    *_dst = tstr_n(_buf->data, _buf->top + 1);
-    _dst->c_str[_buf->top] = '\0';
-    return _dst;
-}
 
 #endif /*TSTR_IMPLEMENTATION*/
 #endif /*TSTR_H*/

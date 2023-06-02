@@ -11,20 +11,24 @@ int main(int argc, char **argv) {
 
     Environment env = {0};
     char* input;
-    //expr* program;
-    //expr* result;
-
+    usermsg msg;
+    expr* program;
+    expr* result;
     Env_new(&env);
-    //Env_add_core(&env);
+    Env_add_core(&env);
+
     while (1) {
-        printf("looking for input!\n");
         input = readline("yal> ");
+        ASSERT_INV_ENV(&env);
+        msg = read(&env, &program, input);
+        if (USERMSG_IS_ERROR(&msg))
+            printf("Parsing error:\n\t%s\n", msg.info);
+        msg = eval(&env, &result, program);
+        if (USERMSG_IS_ERROR(&msg))
+            printf("Eval error:\n\t%s\n", msg.info);
+        print(result); printf("\n");
         add_history(input);
-        printf("got input %s\n", input);
-        //program = read(&env, input);
         free(input);
-        //result = buildin_eval(&env, program);
-        //buildin_print(&env, result); printf("\n");
     }
 
     Env_destroy(&env);

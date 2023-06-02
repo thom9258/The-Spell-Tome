@@ -11,7 +11,7 @@ read_verbose(Environment* _e, char* _p)
     ASSERT_INV_ENV(_e);
     printf("string: %s\n", _p);
     read(_e, &prediction, _p);
-    printf("lexed:  "); print(prediction); printf("\n");
+    printf("lexed:  "); printexpr(prediction); printf("\n");
     return prediction;
 }
 
@@ -26,7 +26,7 @@ read_eval_print(Environment* _e, char* _p)
     PRINT_IF_ERROR(&msg);
     msg = eval(_e, &result, program);
     PRINT_IF_ERROR(&msg);
-    print(result); printf("\n");
+    printexpr(result); printf("\n");
     return result;
 }
 
@@ -39,11 +39,11 @@ read_eval_print_verbose(Environment* _e, char* _p, char* _gt)
     ASSERT_INV_ENV(_e);
     msg = read(_e, &program, _p);
     PRINT_IF_ERROR(&msg);
-    printf("YAL> "); print(program); printf("\n");
+    printf("YAL> "); printexpr(program); printf("\n");
     msg = eval(_e, &result, program);
     PRINT_IF_ERROR(&msg);
     printf("EXPECTED> "); printf("%s\n", _gt);
-    printf("RES> "); print(result); printf("\n");
+    printf("RES> "); printexpr(result); printf("\n");
     return result;
 }
 
@@ -80,13 +80,13 @@ test_datatypes(void)
     a = NIL();
     TL_TEST(is_nil(a));
     TL_TEST(a->type == TYPE_CONS);
-    print(a);
+    printexpr(a);
     printf("\n");
 
     a = cons(&e, NIL(), NIL());
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_CONS);
-    print(a);
+    printexpr(a);
     printf("\n");
 
     a = cons(&e, real(&e, 4), NIL());
@@ -94,35 +94,35 @@ test_datatypes(void)
     TL_TEST(!is_nil(car(a)));
     TL_TEST(car(a)->type == TYPE_REAL);
     TL_TEST(is_nil(cdr(a)));
-    print(a);
+    printexpr(a);
     printf("\n");
 
     a = real(&e, 3);
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_REAL);
     TL_TEST(a->real == 3);
-    print(a);
+    printexpr(a);
     printf("\n");
 
     a = decimal(&e, 3.14f);
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_DECIMAL);
     TL_TEST(a->decimal == 3.14f);
-    print(a);
+    printexpr(a);
     printf("\n");
 
     a = symbol(&e, tstr_("mysym"));
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_SYMBOL);
     TL_TEST(tstr_equal(&a->symbol, &tstr_const("mysym")));
-    print(a);
+    printexpr(a);
     printf("\n");
 
     a = string(&e, tstr_("my string"));
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_STRING);
     TL_TEST(tstr_equal(&a->symbol, &tstr_const("my string")));
-    print(a);
+    printexpr(a);
     printf("\n");
 
     Env_destroy(&e);
@@ -141,14 +141,14 @@ void test_print(void)
                         NULL
                        )
         );
-    print(r);
+    printexpr(r);
     printf("\n");
 
     r = cons(&e,
              csymbol(&e, "mydottedlistvar"),
              real(&e, 22)
         );
-    print(r);
+    printexpr(r);
     printf("\n");
 
 
@@ -169,7 +169,7 @@ void test_print(void)
                        NULL)
                  )
         );
-    print(r);
+    printexpr(r);
     printf("\n");
 
     expr* a = cons(&e,
@@ -191,7 +191,7 @@ void test_print(void)
              cons(&e, a, cons(&e, b, NIL()))
         );
 
-    print(r);
+    printexpr(r);
     printf("\n");
 }
 
@@ -213,6 +213,27 @@ test_str2expr(void)
 }
 
 void
+test_str2expr2str(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    expr* r = cons(&e,
+                   csymbol(&e, "print"),
+                   cons(&e,
+                        real(&e, 20),
+                        NULL
+                       )
+        );
+    tstr s = stringifyexpr(r);
+    printf("stringified = %s\n", s.c_str);
+    tstr_destroy(&s);
+
+    Env_destroy(&e);
+}
+
+void
 test_eval(void)
 {
     Environment e;
@@ -222,39 +243,75 @@ test_eval(void)
 }
 
 void
-test_accessors(void)
+test_buildin_quote(void)
 {
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
 
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(quote (1 2 3 4))",
-                    "(1 2 3 4)"));
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(+ 1 2)",
-                    "3"));
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(- 7 3)",
-                    "4"));
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(+ 2 (- 5 6) 1)",
-                    "2"));
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(car (quote (1 2 3 4)))",
-                    "1"));
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(cdr (quote (1 2 3 4)))",
-                    "(2 3 4)"));
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(cons 1 2)",
-                    "(1 . 2)"));
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(first (quote (1 2 3 4)))",
-                    "(1)"));
-        TL_TEST(read_eval_print_verbose(&e,
-                    "(second (quote ((1 2) (3 4) (5 6)) ))",
-                    "(3 4)"));
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(quote (1 2 3 4))",
+                                    "(1 2 3 4)"));
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(quote (foo bar (quote (baz))))",
+                                    "(foo bar (quote (baz)))"));
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(quote ()  )",
+                                    "NIL"));
+
+    Env_destroy(&e);
+}
+
+
+void
+test_buildin_math(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(+ 1 2)",
+                                    "3"));
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(- 7 3)",
+                                    "4"));
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(+ 2 (- 5 6) 1)",
+                                    "2"));
+    Env_destroy(&e);
+}
+
+void
+test_buildin_accessors(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(car (quote (1 2 3 4)))",
+                                    "1"));
+
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(cdr (quote (1 2 3 4)))",
+                                    "(2 3 4)"));
+
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(cons 1 2)",
+                                    "(1 . 2)"));
+
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(cons (quote (a b c)) 3)",
+                                    "(1 . 2)"));
+
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(first (quote (1 2 3 4)))",
+                                    "(1)"));
+
+    TL_TEST(read_eval_print_verbose(&e,
+                                    "(second (quote ((1 2) (3 4) (5 6)) ))",
+                                    "(3 4)"));
 
     Env_destroy(&e);
 }
@@ -265,8 +322,11 @@ int main(int argc, char **argv) {
 
 	TL(test_datatypes());
 	TL(test_print());
+	TL(test_str2expr2str());
 	TL(test_str2expr());
-	TL(test_accessors());
+	TL(test_buildin_quote());
+	TL(test_buildin_math());
+	TL(test_buildin_accessors());
 
     tl_summary();
 

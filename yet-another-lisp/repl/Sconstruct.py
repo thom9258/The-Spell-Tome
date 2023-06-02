@@ -1,7 +1,7 @@
 import platform
 import os.path
 
-Target = "repl"
+Target = "yal"
 Main = "main.c"
 DebugMode = True
 IsC99 = True

@@ -17,36 +17,37 @@ test_alloc_free(void)
 	TL_TEST(string.maxlen == sizeof(text) / sizeof(text[0]));
 	printf("length = %ld, memlength = %d\n", sizeof(text) / sizeof(text[0]), string.maxlen);
 	TL_TEST(string.c_str[string.maxlen-1] == TSTR_NULLTERM);
-	TL_TEST(string.is_const == 0);
+	TL_TEST(string.is_view == 0);
 
 	int too_short_size = 4;
 	too_short = tstr_n(text, too_short_size);
 	TL_TEST(too_short.c_str != NULL);
-	TL_TEST(too_short.maxlen == too_short_size);
+	TL_TEST(too_short.maxlen == too_short_size+1);
 	TL_TEST(too_short.c_str[too_short.maxlen-1] == TSTR_NULLTERM);
-	TL_TEST(too_short.is_const == 0);
+	TL_TEST(too_short.is_view == 0);
 	printf("too_short (%d) = \"%s\"\n", too_short.maxlen, too_short.c_str);
 	tstr_destroy(&too_short);
 
 	tstr_destroy(&string);
 	TL_TEST(string.c_str == NULL);
 	TL_TEST(string.maxlen == 0);
-	TL_TEST(string.is_const == 0);
+	TL_TEST(string.is_view == 0);
 }
 
-tstr global_tstr_ = tstr_const("GLOBAL string!");
-void
-test_tstr_const(void)
-{
-	printf("global = \"%s\"\n", global_tstr_.c_str);
-	TL_TEST(global_tstr_.c_str != NULL);
-	TL_TEST(global_tstr_.is_const == 1);
-	tstr non_global = tstr_(global_tstr_.c_str);
-	printf("non-global = \"%s\"\n", global_tstr_.c_str);
+char* global_c_str = "GLOBAL string!";
 
+void
+test_tstr_view(void)
+{
+    tstr global_tstr = tstr_view(global_c_str);
+	printf("global = \"%s\"\n", global_tstr.c_str);
+	TL_TEST(global_tstr.c_str != NULL);
+	TL_TEST(global_tstr.is_view == 1);
+	tstr non_global = tstr_(global_tstr.c_str);
+	printf("non-global = \"%s\"\n", global_tstr.c_str);
 	printf("global length = %d, non-global length = %d\n",
-		   global_tstr_.maxlen, non_global.maxlen);
-	TL_TEST(global_tstr_.maxlen == non_global.maxlen);
+		   global_tstr.maxlen, non_global.maxlen);
+	TL_TEST(global_tstr.maxlen + 1 == non_global.maxlen);
 	tstr_destroy(&non_global);
 }
 
@@ -74,11 +75,10 @@ test_compare(void)
 	tstr_destroy(&string);
 
 	printf("trying to copy from a const string!\n");
-	tstr str_const = tstr_const("Constant string, not to be overwritten!");
+	tstr str_const = tstr_view("Constant string, not to be overwritten!");
 	tstr str_new = tstr_("some string i want to overwrite with.");
 	tstr_copy(&str_const, &str_new);
 
-	TL_TEST(tstr_equal(&string, &copy));
     is_same = tstr_equal(&string, &copy);
 	printf("Was same=(%d) = [%s] = [%s]\n", is_same, str_const.c_str, str_new.c_str);
 	tstr_destroy(&str_const);
@@ -99,11 +99,16 @@ test_copy(void)
 	TL_TEST(copy.c_str[copy.maxlen-1] == TSTR_NULLTERM);
 	printf("full copy text = \"%s\"\n", copy.c_str);
 
-	tstr_copyf(&string, &copy, 0, 5);
+	tstr_copy(&string, &copy);
+    tstr_cut( &copy, 0, 5);
 	TL_TEST(copy.c_str != NULL);
 	//TL_TEST(copy.maxlen == 6);
 	TL_TEST(copy.c_str[copy.maxlen-1] == TSTR_NULLTERM);
-	printf("short copy text = \"%s\"\n", copy.c_str); tstr_copyf(&string, &copy, 7, 10);
+	printf("short copy text = \"%s\"\n", copy.c_str);
+
+    tstr_destroy(&copy);
+	tstr_copy(&string, &copy);
+    tstr_cut( &copy, 7, 10);
 	TL_TEST(copy.c_str != NULL);
 	TL_TEST(copy.c_str[copy.maxlen-1] == TSTR_NULLTERM);
 	printf("another short copy text = \"%s\"\n", copy.c_str);
@@ -134,15 +139,15 @@ test_concatva(void)
 {
 	tstr full = {0};
 	tstr cmp = {0};
-	tstr filepath = tstr_const("somedir");
-	tstr filename = tstr_const("somefile.txt");
+	tstr filepath = tstr_view("somedir");
+	tstr filename = tstr_view("somefile.txt");
 	cmp = tstr_("/home/alex/somedir/somefile.txt");
 
 	tstr_concatva(&full, 4,
-					    &tstr_const("/home/alex/"),
-					    &filepath,
-					    &tstr_const("/"),
-					    &filename
+                  tstr_view("/home/alex/"),
+				  filepath,
+				  tstr_view("/"),
+                  filename
 		);
 	printf("Concatenation of multible strings:\n[%s]\n[%s]\n",
 		   full.c_str,
@@ -159,16 +164,19 @@ test_to_upper_lower(void)
 	tstr str = tstr_("Leather Armor (Used)");
 	tstr upper = {0};
 	tstr lower = {0};
+    tstr upper_res = tstr_view("LEATHER ARMOR (USED)");
+    tstr lower_res = tstr_view("leather armor (used)");
 	tstr_copy(&str, &upper);
 	tstr_copy(&str, &lower);
 
 	tstr_to_upper(&upper);
 	tstr_to_lower(&lower);
 
-	TL_TEST(tstr_equal(&upper, &tstr_const("LEATHER ARMOR (USED)")));
+
+	TL_TEST(tstr_equal(&upper, &upper_res));
 	printf("upper [%s]\n", upper.c_str);
 
-	TL_TEST(tstr_equal(&lower, &tstr_const("leather armor (used)")));
+	TL_TEST(tstr_equal(&lower, &lower_res));
 	printf("lower [%s]\n", lower.c_str);
 
 	tstr_destroy(&str);
@@ -181,20 +189,22 @@ test_find(void)
 {
 	tstr string = tstr_("hello, Hello, Hello, Hi, my name is Mr. Computer");
 	int idx;
+    tstr fnd = tstr_view(",");
 
-    tstr fnd = tstr_char(',');
 	TL_TEST(tstr_find(&string, &fnd) == 5);
 	TL_TEST(string.c_str[tstr_find(&string, &fnd)] == ',');
 
-	idx = tstr_find(&string, &tstr_const(","));
+	idx = tstr_find(&string, &fnd);
 	TL_TEST(idx == 5);
-	TL_TEST(string.c_str[tstr_find(&string, &tstr_const(","))] == ',');
+	TL_TEST(string.c_str[tstr_find(&string, &fnd)] == ',');
 	printf("found comma (idx %d=%s)\n", idx, string.c_str + idx);
 
-	idx = tstr_find(&string, &tstr_const("name"));
+    fnd = tstr_view("name");
+	idx = tstr_find(&string, &fnd);
 	printf("found name (idx %d=%s)\n", idx, string.c_str + idx);
 
-	idx = tstr_find(&string, &tstr_const("NAME"));
+    fnd = tstr_view("NAME");
+	idx = tstr_find(&string, &fnd);
 	TL_TEST(idx == TSTR_INVALID);
 
 	if (idx == TSTR_INVALID)
@@ -202,12 +212,14 @@ test_find(void)
 	else
 		printf("FOUND NAME (idx %d=%c)\n", idx, string.c_str[idx]);
 
-	idx = tstr_find(&string, &tstr_const("Computer"));
+    fnd = tstr_view("Computer");
+	idx = tstr_find(&string, &fnd);
 	TL_TEST(idx == 40);
 		printf("found Computer (idx %d=%s)\n", idx, string.c_str + idx);
 
 
-	idx = tstr_find(&string, &tstr_const("Computerman"));
+    fnd = tstr_view("Computerman");
+	idx = tstr_find(&string, &fnd);
 	TL_TEST(idx == TSTR_INVALID);
 	if (idx == TSTR_INVALID)
 		printf("Did not find Computerman :(\n");
@@ -222,12 +234,13 @@ test_find_reverse(void)
 	tstr string = tstr_("Hello, hello, Hello, Hi, my name is Mr. Computer");
 	printf("String: %s\n", string.c_str);
 
-    tstr fnd = tstr_char('e');
+    tstr fnd = tstr_view("e");
 	idx = tstr_findlast(&string, &fnd);
 	TL_TEST(string.c_str[idx] == 'e');
 	printf("found last e (idx %d=%c)\n", idx, string.c_str[idx]);
 
-	idx = tstr_findlast(&string, &tstr_const("Hello"));
+    fnd = tstr_view("Hello");
+	idx = tstr_findlast(&string, &fnd);
 	TL_TEST(string.c_str[idx] == 'H' && idx == 14);
 	printf("found last Hello (idx %d=%s)\n", idx, string.c_str + idx);
 	tstr_destroy(&string);
@@ -242,11 +255,14 @@ test_split(void)
 	tstr filepath = {0};
 
 
-	idx = 1 + tstr_findlast(&full, &tstr_const("/"));
+    tstr fnd = tstr_view("/");
+	idx = 1 + tstr_findlast(&full, &fnd);
 
 	tstr_split(&full, &filepath, &filename, idx);
-	TL_TEST(tstr_equal(&filepath, &tstr_const("/home/somedir/")));
-	TL_TEST(tstr_equal(&filename, &tstr_const("somefile.txt")));
+    fnd = tstr_view("/home/somedir/");
+	TL_TEST(tstr_equal(&filepath, &fnd));
+    fnd = tstr_view("somefile.txt");
+	TL_TEST(tstr_equal(&filename, &fnd));
 	printf("split succesfull:\nsplit [%s]\ninto:\n[%s]\n[%s]\n",
 		   full.c_str, filepath.c_str, filename.c_str);
 
@@ -264,11 +280,13 @@ test_cut(void)
 	tstr cut = {0};
 
 	start = 5;
-	end = tstr_findlast(&full, &tstr_const("/"));
+    tstr fnd = tstr_view("/");
+	end = tstr_findlast(&full, &fnd);
 
 	tstr_copy(&full, &cut);
 	tstr_cut(&cut, start, end);
-	TL_TEST(tstr_equal(&cut, &tstr_const("/home/somefile.txt")));
+    fnd = tstr_view("/home/somefile.txt");
+	TL_TEST(tstr_equal(&cut, &fnd));
 	printf("cut [%s] -> [%s]\n", full.c_str, cut.c_str);
 
 	tstr_destroy(&full);
@@ -278,7 +296,7 @@ test_cut(void)
 void
 test_tstr_fileread()
 {
-	tstr filepath = tstr_const("./resources/testfile.txt");
+	tstr filepath = tstr_view("./resources/testfile.txt");
 	tstr fdata = tstr_file(&filepath);
 	TL_TEST(tstr_ok(&fdata));
 	printf("file contents:\n%s\n", fdata.c_str);
@@ -286,41 +304,23 @@ test_tstr_fileread()
 }
 
 void
-test_tstr_format()
-{
-}
-
-void
 test_tstr_charcast(void)
 {
-    tstr tchar = tstr_char('t');
+    tstr tchar = tstr_fmt("%c", 't');
     printf("tchar=[%s]\n", tchar.c_str);
     tstr_destroy(&tchar);
 }
 
 void
-test_tstrBuffer(void)
+test_tstr_fmt(void)
 {
-    tstrBuffer buf;
-    char t[] =  " mytext";
-    int tlen = sizeof(t)/sizeof(*t);
-    tstr res;
-    tstrBuffer_init(&buf, 7);
+    tstr s;
 
-    tstrBuffer_put(&buf, 'a');
-    tstrBuffer_put(&buf, 'b');
-    tstrBuffer_put(&buf, 'c');
-    tstrBuffer_put(&buf, 'd');
-
-    tstrBuffer_putn(&buf, t, tlen);
-
-    tstrBuffer_putts(&buf, &tstr_const(" CNT"));
-
-    tstrBuffer_2_tstr(&buf, &res);
-    tstrBuffer_destroy(&buf);
-
-    TL_TEST(tstr_equal(&res, &tstr_const("abcd mytext CNT")));
-    tstr_destroy(&res);
+    s = tstr_fmt("  > %d, my string: %s\n", 2, "THIS STRING");
+    tstr res = tstr_view("  > 2, my string: THIS STRING\n");
+    printf("formatted string: [%s]\n", s.c_str);
+    TL_TEST(tstr_equal(&s, &res));
+    tstr_destroy(&s);
 }
 
 int main(int argc, char** argv) {
@@ -328,7 +328,7 @@ int main(int argc, char** argv) {
 	(void)argv;
 
 	TL(test_alloc_free());
-	TL(test_tstr_const());
+	TL(test_tstr_view());
 	TL(test_compare());
 	TL(test_copy());
 	TL(test_to_upper_lower());
@@ -339,9 +339,8 @@ int main(int argc, char** argv) {
 	TL(test_split());
 	TL(test_cut());
 	TL(test_tstr_fileread());
-	TL(test_tstr_format());
 	TL(test_tstr_charcast());
-    TL(test_tstrBuffer());
+    TL(test_tstr_fmt());
 
 	tl_summary();
 	return 0;

@@ -64,6 +64,7 @@ TODO: change tstr_length to be a null terminator checker within maxlen bounds.
 #include <stdint.h> /*uint32_t + uint8_t*/
 #include <stdio.h>  /*NULL*/
 #include <assert.h>
+#include <stdarg.h>
 
 #ifndef TSTR_NO_STDLIB
     #include <stdlib.h> /*malloc + realloc + free*/
@@ -99,12 +100,10 @@ TODO: change tstr_length to be a null terminator checker within maxlen bounds.
 #define _TSTR_CHAR_TO_UPPER(C) \
 	( C += (C >= 'a' && C <= 'z') ? -('a'-'A') : 0 )
 
-#define tstr_const(STR) (tstr) {STR, sizeof(STR)/sizeof(STR[0]), 1}
-
 typedef struct {
 	TSTR_CHAR* c_str;
 	int maxlen;
-	char is_const;
+	char is_view;
 }tstr;
 
 typedef struct {
@@ -114,101 +113,25 @@ typedef struct {
     float growth_rate;
 }tstrBuffer;
 
-TSTR_API
-char
-tstr_ok(tstr* _str);
+TSTR_API char tstr_ok(tstr* _str);
+TSTR_API void tstr_destroy(tstr* _str);
+TSTR_API tstr tstr_n(TSTR_CHAR* _str, int _n);
+TSTR_API tstr tstr_(TSTR_CHAR* _str);
+TSTR_API tstr tstr_view(TSTR_CHAR* _str);
+TSTR_API tstr tstr_fmt(TSTR_CHAR* _fmt, ...);
+TSTR_API int tstr_length(tstr* _str);
+TSTR_API tstr tstr_file(tstr* _path);
+TSTR_API char tstr_equal(tstr* _a, tstr* _b);
+TSTR_API tstr* tstr_copy(tstr* _src, tstr* _dst);
+TSTR_API tstr* tstr_cut(tstr* _str, int _f, int _t);
+TSTR_API tstr* tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
+TSTR_API int tstr_find(tstr* _str, tstr* _f);
+TSTR_API int tstr_findlast(tstr* _str, tstr* _f);
+TSTR_API tstr* tstr_concat(tstr* _str, tstr* _back);
+TSTR_API tstr* tstr_to_upper(tstr* _str);
+TSTR_API tstr* tstr_to_lower(tstr* _str);
+TSTR_API uint64_t tstr_hash(tstr* _str);
 
-TSTR_API
-void
-tstr_destroy(tstr* _str);
-
-TSTR_API
-tstr
-tstr_n(TSTR_CHAR* _str, int _n);
-
-TSTR_API
-tstr
-tstr_(TSTR_CHAR* _str);
-
-TSTR_API
-tstr
-tstr_char(TSTR_CHAR _char);
-
-TSTR_API
-tstr
-tstr_file(tstr* _path);
-
-TSTR_API
-char
-tstr_equal(tstr* _a, tstr* _b);
-
-TSTR_API
-tstr*
-tstr_copy(tstr* _src, tstr* _dst);
-
-TSTR_API
-tstr*
-tstr_copyf(tstr* _src, tstr* _dst, int _f, int _n);
-
-TSTR_API
-tstr*
-tstr_cut(tstr* _str, int _f, int _t);
-
-TSTR_API
-tstr*
-tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
-
-TSTR_API
-int
-tstr_find(tstr* _str, tstr* _f);
-
-TSTR_API
-int
-tstr_findlast(tstr* _str, tstr* _f);
-
-TSTR_API
-tstr*
-tstr_concat(tstr* _str, tstr* _back);
-
-TSTR_API
-tstr*
-tstr_concatva(tstr* _str, int _n, ...);
-
-TSTR_API
-tstr*
-tstr_to_upper(tstr* _str);
-
-TSTR_API
-tstr*
-tstr_to_lower(tstr* _str);
-
-TSTR_API
-uint64_t
-tstr_hash(tstr* _str);
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_init(tstrBuffer* _buf, int _n);
-
-TSTR_API
-void
-tstrBuffer_destroy(tstrBuffer* _buf);
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_put(tstrBuffer* _buf, TSTR_CHAR _c);
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_putn(tstrBuffer* _buf, TSTR_CHAR* _s, int _n);
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_putts(tstrBuffer* _buf, tstr* _ts);
-
-TSTR_API
-tstr*
-tstrBuffer_2_tstr(tstrBuffer* _buf, tstr* _dst);
 
 /******************************************************************************/
 #define TSTR_IMPLEMENTATION
@@ -216,14 +139,14 @@ tstrBuffer_2_tstr(tstrBuffer* _buf, tstr* _dst);
 
 TSTR_BACKEND
 int
-_rawstr_findchar(TSTR_CHAR* _start, char _char)
+_rawstr_findchar(const TSTR_CHAR* _start, char _char)
 {
-	int i = 0;
-	if (_start == NULL)
-		return TSTR_INVALID;
-	while (_start[i] != _char)
-		i++;
-	return i;
+    int i = 0;
+    if (_start == NULL)
+        return TSTR_INVALID;
+    while (_start[i] != _char)
+        i++;
+    return i;
 }
 
 TSTR_BACKEND
@@ -275,59 +198,99 @@ TSTR_API
 void
 tstr_destroy(tstr* _str)
 {
-	if (_str == NULL || _str->is_const)
+	if (_str == NULL || _str->is_view)
 		return;
 	if (_str->c_str != NULL)
 		TSTR_FREE(_str->c_str);
 	_str->c_str = NULL;
 	_str->maxlen = 0;
-	_str->is_const = 0;
+	_str->is_view = 0;
 }
+
+TSTR_API
+tstr
+tstr_view(TSTR_CHAR* _str)
+{
+    return (tstr) {_str, _rawstr_findchar(_str, '\0'), 1};
+}
+
+TSTR_API
+tstr
+tstr_fmt(char* _fmt, ...)
+{
+    tstr out = {0};
+    va_list va1;
+    va_list va2;
+
+    va_copy(va2, va1);
+    va_start(va1, _fmt);
+    out.maxlen = 1 + vsnprintf(NULL, 0, _fmt, va1);
+    va_end(va1);   
+    out.c_str = (TSTR_CHAR*)malloc(sizeof(char) * (out.maxlen));
+    va_start(va2, _fmt);
+    //vsnprintf(out.c_str, out.maxlen, _fmt, va2);
+    vsprintf(out.c_str, _fmt, va2);
+    printf("FMT: max(%d), str(%d) [%s]\n", out.maxlen, tstr_length(&out), out.c_str);
+    va_end(va2);   
+    return out;
+}
+
+//TSTR_API
+//tstr
+//tstr_n(TSTR_CHAR* _str, int _n)
+//{
+//    tstr out = {0};
+//    if (_n < 1)
+//        return (tstr){0};
+//    out.c_str = (TSTR_CHAR*)TSTR_MALLOC(sizeof(TSTR_CHAR) * _n);
+//    if (out.c_str == NULL)
+//        return out;
+//    out.maxlen = _n;
+//    out.is_view = 0;
+//    if (_str == NULL)
+//        return out;
+//
+//    _rawstr_ncopy(_str, out.c_str, out.maxlen);
+//    out.c_str[out.maxlen-1] = TSTR_NULLTERM;
+//    return out;
+//}
+//TSTR_API
+//tstr
+//tstr_(TSTR_CHAR* _str)
+//{
+//    int n;
+//    if (_str == NULL)
+//        return (tstr){0};
+//    n = _rawstr_findchar(_str, TSTR_NULLTERM);
+//    if (n == TSTR_INVALID)
+//        return (tstr){0};
+//    return tstr_n(_str, n+1);
+//}
+//TSTR_API
+//tstr
+//tstr_char(TSTR_CHAR _char)
+//{
+//    tstr out = {0};
+//    out = tstr_n(NULL, 2);
+//    if (!tstr_ok(&out))
+//        return out;
+//    out.c_str[0] = _char;
+//    out.c_str[1] = TSTR_NULLTERM;
+//    return out;
+//}
 
 TSTR_API
 tstr
 tstr_n(TSTR_CHAR* _str, int _n)
 {
-	tstr out = {0};
-	if (_n < 1)
-		return (tstr){0};
-	out.c_str = (TSTR_CHAR*)TSTR_MALLOC(sizeof(TSTR_CHAR) * _n);
-	if (out.c_str == NULL)
-		return out;
-    out.maxlen = _n;
-	out.is_const = 0;
-    if (_str == NULL)
-        return out;
-
-    _rawstr_ncopy(_str, out.c_str, out.maxlen);
-	out.c_str[out.maxlen-1] = TSTR_NULLTERM;
-	return out;
+	return tstr_fmt("%.*s", _n, _str);
 }
 
 TSTR_API
 tstr
 tstr_(TSTR_CHAR* _str)
 {
-	int n;
-	if (_str == NULL)
-		return (tstr){0};
-	n = _rawstr_findchar(_str, TSTR_NULLTERM);
-	if (n == TSTR_INVALID)
-		return (tstr){0};
-	return tstr_n(_str, n+1);
-}
-
-TSTR_API
-tstr
-tstr_char(TSTR_CHAR _char)
-{
-	tstr out = {0};
-	out = tstr_n(NULL, 2);
-	if (!tstr_ok(&out))
-		return out;
-	out.c_str[0] = _char;
-	out.c_str[1] = TSTR_NULLTERM;
-	return out;
+	return tstr_fmt("%s", _str);
 }
 
 TSTR_API
@@ -361,7 +324,7 @@ tstr_length(tstr* _str)
 	int len;
 	if (!tstr_ok(_str))
 		return TSTR_INVALID;
-	//if (_str->is_const)
+	//if (_str->is_view)
     //return _rawstr_findchar(_str->c_str, TSTR_NULLTERM);
 
 	len = _rawstr_nfindchar(_str->c_str, _str->maxlen, TSTR_NULLTERM);
@@ -381,13 +344,14 @@ tstr_equal(tstr* _a, tstr* _b)
 	if (!tstr_ok(_a) || !tstr_ok(_b))
 		return 0;
 
+    printf("a=%s\nb=%s\n", _a->c_str, _b->c_str);
 	a_len = tstr_length(_a);
 	b_len = tstr_length(_b);
-
     min = (a_len < b_len) ? a_len : b_len;
-    //printf("alen=%d, blen=%d\n", a_len, b_len);
+    printf("alen=%d, blen=%d, min=%d\n", a_len, b_len, min);
+
     for (i = 0; i < min; i++) {
-        //printf("comparing (%c) == (%c)\n", _a->c_str[i], _b->c_str[i]);
+        printf("comparing (%c) == (%c)\n", _a->c_str[i], _b->c_str[i]);
         if (_a->c_str[i] != _b->c_str[i])
             return 0;
     }
@@ -396,34 +360,11 @@ tstr_equal(tstr* _a, tstr* _b)
 
 TSTR_API
 tstr*
-tstr_copyf(tstr* _src, tstr* _dst, int _f, int _n)
-/*TODO: copy cannot create a copy of a const tstring*/
-{
-	int src_len;
-	if (!tstr_ok(_src))
-		return NULL;
-
-	src_len = tstr_length(_src);
-	if (_n < 1 ||  _n > src_len) {
-		_n = src_len;
-		return NULL;
-	}
-
-	tstr_destroy(_dst);
-	*_dst = tstr_n(NULL, _n + 1);
-	if (!tstr_ok(_dst))
-		return NULL;
-
-	_rawstr_ncopy(_src->c_str + _f, _dst->c_str, _n);
-	_dst->c_str[_n] = TSTR_NULLTERM;
-	return _dst;
-}
-
-TSTR_API
-tstr*
 tstr_copy(tstr* _src, tstr* _dst)
 {
-	return tstr_copyf(_src, _dst, 0, tstr_length(_src));
+    tstr_destroy(_dst);
+    *_dst = tstr_(_src->c_str);
+    return _dst;
 }
 
 TSTR_API
@@ -453,10 +394,11 @@ tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _split)
 	src_len = tstr_length(_src);
 	if (_split > src_len)
 		return NULL;
+
 	tstr_destroy(_lhs);
+	*_lhs = tstr_n(_src->c_str, _split);
 	tstr_destroy(_rhs);
-	tstr_copyf(_src, _lhs, 0, _split);
-	tstr_copyf(_src, _rhs, _split, src_len - _split);
+	*_rhs = tstr_n(_src->c_str, src_len - _split);
 	return _src;
 }
 
@@ -536,25 +478,6 @@ tstr_concat(tstr* _str, tstr* _back)
 
 TSTR_API
 tstr*
-tstr_concatva(tstr* _str, int _n, ...)
-{
-	int i;
-    tstr* tmp;
-	va_list ap;
-	va_start(ap, _n);
-	if (!tstr_ok(_str))
-		*_str = tstr_n(NULL, 1);
-	for (i = 0; i < _n; i++) {
-        tmp = va_arg(ap, tstr*);
-        //printf("%d) [%s]\n", i, tmp->c_str);
-		tstr_concat(_str, tmp);
-    }
-	va_end(ap);
-	return _str;
-}
-
-TSTR_API
-tstr*
 tstr_to_upper(tstr* _str)
 {
 	int i;
@@ -589,82 +512,6 @@ tstr_hash(tstr* _str)
 	while ((c = *_str->c_str++) != '\0')
 		out = c + (out << 6) + (out << 16) - out;
 	return out;
-}
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_init(tstrBuffer* _buf, int _n)
-{
-    assert(_buf != NULL);
-    if (_n < 1) _n = 10;
-
-    *_buf = (tstrBuffer) {0};
-    _buf->data = (TSTR_CHAR*)malloc(sizeof(TSTR_CHAR) * _n);
-    _buf->max = _n;
-    _buf->growth_rate = 1.5f;
-    return _buf;
-}
-
-TSTR_API
-void
-tstrBuffer_destroy(tstrBuffer* _buf)
-{
-    if (_buf == NULL)
-        return;
-    if (_buf->data != NULL) free(_buf->data);
-    *_buf = (tstrBuffer) {0};
-}
-
-TSTR_BACKEND
-tstrBuffer*
-_tstrBuffer_maybegrow(tstrBuffer* _buf)
-{
-    assert(_buf != NULL);
-    if (_buf->top >= _buf->max) {
-        int n = 1 + (_buf->max * _buf->growth_rate);
-        _buf->data = (TSTR_CHAR*)realloc(_buf->data, sizeof(TSTR_CHAR) * n);
-        _buf->max = n;
-    }
-    return _buf;
-}
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_put(tstrBuffer* _buf, TSTR_CHAR _c)
-{
-    assert(_buf != NULL);
-    _tstrBuffer_maybegrow(_buf);
-    _buf->data[_buf->top++] = _c;
-    return _buf;
-}
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_putn(tstrBuffer* _buf, TSTR_CHAR* _s, int _n)
-{
-    int i;
-    for (i = 0; i < _n; i++)
-        tstrBuffer_put(_buf, _s[i]);
-    return _buf;
-}
-
-TSTR_API
-tstrBuffer*
-tstrBuffer_putts(tstrBuffer* _buf, tstr* _ts)
-{
-    int len = tstr_length(_ts);
-    tstrBuffer_putn(_buf, _ts->c_str, len);
-    return _buf;
-}
-
-TSTR_API
-tstr*
-tstrBuffer_2_tstr(tstrBuffer* _buf, tstr* _dst)
-{
-    tstr_destroy(_dst);
-    *_dst = tstr_n(_buf->data, _buf->top + 1);
-    _dst->c_str[_buf->top] = '\0';
-    return _dst;
 }
 
 #endif /*TSTR_IMPLEMENTATION*/
