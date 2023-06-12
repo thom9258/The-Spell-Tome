@@ -135,30 +135,6 @@ test_concat(void)
 }
 
 void
-test_concatva(void)
-{
-	tstr full = {0};
-	tstr cmp = {0};
-	tstr filepath = tstr_view("somedir");
-	tstr filename = tstr_view("somefile.txt");
-	cmp = tstr_("/home/alex/somedir/somefile.txt");
-
-	tstr_concatva(&full, 4,
-                  tstr_view("/home/alex/"),
-				  filepath,
-				  tstr_view("/"),
-                  filename
-		);
-	printf("Concatenation of multible strings:\n[%s]\n[%s]\n",
-		   full.c_str,
-           cmp.c_str);
-
-	TL_TEST(tstr_equal(&full, &cmp));
-	tstr_destroy(&cmp);
-	tstr_destroy(&full);
-}
-
-void
 test_to_upper_lower(void)
 {
 	tstr str = tstr_("Leather Armor (Used)");
@@ -259,9 +235,12 @@ test_split(void)
 	idx = 1 + tstr_findlast(&full, &fnd);
 
 	tstr_split(&full, &filepath, &filename, idx);
+
     fnd = tstr_view("/home/somedir/");
 	TL_TEST(tstr_equal(&filepath, &fnd));
+
     fnd = tstr_view("somefile.txt");
+
 	TL_TEST(tstr_equal(&filename, &fnd));
 	printf("split succesfull:\nsplit [%s]\ninto:\n[%s]\n[%s]\n",
 		   full.c_str, filepath.c_str, filename.c_str);
@@ -335,7 +314,6 @@ int main(int argc, char** argv) {
 	TL(test_find());
 	TL(test_find_reverse());
 	TL(test_concat());
-	TL(test_concatva());
 	TL(test_split());
 	TL(test_cut());
 	TL(test_tstr_fileread());

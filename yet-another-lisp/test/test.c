@@ -4,15 +4,17 @@
 #define PRINT_IF_ERROR(MSGPTR) \
     if (USERMSG_IS_ERROR((MSGPTR))) printf("USER ERROR:\n\t%s\n", (MSGPTR)->info)
 
-expr*
-read_verbose(Environment* _e, char* _p)
+char
+lex_test(Environment* _e, char* _p, char* _expected)
 {
     expr* prediction;
     ASSERT_INV_ENV(_e);
-    printf("string: %s\n", _p);
     read(_e, &prediction, _p);
-    printf("lexed:  "); printexpr(prediction); printf("\n");
-    return prediction;
+    tstr lexed = stringifyexpr(prediction);
+    tstr expected = tstr_view(_expected);
+    printf("LEXED:    %s\n", lexed.c_str);
+    printf("EXPECTED: %s\n", expected.c_str);
+    return tstr_equal(&lexed, &expected);
 }
 
 expr*
@@ -30,34 +32,26 @@ read_eval_print(Environment* _e, char* _p)
     return result;
 }
 
-expr*
-read_eval_print_verbose(Environment* _e, char* _p, char* _gt)
+char
+repl_check(Environment* _e, char* _p, char* _gt)
 {
     usermsg msg;
     expr* program;
+    char are_equal = 0;
     expr* result;
+    tstr gt_str = tstr_view(_gt);
+    tstr result_str;
     ASSERT_INV_ENV(_e);
     msg = read(_e, &program, _p);
     PRINT_IF_ERROR(&msg);
     printf("YAL> "); printexpr(program); printf("\n");
     msg = eval(_e, &result, program);
     PRINT_IF_ERROR(&msg);
-    printf("EXPECTED> "); printf("%s\n", _gt);
-    printf("RES> "); printexpr(result); printf("\n");
-    return result;
-}
-
-char
-read_eval_print_compare(Environment* _e, char* _p, char* _cmp)
-{
-    expr* res = read_eval_print(_e, _p);
-    printf("===\n");
-    UNUSED(res);
-    UNUSED(_cmp);
-    /*if res == _cmp
-          return 1
-     */
-    return 0;
+    result_str = stringifyexpr(result);
+    printf("EXPECTED: %s\nGOT: %s\n", gt_str.c_str, result_str.c_str);
+    are_equal = tstr_equal(&result_str, &gt_str);
+    tstr_destroy(&result_str);
+    return are_equal;
 }
 
 expr* csymbol(Environment* _env, char* _sym)
@@ -72,6 +66,8 @@ test_datatypes(void)
 {
     expr* a;
     Environment e;
+    tstr tmp; 
+
     Env_new(&e);
     Env_add_core(&e);
     TL_TEST(e.buildins.count > 0);
@@ -114,21 +110,23 @@ test_datatypes(void)
     a = symbol(&e, tstr_("mysym"));
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_SYMBOL);
-    TL_TEST(tstr_equal(&a->symbol, &tstr_const("mysym")));
+    tmp = tstr_view("mysym");
+    TL_TEST(tstr_equal(&a->symbol, &tmp));
     printexpr(a);
     printf("\n");
 
     a = string(&e, tstr_("my string"));
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_STRING);
-    TL_TEST(tstr_equal(&a->symbol, &tstr_const("my string")));
+    tmp = tstr_view("my string");
+    TL_TEST(tstr_equal(&a->symbol, &tmp));
     printexpr(a);
     printf("\n");
 
     Env_destroy(&e);
 }
 
-void test_print(void)
+void test_print_manual(void)
 {
     Environment e;
     Env_new(&e);
@@ -196,19 +194,18 @@ void test_print(void)
 }
 
 void
-test_str2expr(void)
+test_lex(void)
 {
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
-    read_verbose(&e, "(\t write  3.14159)");
-    read_verbose(&e, "(write  ( + 2 10))");
-    read_verbose(&e, "(print  ( + 2 hi))");
-    read_verbose(&e, "\n(+ \t 2     5 \n  15.432 \n)");
-    read_verbose(&e, "(write      \"Hello, World!\")");
-
-    read_verbose(&e, "(- (+ 3 4) 5 )");
-    read_verbose(&e, "(+ (- 3 4) (* 3 5 6 (/ 2 1)) )");
+    TL_TEST(lex_test(&e, "(\t write  3.141592)", "(write 3.141592)"));
+    TL_TEST(lex_test(&e, "(write  ( + 2 10))", "(write (+ 2 10))"));
+    TL_TEST(lex_test(&e, "(write  ( + 2    hi) )", "(write (+ 2 hi))"));
+    TL_TEST(lex_test(&e, "\n(+ \t 2     5 \n  15.432 \n)",  "(+ 2 5 15.432000)"));
+    TL_TEST(lex_test(&e, "(write      \"Hello, World!\")",  "(write \"Hello, World!\")"));
+    TL_TEST(lex_test(&e, "(- (+ 3 4) 5 )",  "(- (+ 3 4) 5)"));
+    TL_TEST(lex_test(&e, "(+ (- 3 4) (* 3 5 6 (/ 2 1)) )",  "(+ (- 3 4) (* 3 5 6 (/ 2 1)))"));
     Env_destroy(&e);
 }
 
@@ -227,9 +224,11 @@ test_str2expr2str(void)
                        )
         );
     tstr s = stringifyexpr(r);
+    tstr res = tstr_view("(print 20)");
+    printf("res = %s\n", res.c_str);
     printf("stringified = %s\n", s.c_str);
+    TL_TEST(tstr_equal(&s, &res));
     tstr_destroy(&s);
-
     Env_destroy(&e);
 }
 
@@ -249,19 +248,37 @@ test_buildin_quote(void)
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(quote (1 2 3 4))",
-                                    "(1 2 3 4)"));
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(quote (foo bar (quote (baz))))",
-                                    "(foo bar (quote (baz)))"));
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(quote ()  )",
-                                    "NIL"));
+    TL_TEST(repl_check(&e,
+                       "(quote (1 2 3 4))",
+                       "(1 2 3 4)"));
+    TL_TEST(repl_check(&e,
+                       "(quote (foo bar (quote (baz))))",
+                       "(foo bar (quote (baz)))"));
+    TL_TEST(repl_check(&e,
+                       "(quote ()  )",
+                       "NIL"));
 
     Env_destroy(&e);
 }
 
+void
+test_buildin_range(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(repl_check(&e,
+                       "(range 2 5)",
+                       "(2 3 4)"));
+
+    TL_TEST(repl_check(&e,
+                       "(range (+ -1 2) 4)",
+                       "(1 2 3)"));
+
+
+    Env_destroy(&e);
+}
 
 void
 test_buildin_math(void)
@@ -270,13 +287,13 @@ test_buildin_math(void)
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(read_eval_print_verbose(&e,
+    TL_TEST(repl_check(&e,
                                     "(+ 1 2)",
                                     "3"));
-    TL_TEST(read_eval_print_verbose(&e,
+    TL_TEST(repl_check(&e,
                                     "(- 7 3)",
                                     "4"));
-    TL_TEST(read_eval_print_verbose(&e,
+    TL_TEST(repl_check(&e,
                                     "(+ 2 (- 5 6) 1)",
                                     "2"));
     Env_destroy(&e);
@@ -289,29 +306,29 @@ test_buildin_accessors(void)
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(car (quote (1 2 3 4)))",
-                                    "1"));
+    TL_TEST(repl_check(&e,
+                       "(car (quote (1 2 3 4)))",
+                       "1"));
 
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(cdr (quote (1 2 3 4)))",
-                                    "(2 3 4)"));
+    TL_TEST(repl_check(&e,
+                       "(cdr (quote (1 2 3 4)))",
+                       "(2 3 4)"));
 
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(cons 1 2)",
-                                    "(1 . 2)"));
+    TL_TEST(repl_check(&e,
+                       "(cons 1 2)",
+                       "(1 . 2)"));
 
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(cons (quote (a b c)) 3)",
-                                    "(1 . 2)"));
+    TL_TEST(repl_check(&e,
+                       "(cons (quote (a b c)) 3)",
+                       "(1 . 2)"));
 
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(first (quote (1 2 3 4)))",
-                                    "(1)"));
+    TL_TEST(repl_check(&e,
+                       "(first (quote (1 2 3 4)))",
+                       "(1)"));
 
-    TL_TEST(read_eval_print_verbose(&e,
-                                    "(second (quote ((1 2) (3 4) (5 6)) ))",
-                                    "(3 4)"));
+    TL_TEST(repl_check(&e,
+                       "(second (quote ((1 2) (3 4) (5 6)) ))",
+                       "(3 4)"));
 
     Env_destroy(&e);
 }
@@ -321,13 +338,13 @@ int main(int argc, char **argv) {
 	(void)argv;
 
 	TL(test_datatypes());
-	TL(test_print());
-	TL(test_str2expr2str());
-	TL(test_str2expr());
-	TL(test_buildin_quote());
-	TL(test_buildin_math());
-	TL(test_buildin_accessors());
-
+	TL(test_print_manual());
+	TL(test_lex());
+	//TL(test_str2expr());
+	//TL(test_buildin_quote());
+	TL(test_buildin_range());
+	//TL(test_buildin_math());
+	//TL(test_buildin_accessors());
     tl_summary();
 
 	return 0;

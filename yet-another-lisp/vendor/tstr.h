@@ -44,13 +44,18 @@ Future work:
 
 
 CHANGELOG:
+[2.1] Leveraged snprintf for c formatting and simplification of impl.
 [2.0] Reformatted library to adhere to newly-defined filosophy
       Shorter name, tstring_s -> tstr
+      Added declarations of tstrBuffer, the string construction buffer.
 [1.1] Reformatted copy function.
       Added tstr_format() declaration.
       added todo list to complete library.
 [1.0] Added core functionality.
 [0.0] Initialized library.
+
+TODO: Add error management system or atleast asserting on error.
+TODO: change tstr_length to be a null terminator checker within maxlen bounds.
 
 */
 
@@ -59,8 +64,8 @@ CHANGELOG:
 
 #include <stdint.h> /*uint32_t + uint8_t*/
 #include <stdio.h>  /*NULL*/
-#include <stdarg.h>  /*va_arg*/
 #include <assert.h>
+#include <stdarg.h>
 
 #ifndef TSTR_NO_STDLIB
     #include <stdlib.h> /*malloc + realloc + free*/
@@ -96,37 +101,41 @@ CHANGELOG:
 #define _TSTR_CHAR_TO_UPPER(C) \
 	( C += (C >= 'a' && C <= 'z') ? -('a'-'A') : 0 )
 
-#define tstr_const(STR) (tstr) {STR, sizeof(STR)/sizeof(STR[0]), 1}
-
 typedef struct {
 	TSTR_CHAR* c_str;
 	int maxlen;
-	char is_const;
+	char is_view;
 }tstr;
+
+typedef struct {
+	TSTR_CHAR* data;
+	int top;
+	int max;
+    float growth_rate;
+}tstrBuffer;
 
 TSTR_API char tstr_ok(tstr* _str);
 TSTR_API void tstr_destroy(tstr* _str);
 TSTR_API tstr tstr_n(TSTR_CHAR* _str, int _n);
 TSTR_API tstr tstr_(TSTR_CHAR* _str);
+TSTR_API tstr tstr_view(TSTR_CHAR* _str);
 TSTR_API tstr tstr_fmt(TSTR_CHAR* _fmt, ...);
-TSTR_API tstr tstr_char(TSTR_CHAR _char);
+TSTR_API int tstr_length(tstr* _str);
 TSTR_API tstr tstr_file(tstr* _path);
 TSTR_API char tstr_equal(tstr* _a, tstr* _b);
-TSTR_API tstr* tstr_substr(tstr* _src, tstr* _dst, int _f, int _n);
-TSTR_API tstr* tstr_duplicate(tstr* _src, tstr* _dst);
+TSTR_API tstr* tstr_copy(tstr* _src, tstr* _dst);
 TSTR_API tstr* tstr_cut(tstr* _str, int _f, int _t);
 TSTR_API tstr* tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
-TSTR_API int tstr_find(tstr* _str, tstr* _f); 
+TSTR_API int tstr_find(tstr* _str, tstr* _f);
 TSTR_API int tstr_findlast(tstr* _str, tstr* _f);
 TSTR_API tstr* tstr_concat(tstr* _str, tstr* _back);
-TSTR_API tstr* tstr_concatva(tstr* _str, int _n, ...);
 TSTR_API tstr* tstr_to_upper(tstr* _str);
 TSTR_API tstr* tstr_to_lower(tstr* _str);
-TSTR_API uint64_t tstr_hash(tstr* _str);
-TSTR_API tstr* tstr_from_float(tstr* _str, float _val);
-TSTR_API tstr* tstr_from_int(tstr* _str, int _val);
+TSTR_API tstr tstr_from_float(float _val);
+TSTR_API tstr tstr_from_int(int _val);
 TSTR_API float tstr_to_float(tstr* _str);
 TSTR_API int tstr_to_int(tstr* _str);
+TSTR_API uint64_t tstr_hash(tstr* _str);
 
 /******************************************************************************/
 #define TSTR_IMPLEMENTATION
@@ -134,14 +143,14 @@ TSTR_API int tstr_to_int(tstr* _str);
 
 TSTR_BACKEND
 int
-_rawstr_findchar(TSTR_CHAR* _start, char _char)
+_rawstr_findchar(const TSTR_CHAR* _start, char _char)
 {
-	int i = 0;
-	if (_start == NULL)
-		return TSTR_INVALID;
-	while (_start[i] != _char)
-		i++;
-	return i;
+    int i = 0;
+    if (_start == NULL)
+        return TSTR_INVALID;
+    while (_start[i] != _char)
+        i++;
+    return i;
 }
 
 TSTR_BACKEND
@@ -193,74 +202,99 @@ TSTR_API
 void
 tstr_destroy(tstr* _str)
 {
-	if (_str == NULL || _str->is_const)
+	if (_str == NULL || _str->is_view)
 		return;
 	if (_str->c_str != NULL)
 		TSTR_FREE(_str->c_str);
 	_str->c_str = NULL;
 	_str->maxlen = 0;
-	_str->is_const = 0;
+	_str->is_view = 0;
 }
+
+TSTR_API
+tstr
+tstr_view(TSTR_CHAR* _str)
+{
+    return (tstr) {_str, _rawstr_findchar(_str, '\0'), 1};
+}
+
+TSTR_API
+tstr
+tstr_fmt(char* _fmt, ...)
+{
+    tstr out = {0};
+    va_list va1;
+    va_list va2;
+
+    va_copy(va2, va1);
+    va_start(va1, _fmt);
+    out.maxlen = 1 + vsnprintf(NULL, 0, _fmt, va1);
+    va_end(va1);   
+    out.c_str = (TSTR_CHAR*)malloc(sizeof(char) * (out.maxlen));
+    va_start(va2, _fmt);
+    //vsnprintf(out.c_str, out.maxlen, _fmt, va2);
+    vsprintf(out.c_str, _fmt, va2);
+    //printf("FMT: max(%d), str(%d) [%s]\n", out.maxlen, tstr_length(&out), out.c_str);
+    va_end(va2);   
+    return out;
+}
+
+//TSTR_API
+//tstr
+//tstr_n(TSTR_CHAR* _str, int _n)
+//{
+//    tstr out = {0};
+//    if (_n < 1)
+//        return (tstr){0};
+//    out.c_str = (TSTR_CHAR*)TSTR_MALLOC(sizeof(TSTR_CHAR) * _n);
+//    if (out.c_str == NULL)
+//        return out;
+//    out.maxlen = _n;
+//    out.is_view = 0;
+//    if (_str == NULL)
+//        return out;
+//
+//    _rawstr_ncopy(_str, out.c_str, out.maxlen);
+//    out.c_str[out.maxlen-1] = TSTR_NULLTERM;
+//    return out;
+//}
+//TSTR_API
+//tstr
+//tstr_(TSTR_CHAR* _str)
+//{
+//    int n;
+//    if (_str == NULL)
+//        return (tstr){0};
+//    n = _rawstr_findchar(_str, TSTR_NULLTERM);
+//    if (n == TSTR_INVALID)
+//        return (tstr){0};
+//    return tstr_n(_str, n+1);
+//}
+//TSTR_API
+//tstr
+//tstr_char(TSTR_CHAR _char)
+//{
+//    tstr out = {0};
+//    out = tstr_n(NULL, 2);
+//    if (!tstr_ok(&out))
+//        return out;
+//    out.c_str[0] = _char;
+//    out.c_str[1] = TSTR_NULLTERM;
+//    return out;
+//}
 
 TSTR_API
 tstr
 tstr_n(TSTR_CHAR* _str, int _n)
 {
-	tstr out = {0};
-	if (_n < 1)
-		return (tstr){0};
-	out.c_str = (TSTR_CHAR*)TSTR_MALLOC(sizeof(TSTR_CHAR) * _n);
-	if (out.c_str == NULL)
-		return out;
-    out.maxlen = _n;
-	out.is_const = 0;
-    if (_str == NULL)
-        return out;
-
-    _rawstr_ncopy(_str, out.c_str, out.maxlen);
-	out.c_str[out.maxlen-1] = TSTR_NULLTERM;
-	return out;
+	return tstr_fmt("%.*s", _n, _str);
 }
 
 TSTR_API
 tstr
 tstr_(TSTR_CHAR* _str)
 {
-	int n;
-	if (_str == NULL)
-		return (tstr){0};
-	n = _rawstr_findchar(_str, TSTR_NULLTERM);
-	if (n == TSTR_INVALID)
-		return (tstr){0};
-	return tstr_n(_str, n+1);
-}
-
-TSTR_API
-tstr
-tstr_fmt(TSTR_CHAR* _fmt, ...)
-{
-    tstr out = {0};
-    va_list argptr;
-    va_start(argptr, _fmt);
-    out.maxlen = sprintf(NULL, _fmt, argptr);
-    out.c_str = (TSTR_CHAR*)malloc(sizeof(TSTR_CHAR) * (out.maxlen+1));
-    sprintf(out.c_str, _fmt, argptr);
-    va_end(argptr);   
-    out.c_str[out.maxlen] = '\n';
-    return out;
-}
-
-TSTR_API
-tstr
-tstr_char(TSTR_CHAR _char)
-{
-	tstr out = {0};
-	out = tstr_n(NULL, 2);
-	if (!tstr_ok(&out))
-		return out;
-	out.c_str[0] = _char;
-	out.c_str[1] = TSTR_NULLTERM;
-	return out;
+	return tstr_fmt("%s", _str);
 }
 
 TSTR_API
@@ -294,7 +328,7 @@ tstr_length(tstr* _str)
 	int len;
 	if (!tstr_ok(_str))
 		return TSTR_INVALID;
-	//if (_str->is_const)
+	//if (_str->is_view)
     //return _rawstr_findchar(_str->c_str, TSTR_NULLTERM);
 
 	len = _rawstr_nfindchar(_str->c_str, _str->maxlen, TSTR_NULLTERM);
@@ -314,11 +348,12 @@ tstr_equal(tstr* _a, tstr* _b)
 	if (!tstr_ok(_a) || !tstr_ok(_b))
 		return 0;
 
+    //printf("a=%s\nb=%s\n", _a->c_str, _b->c_str);
 	a_len = tstr_length(_a);
 	b_len = tstr_length(_b);
-
     min = (a_len < b_len) ? a_len : b_len;
-    //printf("alen=%d, blen=%d\n", a_len, b_len);
+    //printf("alen=%d, blen=%d, min=%d\n", a_len, b_len, min);
+
     for (i = 0; i < min; i++) {
         //printf("comparing (%c) == (%c)\n", _a->c_str[i], _b->c_str[i]);
         if (_a->c_str[i] != _b->c_str[i])
@@ -329,34 +364,11 @@ tstr_equal(tstr* _a, tstr* _b)
 
 TSTR_API
 tstr*
-tstr_substr(tstr* _src, tstr* _dst, int _f, int _n)
-/*TODO: copy cannot create a copy of a const tstring*/
+tstr_copy(tstr* _src, tstr* _dst)
 {
-	int src_len;
-	if (!tstr_ok(_src))
-		return NULL;
-
-	src_len = tstr_length(_src);
-	if (_n < 1 ||  _n > src_len) {
-		_n = src_len;
-		return NULL;
-	}
-
-	tstr_destroy(_dst);
-	*_dst = tstr_n(NULL, _n + 1);
-	if (!tstr_ok(_dst))
-		return NULL;
-
-	_rawstr_ncopy(_src->c_str + _f, _dst->c_str, _n);
-	_dst->c_str[_n] = TSTR_NULLTERM;
-	return _dst;
-}
-
-TSTR_API
-tstr*
-tstr_duplicate(tstr* _src, tstr* _dst)
-{
-	return tstr_substr(_src, _dst, 0, 0);
+    tstr_destroy(_dst);
+    *_dst = tstr_(_src->c_str);
+    return _dst;
 }
 
 TSTR_API
@@ -386,10 +398,12 @@ tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _split)
 	src_len = tstr_length(_src);
 	if (_split > src_len)
 		return NULL;
+
 	tstr_destroy(_lhs);
+	*_lhs = tstr_n(_src->c_str, _split);
 	tstr_destroy(_rhs);
-	tstr_substr(_src, _lhs, 0, _split);
-	tstr_substr(_src, _rhs, _split, src_len - _split);
+	//*_rhs = tstr_n(_src->c_str, src_len - _split);
+	*_rhs = tstr_(_src->c_str + _split);
 	return _src;
 }
 
@@ -449,7 +463,7 @@ tstr_concat(tstr* _str, tstr* _back)
 	if (!tstr_ok(_back))
 		return NULL;
 	if (!tstr_ok(_str))
-		return tstr_duplicate(_back, _str);
+		return tstr_copy(_back, _str);
 
 	str_len = tstr_length(_str);
 	back_len = tstr_length(_back);
@@ -464,25 +478,6 @@ tstr_concat(tstr* _str, tstr* _back)
 	_rawstr_ncopy(_back->c_str, combined.c_str + str_len, back_len);
 	tstr_destroy(_str);
 	*_str = combined;
-	return _str;
-}
-
-TSTR_API
-tstr*
-tstr_concatva(tstr* _str, int _n, ...)
-{
-	int i;
-    tstr* tmp;
-	va_list ap;
-	va_start(ap, _n);
-	if (!tstr_ok(_str))
-		*_str = tstr_n(NULL, 1);
-	for (i = 0; i < _n; i++) {
-        tmp = va_arg(ap, tstr*);
-        //printf("%d) [%s]\n", i, tmp->c_str);
-		tstr_concat(_str, tmp);
-    }
-	va_end(ap);
 	return _str;
 }
 
@@ -511,27 +506,31 @@ tstr_to_lower(tstr* _str)
 }
 
 TSTR_API
-tstr*
-tstr_from_int(tstr* _str, int _val)
+uint64_t
+tstr_hash(tstr* _str)
+/*Refrence, "sdbm" hash.*/
 {
-    char buf[32] = {0};
-	if (tstr_ok(_str))
-		tstr_destroy(_str);
-    sprintf(buf, "%d", _val);
-    *_str = tstr_(buf);
-	return _str;
+	uint32_t c;
+	uint64_t out = 0;
+	if (!tstr_ok(_str))
+		return 0;
+	while ((c = *_str->c_str++) != '\0')
+		out = c + (out << 6) + (out << 16) - out;
+	return out;
 }
 
 TSTR_API
-tstr*
-tstr_from_float(tstr* _str, float _val)
+tstr
+tstr_from_int(int _val)
 {
-    char buf[32] = {0};
-	if (tstr_ok(_str))
-		tstr_destroy(_str);
-    sprintf(buf, "%f", _val);
-    *_str = tstr_(buf);
-	return _str;
+    return tstr_fmt("%d", _val);
+}
+
+TSTR_API
+tstr
+tstr_from_float(float _val)
+{
+    return tstr_fmt("%f", _val);
 }
 
 TSTR_API
@@ -551,21 +550,6 @@ tstr_to_float(tstr* _str)
         return 0.0f;
     return atof(_str->c_str);
 }
-
-TSTR_API
-uint64_t
-tstr_hash(tstr* _str)
-/*Refrence, "sdbm" hash.*/
-{
-	uint32_t c;
-	uint64_t out = 0;
-	if (!tstr_ok(_str))
-		return 0;
-	while ((c = *_str->c_str++) != '\0')
-		out = c + (out << 6) + (out << 16) - out;
-	return out;
-}
-
 
 #endif /*TSTR_IMPLEMENTATION*/
 #endif /*TSTR_H*/

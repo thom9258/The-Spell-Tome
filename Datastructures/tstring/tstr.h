@@ -44,6 +44,7 @@ Future work:
 
 
 CHANGELOG:
+[2.1] Leveraged snprintf for c formatting and simplification of impl.
 [2.0] Reformatted library to adhere to newly-defined filosophy
       Shorter name, tstring_s -> tstr
       Added declarations of tstrBuffer, the string construction buffer.
@@ -130,8 +131,11 @@ TSTR_API int tstr_findlast(tstr* _str, tstr* _f);
 TSTR_API tstr* tstr_concat(tstr* _str, tstr* _back);
 TSTR_API tstr* tstr_to_upper(tstr* _str);
 TSTR_API tstr* tstr_to_lower(tstr* _str);
+TSTR_API tstr tstr_from_float(float _val);
+TSTR_API tstr tstr_from_int(int _val);
+TSTR_API float tstr_to_float(tstr* _str);
+TSTR_API int tstr_to_int(tstr* _str);
 TSTR_API uint64_t tstr_hash(tstr* _str);
-
 
 /******************************************************************************/
 #define TSTR_IMPLEMENTATION
@@ -344,14 +348,14 @@ tstr_equal(tstr* _a, tstr* _b)
 	if (!tstr_ok(_a) || !tstr_ok(_b))
 		return 0;
 
-    printf("a=%s\nb=%s\n", _a->c_str, _b->c_str);
+    //printf("a=%s\nb=%s\n", _a->c_str, _b->c_str);
 	a_len = tstr_length(_a);
 	b_len = tstr_length(_b);
     min = (a_len < b_len) ? a_len : b_len;
-    printf("alen=%d, blen=%d, min=%d\n", a_len, b_len, min);
+    //printf("alen=%d, blen=%d, min=%d\n", a_len, b_len, min);
 
     for (i = 0; i < min; i++) {
-        printf("comparing (%c) == (%c)\n", _a->c_str[i], _b->c_str[i]);
+        //printf("comparing (%c) == (%c)\n", _a->c_str[i], _b->c_str[i]);
         if (_a->c_str[i] != _b->c_str[i])
             return 0;
     }
@@ -398,7 +402,8 @@ tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _split)
 	tstr_destroy(_lhs);
 	*_lhs = tstr_n(_src->c_str, _split);
 	tstr_destroy(_rhs);
-	*_rhs = tstr_n(_src->c_str, src_len - _split);
+	//*_rhs = tstr_n(_src->c_str, src_len - _split);
+	*_rhs = tstr_(_src->c_str + _split);
 	return _src;
 }
 
@@ -512,6 +517,38 @@ tstr_hash(tstr* _str)
 	while ((c = *_str->c_str++) != '\0')
 		out = c + (out << 6) + (out << 16) - out;
 	return out;
+}
+
+TSTR_API
+tstr
+tstr_from_int(int _val)
+{
+    return tstr_fmt("%d", _val);
+}
+
+TSTR_API
+tstr
+tstr_from_float(float _val)
+{
+    return tstr_fmt("%f", _val);
+}
+
+TSTR_API
+int
+tstr_to_int(tstr* _str)
+{
+	if (!tstr_ok(_str))
+        return 0;
+    return atoi(_str->c_str);
+}
+
+TSTR_API
+float
+tstr_to_float(tstr* _str)
+{
+	if (!tstr_ok(_str))
+        return 0.0f;
+    return atof(_str->c_str);
 }
 
 #endif /*TSTR_IMPLEMENTATION*/
