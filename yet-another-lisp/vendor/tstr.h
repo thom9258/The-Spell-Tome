@@ -128,6 +128,7 @@ TSTR_API tstr* tstr_cut(tstr* _str, int _f, int _t);
 TSTR_API tstr* tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
 TSTR_API int tstr_find(tstr* _str, tstr* _f);
 TSTR_API int tstr_findlast(tstr* _str, tstr* _f);
+TSTR_API tstr* tstr_add2end(tstr* _dst, tstr* _end);
 TSTR_API tstr* tstr_concat(tstr* _str, tstr* _back);
 TSTR_API tstr* tstr_to_upper(tstr* _str);
 TSTR_API tstr* tstr_to_lower(tstr* _str);
@@ -451,6 +452,25 @@ tstr_findlast(tstr* _str, tstr* _f)
 		}
 	}
 	return TSTR_INVALID;
+}
+
+TSTR_API
+tstr*
+tstr_add2end(tstr* _dst, tstr* _end)
+{
+    tstr newstr;
+    //printf("trying to create str [%s] + [%s]\n", _dst->c_str, _end->c_str);
+    if (!tstr_ok(_dst) && !tstr_ok(_end))
+        newstr = tstr_("");
+    else if (tstr_ok(_dst) && !tstr_ok(_end))
+        newstr = tstr_(_dst->c_str);
+    else if (!tstr_ok(_dst) && tstr_ok(_end))
+        newstr = tstr_(_end->c_str);
+    else
+        newstr = tstr_fmt("%s%s", _dst->c_str, _end->c_str);
+    tstr_destroy(_dst);
+    *_dst = newstr;
+    return _dst;
 }
 
 TSTR_API

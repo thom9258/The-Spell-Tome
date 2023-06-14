@@ -204,6 +204,10 @@ test_lex(void)
     TL_TEST(lex_test(&e, "(write  ( + 2    hi) )", "(write (+ 2 hi))"));
     TL_TEST(lex_test(&e, "\n(+ \t 2     5 \n  15.432 \n)",  "(+ 2 5 15.432000)"));
     TL_TEST(lex_test(&e, "(write      \"Hello, World!\")",  "(write \"Hello, World!\")"));
+
+    TL_TEST(lex_test(&e, "(+ (- (range -1 (- 17 4)) M:PI) (* 9 2 7 foo bar baz))",
+                         "(+ (- (range -1 (- 17 4)) M:PI) (* 9 2 7 foo bar baz))"));
+
     TL_TEST(lex_test(&e, "(- (+ 3 4) 5 )",  "(- (+ 3 4) 5)"));
     TL_TEST(lex_test(&e, "(+ (- 3 4) (* 3 5 6 (/ 2 1)) )",  "(+ (- 3 4) (* 3 5 6 (/ 2 1)))"));
     Env_destroy(&e);

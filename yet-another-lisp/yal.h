@@ -82,6 +82,10 @@ enum TYPE {
     TYPE_ARRAY,
     TYPE_DICTIONARY,
 
+    RESTYPE_OK,
+    RESTYPE_WARNING,
+    RESTYPE_ERROR,
+
     TYPE_COUNT
 };
 
@@ -93,31 +97,10 @@ const char* TYPE_TO_STR[TYPE_COUNT] = {
     "TYPE_STRING", 
     "TYPE_ARRAY",
     "TYPE_DICTIONARY"
-};
 
-typedef struct {
-    char type;
-    char* info;
-}usermsg;
-
-/*Forward declarations*/
-typedef struct expr expr;
-typedef struct Environment Environment;
-
-typedef usermsg(*buildin_fn)(Environment* _env, expr** _out, expr* _in);
-
-typedef struct {
-    tstr name;
-    buildin_fn fn;
-}Buildin;
-
-#define t_type Buildin
-#define arr_t_name Buildins
-#include "vendor/tsarray.h"
-
-struct Environment {
-    Buildins buildins;
-    sbAllocator expr_allocator;
+    "RESTYPE_OK"
+    "RESTYPE_WARNING"
+    "RESTYPE_ERROR"
 };
 
 struct expr {
@@ -138,11 +121,52 @@ struct expr {
     };
 };
 
-/*TODO: We should probably rewrite the entire thing again and use this as return type..*/
 typedef struct {
-    usermsg msg;
+    char type;
+    tstr msg;
     expr* result;
-}yalresult;
+}Result;
+#define RESULT_WARNING(result, msg, ...) \
+    (Result) {RESTYPE_WARNING, tstr_fmt((char*)msg, ##__VA_ARGS__), result}
+#define RESULT_ERROR(msg, ...) \
+    (Result) {RESTYPE_ERROR, tstr_fmt((char*)msg, ##__VA_ARGS__), NIL()}
+#define RESULT_OK(result) \
+    (Result) {RESTYPE_OK, tstr_view((char*)"OK"), result}
+
+typedef struct {
+    char type;
+    tstr symbol;
+    expr* value;
+}Variable;
+
+#define t_type Variable
+#define arr_t_name Variables
+#include "vendor/tsarray.h"
+
+/*Forward declarations*/
+typedef struct Environment Environment;
+typedef struct VariableScope VariableScope;
+typedef Result(*buildin_fn)(VariableScope* _scope, expr* _in);
+
+typedef struct {
+    tstr name;
+    buildin_fn fn;
+}Buildin;
+
+#define t_type Buildin
+#define arr_t_name Buildins
+#include "vendor/tsarray.h"
+
+struct VariableScope {
+    Environment* env;
+    VariableScope* prev_scope;
+    Variables variables;
+};
+
+struct Environment {
+    Buildins buildins;
+    sbAllocator expr_allocator;
+};
 
 /* =========================================================
  * Safety and Assertion on error
@@ -153,33 +177,13 @@ typedef struct {
 #define ASSERT_UNREACHABLE() \
     assert(0 && "Fatal Error occoured, reached unreachable code!")
 
-#define ASSERT_INV_ENV(env) \
-    assert(env != NULL && "Invalid environment is used in code! Ptr is NULL!")
+#define ASSERT_INV_SCOPE(scope) \
+    assert(scope != NULL && "Invalid environment is used in code! Ptr is NULL!")
 
 #define ASSERT_NOMOREMEMORY(env) \
     assert(0 && "Was unable to allocate more memory!")
 
-#define USERERR(msg) (usermsg) {1, msg}
-
-#define USERMSG_OK() (usermsg) {0, "OK"}
-
-#define USERERR_LEN(fn, expected) \
-    USERERR("LENGTH OF INPUT IS INVALID, EXPECTED " #expected, fn)
-
-#define USERERR_TYPE(fn, expected) \
-    USERERR("TYPE OF INPUT IS INVALID, EXPECTED " #expected, fn)
-
-#define USERERR_NUMBER(fn) \
-    USERERR("INPUT WAS NOT A NUMVER", fn)
-
-#define USERMSG_IS_ERROR(MSGPTR) (((MSGPTR)->type == 0) ? 0 : 1)
-
-#define return_if_error(msgdst, call)                                   \
-    do {                                                                \
-    (msgdst) = call;                                                    \
-    if (USERMSG_IS_ERROR(&(msgdst)))                                    \
-        return (msgdst);                                                \
-    } while (0)
+#define RESULT_NOT_OK(RESULT) (((RESULT).type != RESTYPE_OK) ? 0 : 1)
 
 /*Environment management*/
 Environment* Env_new(Environment* _env);
@@ -202,20 +206,21 @@ expr* fourth(expr* _args);
 expr* nth(int _n, expr* _args);
 
 /*Value creation*/
-expr* cons(Environment *_env, expr* _car, expr* _cdr);
-expr* real(Environment *_env, int _v);
-expr* decimal(Environment *_env, float _v);
-expr* symbol(Environment *_env, tstr _v);
-expr* string(Environment *_env, tstr _v);
+expr* cons(VariableScope *_env, expr* _car, expr* _cdr);
+expr* real(VariableScope *_env, int _v);
+expr* decimal(VariableScope *_env, float _v);
+expr* symbol(VariableScope *_env, tstr _v);
+expr* string(VariableScope *_env, tstr _v);
+void atom_delete(VariableScope *_scope, expr* _atom);
 
 /*Printing*/
 void printexpr(expr* _args);
 tstr stringifyexpr(expr* _args);
 
 /*Core*/
-usermsg read(Environment* _env, expr** _out, char* _program_str);
-usermsg eval(Environment* _env, expr** _out, expr* _in);
-usermsg progc(Environment* _env, expr** _out, expr* _in);
+Result read(VariableScope* _env, char* _program_str);
+Result eval(VariableScope* _env, expr* _in);
+Result progc(VariableScope* _env, expr* _in);
 
 
 /******************************************************************************/
@@ -247,6 +252,8 @@ expr _NIL_VALUE = (expr){.type = 0, .car = NULL, .cdr = NULL};
 expr*
 NIL(void)
 {
+    _NIL_VALUE.car = NULL;
+    _NIL_VALUE.cdr = NULL;
     return &_NIL_VALUE;
 }
 
@@ -273,17 +280,6 @@ is_symbol(expr* _args)
         return 1;
     return 0;
 }
-
-//char
-//car_is_list(expr* _args)
-//{
-//    if (!is_nil(_args) &&
-//        _args->type == TYPE_CONS &&
-//        is_cons(_args->car)
-//        )
-//        return 1;
-//    return 0;
-//}
 
 char
 is_dotted(expr* _args)
@@ -357,19 +353,19 @@ nth(int _n, expr* _args)
 }
 
 expr*
-_atom_new(Environment *_env)
+_atom_new(VariableScope *_scope)
 {
-    ASSERT_INV_ENV(_env);
-    expr* e = (expr*)sbAllocator_get(&_env->expr_allocator);
+    ASSERT_INV_SCOPE(_scope);
+    expr* e = (expr*)sbAllocator_get(&_scope->env->expr_allocator);
     if (e == NULL)
         ASSERT_NOMOREMEMORY(env);
     return e;
 }
 
 void
-_atom_delete(Environment *_env, expr* _atom)
+atom_delete(VariableScope *_scope, expr* _atom)
 {
-    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
     if (is_nil(_atom))
         return;
 
@@ -383,14 +379,14 @@ _atom_delete(Environment *_env, expr* _atom)
     default:
         break;
     };
-    sbAllocator_return(&_env->expr_allocator, _atom);
+    sbAllocator_return(&_scope->env->expr_allocator, _atom);
 }
 
 expr*
-cons(Environment *_env, expr* _car, expr* _cdr)
+cons(VariableScope *_scope, expr* _car, expr* _cdr)
 {
-    ASSERT_INV_ENV(_env);
-    expr* e = _atom_new(_env);
+    ASSERT_INV_SCOPE(_scope);
+    expr* e = _atom_new(_scope);
     e->type = TYPE_CONS;
     e->car = _car;
     e->cdr = _cdr;
@@ -398,65 +394,44 @@ cons(Environment *_env, expr* _car, expr* _cdr)
 }
 
 expr*
-real(Environment *_env, int _v)
+real(VariableScope *_scope, int _v)
 {
-    ASSERT_INV_ENV(_env);
-    expr* e = _atom_new(_env);
+    ASSERT_INV_SCOPE(_scope);
+    expr* e = _atom_new(_scope);
     e->type = TYPE_REAL;
     e->real = _v;
     return e;
 }
 
 expr*
-decimal(Environment *_env, float _v)
+decimal(VariableScope *_scope, float _v)
 {
-    ASSERT_INV_ENV(_env);
-    expr* e = _atom_new(_env);
+    ASSERT_INV_SCOPE(_scope);
+    expr* e = _atom_new(_scope);
     e->type = TYPE_DECIMAL;
     e->decimal = _v;
     return e;
 }
 
 expr*
-symbol(Environment *_env, tstr _v)
+symbol(VariableScope *_scope, tstr _v)
 {
-    ASSERT_INV_ENV(_env);
-    expr* e = _atom_new(_env);
+    ASSERT_INV_SCOPE(_scope);
+    expr* e = _atom_new(_scope);
     e->type = TYPE_SYMBOL;
     e->symbol = _v;
     return e;
 }
 
 expr*
-string(Environment *_env, tstr _v)
+string(VariableScope *_scope, tstr _v)
 {
-    ASSERT_INV_ENV(_env);
-    expr* e = _atom_new(_env);
+    ASSERT_INV_SCOPE(_scope);
+    expr* e = _atom_new(_scope);
     e->type = TYPE_STRING;
     e->string = _v;
     return e;
 }
-
-//expr*
-//_cons_print(expr* _args, char* _open, char* _close)
-//{
-//    /*Handle CAR*/
-//    if (is_cons(car(_args))) {
-//        printf("%s", _open);
-//        print(car(_args));
-//        printf("%s", _close);
-//    } else {
-//        if (!is_nil(car(_args)))
-//            print(car(_args));
-//    }
-//    if (!is_nil(second(_args)))
-//        printf(" ");
-//
-//    /*Handle CDR*/
-//    if (!is_nil(cdr(_args)))
-//        print(cdr(_args));
-//    return _args;
-//}
 
 void
 printexpr(expr* _arg)
@@ -464,24 +439,6 @@ printexpr(expr* _arg)
     tstr str = stringifyexpr(_arg);
     printf("%s", str.c_str);
     tstr_destroy(&str);
-}
-
-tstr*
-tstr_add2end(tstr* _dst, tstr* _end)
-{
-    tstr newstr;
-    //printf("trying to create str [%s] + [%s]\n", _dst->c_str, _end->c_str);
-    if (!tstr_ok(_dst) && !tstr_ok(_end))
-        newstr = tstr_("");
-    else if (tstr_ok(_dst) && !tstr_ok(_end))
-        newstr = tstr_(_dst->c_str);
-    else if (!tstr_ok(_dst) && tstr_ok(_end))
-        newstr = tstr_(_end->c_str);
-    else
-        newstr = tstr_fmt("%s%s", _dst->c_str, _end->c_str);
-    tstr_destroy(_dst);
-    *_dst = newstr;
-    return _dst;
 }
 
 tstr
@@ -557,31 +514,6 @@ stringifyexpr(expr* _arg)
     return dst;
 }
 
-//char
-//_is_whitespace(char _c)
-//{
-//    if (_c == ' ' || _c == '\t' || _c == '\n' )
-//        return 1;
-//    return 0;
-//}
-//
-//char
-//_looks_like_number(char* _start)
-//{
-//    if (*_start > '0' && *_start < '9')
-//        return 1; 
-//    return 0;
-//}
-//
-//char
-//_looks_like_string(char* _start)
-//{
-//    if (*_start == '"')
-//        return 1;
-//    return 0;
-//}
-
-
 char
 _is_symbol_real_or_decimal(tstr* _num)
 /*TODO: Make this more robust..*/
@@ -593,7 +525,7 @@ _is_symbol_real_or_decimal(tstr* _num)
 }
 
 expr*
-_lex_number(Environment *_env, char* _start, int* _cursor)
+_lex_number(VariableScope *_scope, char* _start, int* _cursor)
 {
     tstr str;
     int len = 0;
@@ -604,12 +536,12 @@ _lex_number(Environment *_env, char* _start, int* _cursor)
     (*_cursor) += tstr_length(&str)-1;
     type = _is_symbol_real_or_decimal(&str);
     if (type == TYPE_REAL)
-        return real(_env, tstr_to_int(&str));
-    return decimal(_env, tstr_to_float(&str));
+        return real(_scope, tstr_to_int(&str));
+    return decimal(_scope, tstr_to_float(&str));
 }
 
 expr*
-_lex_string(Environment *_env, char* _start, int* _cursor)
+_lex_string(VariableScope *_scope, char* _start, int* _cursor)
 {
     int len = 1;
     tstr str;
@@ -617,11 +549,11 @@ _lex_string(Environment *_env, char* _start, int* _cursor)
         len++;
     str = tstr_n(_start+1, len);
     (*_cursor) += tstr_length(&str)+1;
-    return string(_env, str);
+    return string(_scope, str);
 }
 
 expr*
-_lex_symbol(Environment *_env, char* _start, int* _cursor)
+_lex_symbol(VariableScope *_scope, char* _start, int* _cursor)
 {
     int len = 0;
     tstr str;
@@ -629,26 +561,29 @@ _lex_symbol(Environment *_env, char* _start, int* _cursor)
         len++;
     str = tstr_n(_start, len);
     (*_cursor) += tstr_length(&str)-1;
-    return symbol(_env, str);
+    return symbol(_scope, str);
 }
 
 expr*
-_lex(Environment* _env, char* _program, int* _cursor)
+
+_lex(VariableScope* _scope, char* _program, int* _cursor)
 {
     /*TODO: Does not support special syntax for:
     quote = '
     array = []
     dotted lists (a . 34)
     */
-    ASSERT_INV_ENV(_env);
+    expr* first = NULL;
+    expr* curr = NULL;
+    expr* extracted = NULL;
+    char* index = NULL;
+
+    ASSERT_INV_SCOPE(_scope);
     assert(_program != NULL && "Invalid program given to lexer");
     assert(_cursor != NULL && "Invalid cursor given to lexer");
-    assert(Buildins_len(&_env->buildins) > 0 && "No buildin functions in environment!");
+    assert(Buildins_len(&_scope->env->buildins) > 0 && "No buildin functions in environment!");
 
-    expr* first = NULL;
-    expr* curr = cons(_env, NULL, NULL);
-    expr* extracted;
-    char* index;
+    curr = cons(_scope, NULL, NULL);
     while (1) {
         index = _program + (*_cursor)++;
         if (_IS_WHITESPACE(*index)) {
@@ -658,38 +593,37 @@ _lex(Environment* _env, char* _program, int* _cursor)
             return first;
         }
         else if (*index ==  '(') {
-            extracted = _lex(_env, _program, _cursor);
+            extracted = _lex(_scope, _program, _cursor);
         }
         else if (_LOOKS_LIKE_STRING(*index)) {
             /*NOTE: this is a bad way of giving it index and cursor just for incrementing*/
-            extracted = _lex_string(_env, index, _cursor);
+            extracted = _lex_string(_scope, index, _cursor);
         }
         else if (_LOOKS_LIKE_NUMBER(*index)) {
-            extracted = _lex_number(_env, index, _cursor);
+            extracted = _lex_number(_scope, index, _cursor);
         }
         else {
-            extracted = _lex_symbol(_env, index, _cursor);
+            extracted = _lex_symbol(_scope, index, _cursor);
         }
         /*Insert extracted into expression*/
         curr->car = extracted;
         if (!first)
             first = curr; 
-        curr->cdr = cons(_env, NULL, NULL);
+        curr->cdr = cons(_scope, NULL, NULL);
         curr = curr->cdr;
     }
     ASSERT_UNREACHABLE();
 }
 
 
-usermsg
-read(Environment* _env, expr** _out, char* _program_str)
+Result
+read(VariableScope* _scope, char* _program_str)
 {
-    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
     assert(_program_str != NULL && "Given program str is NULL");
     int cursor = 0;
-    expr* lexed = _lex(_env, _program_str, &cursor);
-    *_out = lexed;
-    return USERMSG_OK();
+    expr* lexed = _lex(_scope, _program_str, &cursor);
+    return RESULT_OK(lexed);
 }
 
 Buildin*
@@ -712,40 +646,45 @@ _find_buildin(Environment* _env, expr* _sym)
     return NULL;
 }
 
-usermsg
-progc(Environment* _env, expr** _out, expr* _in)
+Result
+progc(VariableScope* _scope, expr* _in)
 /*progc() is a list evaller that expects a list of eval-able lists */
 {
-    usermsg msg;
-    expr* root = cons(_env, NULL, NULL);
+    //usermsg msg;
+    expr* root = cons(_scope, NULL, NULL);
     expr* outtmp = root;
     expr* tmp = _in;
-    ASSERT_INV_ENV(_env);
+    Result curres;
+    ASSERT_INV_SCOPE(_scope);
     //DBPRINT("input to progc: ", _in);
     if (!is_cons(_in))
-        return USERERR("'progc' Expected a list of eval'able arguments!");
+        return RESULT_ERROR("'progc' Expected a list of eval'able arguments!"
+                            "Got %s\n", stringifyexpr(_in));
 
     while_not_nil(tmp) {
-        return_if_error(msg, eval(_env, &(outtmp->car), car(tmp)));
-        //DBPRINT("progc evalled: ", car(tmp));
-        //DBPRINT("to ", car(outtmp));
-        outtmp->cdr = cons(_env, NULL, NULL);
+        curres = eval(_scope, car(tmp));
+        if (RESULT_NOT_OK(curres))
+            return RESULT_ERROR("'progc' could not evaluate expr %s\n", stringifyexpr(car(tmp)));
+        outtmp->car = curres.result;
+        DBPRINT("progc evalled: ", car(tmp));
+        DBPRINT("to ", car(outtmp));
+        outtmp->cdr = cons(_scope, NULL, NULL);
         outtmp = cdr(outtmp);
         tmp = cdr(tmp);
     }
-    *_out = root;
-    //DBPRINT("result of progc: ", *_out);
-    return USERMSG_OK();
+    return RESULT_OK(root);
 }
 
-usermsg
-eval(Environment* _env, expr** _out, expr* _in)
+Result
+eval(VariableScope* _scope, expr* _in)
 {
     expr* fn;
     expr* args;
-    usermsg msg = USERMSG_OK();
+    Result result;
+    //usermsg msg = USERMSG_OK();
     Buildin* buildin;
-    ASSERT_INV_ENV(_env);
+
+    ASSERT_INV_SCOPE(_scope);
     switch (_in->type) {
     case TYPE_CONS:
         /*We are sanitizing inputs here by removing a cons cell*/
@@ -753,157 +692,108 @@ eval(Environment* _env, expr** _out, expr* _in)
         _in = car(_in);
         fn = car(_in);
         args = cdr(_in);
-        //DBPRINT("(eval) NAME: ", fn);
-        //DBPRINT("(eval) ARGS: ", args);
-        if (is_cons(fn))
-            return USERERR("'eval' Expected first atom to be callable symbol!");
-        if (fn->type != TYPE_SYMBOL)
-            return USERERR("First value in list to eval was not a callable symbol!");
-        buildin = _find_buildin(_env, fn);
-        msg = buildin->fn(_env, _out, args);
+        DBPRINT("(eval) NAME: ", fn);
+        DBPRINT("(eval) ARGS: ", args);
+        if (is_cons(fn) || fn->type != TYPE_SYMBOL)
+            return RESULT_ERROR("'eval' expected callable function, got %s\n", stringifyexpr(fn));
+        buildin = _find_buildin(_scope->env, fn);
+        result = buildin->fn(_scope, args);
         break;
     case TYPE_SYMBOL:
         /*TODO: Check symbol table and return value of symbol*/
-        *_out =  _in;
+        return RESULT_OK(_in);
         break;
     default:
-        *_out = _in;
+        return RESULT_OK(_in);
         break;
     };
-    return msg;
-}
 
-//usermsg
-//eval(Environment* _env, expr** _out, expr* _in)
-//{
-//    expr* fn;
-//    expr* args;
-//    usermsg msg;
-//    Buildin* buildin;
-//
-//    ASSERT_INV_ENV(_env);
-//    if (is_nil(_in)) {
-//        *_out = NIL();
-//        return USERMSG_OK();
-//    }
-//    if (is_val(_in)) {
-//        *_out = _in;
-//        return USERMSG_OK();
-//    }
-//    if (is_cons(_in)) {
-//        /*We are sanitizing inputs here by removing a cons cell*/
-//        /*TODO: This is what i think goes wrong*/
-//        _in = car(_in);
-//        fn = car(_in);
-//        args = cdr(_in);
-//        DBPRINT("(eval) NAME: ", fn);
-//        DBPRINT("(eval) ARGS: ", args);
-//        if (is_cons(fn))
-//            return USERERR("'eval' Expected first atom to be callable symbol!");
-//        if (fn->type != TYPE_SYMBOL)
-//            return USERERR("First value in list to eval was not a callable symbol!");
-//        buildin = _find_buildin(_env, fn);
-//        msg = buildin->fn(_env, _out, args);
-//        return msg;
-//    }
-//
-//    /*TODO: Check symbol table and return value of symbol*/
-//    if (is_symbol(_in))
-//        *_out =  _in;
-//
-//    return USERMSG_OK();
-//}
+    return result;
+}
 
 /*********************************************************************/
 /* Buildin Functions */
 /*********************************************************************/
 
-usermsg
-buildin_quote(Environment* _env, expr** _out, expr* _in)
+Result
+buildin_quote(VariableScope* _scope, expr** _out, expr* _in)
 {
-    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
     *_out = _in;
-    return USERMSG_OK();
+    return RESULT_OK();
 }
 
-usermsg
-buildin_list(Environment* _env, expr** _out, expr* _in)
+Result
+buildin_car(VariableScope* _scope, expr* _in)
 {
-    ASSERT_INV_ENV(_env);
-    *_out = cons(_env, _in, NIL());
-    return USERMSG_OK();
-}
-
-usermsg
-buildin_car(Environment* _env, expr** _out, expr* _in)
-{
-    usermsg msg;
+    Result result;
     expr* args;
-    ASSERT_INV_ENV(_env);
-    return_if_error(msg, progc(_env, &args, _in));
-    *_out =  car(args);
-    return USERMSG_OK();
+    ASSERT_INV_SCOPE(_scope);
+    result = progc(_scope, _in);
+    if (RESULT_NOT_OK(result))
+        return RESULT_ERROR("'car' could not evaluate arguments %s\n", _in);
+    return RESULT_OK(car(args));
 }
 
-usermsg
-buildin_cdr(Environment* _env, expr** _out, expr* _in)
+Result
+buildin_cdr(VariableScope* _scope, expr* _in)
 {
-    usermsg msg;
+    Result result;
     expr* args;
-    ASSERT_INV_ENV(_env);
-    msg = progc(_env, &args, _in);
-    if (USERMSG_IS_ERROR(&msg)) return msg;
-    *_out =  cdr(args);
-    return USERMSG_OK();
+    ASSERT_INV_SCOPE(_scope);
+    result = progc(_scope, _in);
+    if (RESULT_NOT_OK(result))
+        return RESULT_ERROR("'car' could not evaluate arguments %s\n", _in);
+    return RESULT_OK(cdr(args));
 }
 
-usermsg
-buildin_cons(Environment* _env, expr** _out, expr* _in)
+Result
+buildin_cons(VariableScope* _scope, expr** _out, expr* _in)
 {
-    usermsg msg;
+    Result result;
     expr* args;
-    ASSERT_INV_ENV(_env);
-    msg = progc(_env, &args, _in);
-    if (USERMSG_IS_ERROR(&msg)) return msg;
-    *_out =  cons(_env, first(args), second(args));
-    return USERMSG_OK();
+    ASSERT_INV_SCOPE(_scope);
+    result = progc(_scope, _in);
+    if (RESULT_NOT_OK(result))
+        return RESULT_ERROR("'car' could not evaluate arguments %s\n", _in);
+    return RESULT_OK(cons(_scope, first(args), second(args)));
 }
 
-usermsg
-buildin_range(Environment* _env, expr** _out, expr* _in)
+Result
+buildin_range(VariableScope* _scope, expr* _in)
 {
-    usermsg msg;
+    Result result;
     expr* args;
     expr* start;
     expr* end;
-    expr* root;
+    expr* range;
     expr* curr;
     int i;
 
-    ASSERT_INV_ENV(_env);
-    msg = progc(_env, &args, _in);
-    if (USERMSG_IS_ERROR(&msg)) return msg;
+    ASSERT_INV_SCOPE(_scope);
+    result = progc(_scope, _in);
+    if (RESULT_NOT_OK(result))
+        return RESULT_ERROR("'range' could not evaluate inputs %s\n", stringifyexpr(_in));
     if (len(args) != 2)
-        return USERERR("Expected 2 arguments for function 'range'.");
+        return RESULT_ERROR("'range' expected 2 inputs, min and max\n");
+
     start = first(args);
     end = second(args);
     if (start->type != TYPE_REAL)
-        return USERERR("First argument in 'range' is not a REAL type.");
+        return RESULT_ERROR("'range' first input is not a REAL type.\n");
     if (end->type != TYPE_REAL)
-        return USERERR("Second argument in 'range' is not a REAL type.");
+        return RESULT_ERROR("'range' second input is not a REAL type.\n");
     if (start->real > end->real)
-        return USERERR("In 'range' expected arg1 < arg2");
+        return RESULT_ERROR("'range' first input is larger than the second input.\n");
 
-    root = cons(_env, NULL, NULL);
-    curr = root;
+    range = cons(_scope, NULL, NULL);
+    curr = range;
     for (i = start->real; i < end->real; i++) {
-        curr->car = real(_env, i);
-        curr->cdr = cons(_env, NULL, NULL);
+        curr->car = real(_scope, i);
+        curr->cdr = cons(_scope, NULL, NULL);
         curr = cdr(curr);
     }
-
-    *_out = root; 
-    return USERMSG_OK();
+    return RESULT_OK(range);
 }
 
 void
@@ -927,7 +817,7 @@ buildin_plus(Environment* _env, expr** _out, expr* _in)
     expr* args;
     int sum = 0;
     expr* tmp;
-    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
     msg = progc(_env, &args, _in);
     if (USERMSG_IS_ERROR(&msg)) return msg;
     //DBPRINT("result of progc in + ", args);
@@ -951,7 +841,7 @@ buildin_minus(Environment* _env, expr** _out, expr* _in)
     expr* args;
     int sum = 0;
     expr* tmp;
-    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
     msg = progc(_env, &args, _in);
     if (USERMSG_IS_ERROR(&msg)) return msg;
     tmp = args;
@@ -987,7 +877,7 @@ Env_add_buildin(Environment* _env, char* _name, buildin_fn _fn)
 void
 Env_add_core(Environment* _env)
 {
-    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
     /*List management*/
     Env_add_buildin(_env, "range", buildin_range);
     Env_add_buildin(_env, "car", buildin_car);
