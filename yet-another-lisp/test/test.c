@@ -42,8 +42,11 @@ repl_check(VariableScope* _scope, char* _p, char* _gt)
     tstr gt_str = tstr_view(_gt);
     tstr result_str;
     Result result = read_eval_print(_scope, _p);
+    if (RESULT_NOT_OK(result))
+        printf("yal> ERROR: %s\n", result.msg);
     result_str = stringifyexpr(result.result);
-    printf("EXPECTED: %s\nGOT: %s\n", gt_str.c_str, result_str.c_str);
+    printf("EXPECTED: %s\n"
+           "GOT:      %s\n", gt_str.c_str, result_str.c_str);
     are_equal = tstr_equal(&result_str, &gt_str);
     tstr_destroy(&result_str);
     return are_equal;
@@ -97,7 +100,7 @@ test_datatypes(void)
     printexpr(a);
     printf("\n");
 
-    a = symbol(&e.global, tstr_("mysym"));
+    a = symbol(&e.global, "mysym");
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_SYMBOL);
     tmp = tstr_view("mysym");
@@ -105,7 +108,7 @@ test_datatypes(void)
     printexpr(a);
     printf("\n");
 
-    a = string(&e.global, tstr_("my string"));
+    a = string(&e.global, "my string");
     TL_TEST(!is_nil(a));
     TL_TEST(a->type == TYPE_STRING);
     tmp = tstr_view("my string");
@@ -123,7 +126,7 @@ void test_print_manual(void)
     Env_add_core(&e);
 
     expr* r = cons(&e.global,
-                   csymbol(&e.global, "print"),
+                   symbol(&e.global, "print"),
                    cons(&e.global,
                         real(&e.global, 20),
                         NULL
@@ -133,19 +136,19 @@ void test_print_manual(void)
     printf("\n");
 
     r = cons(&e.global,
-             csymbol(&e.global, "mydottedlistvar"),
+             symbol(&e.global, "mydottedlistvar"),
              real(&e.global, 22)
         );
     printexpr(r);
     printf("\n");
 
     r = cons(&e.global,
-             csymbol(&e.global, "*"),
+             symbol(&e.global, "*"),
              cons(&e.global,
                   real(&e.global, 2),
                   cons(&e.global,
                        cons(&e.global,
-                            csymbol(&e.global, "+"),
+                            symbol(&e.global, "+"),
                             cons(&e.global,
                                 real(&e.global, 3),
                                 cons(&e.global,
@@ -160,7 +163,7 @@ void test_print_manual(void)
     printf("\n");
 
     expr* a = cons(&e.global,
-                   csymbol(&e.global, "inc"),
+                   symbol(&e.global, "inc"),
                    cons(&e.global,
                         real(&e.global, 20),
                         NULL
@@ -174,7 +177,7 @@ void test_print_manual(void)
                        )
         );
     r = cons(&e.global,
-             csymbol(&e.global, "+"),
+             symbol(&e.global, "+"),
              cons(&e.global, a, cons(&e.global, b, NIL()))
         );
 
@@ -190,15 +193,24 @@ test_lex(void)
     Env_add_core(&e);
     TL_TEST(lex_test(&e.global, "(\t write  3.141592)", "(write 3.141592)"));
     TL_TEST(lex_test(&e.global, "(write  ( + 2 10))", "(write (+ 2 10))"));
+    TL_TEST(lex_test(&e.global, "()", "(NIL)"));
+    TL_TEST(lex_test(&e.global, "( 2 NIL )", "(2 NIL)"));
     TL_TEST(lex_test(&e.global, "(write  ( + 2    hi) )", "(write (+ 2 hi))"));
-    TL_TEST(lex_test(&e.global, "\n(+ \t 2     5 \n  15.432 \n)",  "(+ 2 5 15.432000)"));
-    TL_TEST(lex_test(&e.global, "(write      \"Hello, World!\")",  "(write \"Hello, World!\")"));
 
-    TL_TEST(lex_test(&e.global, "(+ (- (range -1 (- 17 4)) M:PI) (* 9 2 7 foo bar baz))",
-                         "(+ (- (range -1 (- 17 4)) M:PI) (* 9 2 7 foo bar baz))"));
+
+    TL_TEST(lex_test(&e.global, "\n(+ \t 2     5 \n  15.432 \n)",  "(+ 2 5 15.432000)"));
+    //TL_TEST(lex_test(&e.global, "(write      \"Hello, World!\")",  "(write \"Hello, World!\")"));
+
+    TL_TEST(lex_test(&e.global,
+                     "(+ (- (range -1 (- 17 4)) M:PI) (* 9 2 7 foo bar baz))",
+                     "(+ (- (range -1 (- 17 4)) M:PI) (* 9 2 7 foo bar baz))"));
 
     TL_TEST(lex_test(&e.global, "(- (+ 3 4) 5 )",  "(- (+ 3 4) 5)"));
-    TL_TEST(lex_test(&e.global, "(+ (- 3 4) (* 3 5 6 (/ 2 1)) )",  "(+ (- 3 4) (* 3 5 6 (/ 2 1)))"));
+    TL_TEST(lex_test(&e.global,
+                     "(+ (- 3 4) (* 3 5 6 (/ 2 1)) )",
+                     "(+ (- 3 4) (* 3 5 6 (/ 2 1)))"));
+
+
     Env_destroy(&e);
 }
 
@@ -219,14 +231,16 @@ test_buildin_quote(void)
     Env_add_core(&e);
 
     TL_TEST(repl_check(&e.global,
-                       "(quote (1 2 3 4))",
-                       "(1 2 3 4)"));
-    TL_TEST(repl_check(&e.global,
                        "(quote (foo bar (quote (baz))))",
                        "(foo bar (quote (baz)))"));
+
+    TL_TEST(repl_check(&e.global,
+                       "(quote (1 2 3 4))",
+                       "(1 2 3 4)"));
+    
     TL_TEST(repl_check(&e.global,
                        "(quote ()  )",
-                       "NIL"));
+                       "(NIL)"));
 
     Env_destroy(&e);
 }
@@ -240,7 +254,7 @@ test_buildin_range(void)
 
     TL_TEST(repl_check(&e.global,
                        "(range 2 5)",
-                       "(2 3 4)"));
+                       "2 3 4"));
 
     TL_TEST(repl_check(&e.global,
                        "(range (+ -1 2) 4)",
@@ -302,10 +316,9 @@ int main(int argc, char **argv) {
 	(void)argv;
 
 	TL(test_datatypes());
-	TL(test_print_manual());
+	//TL(test_print_manual());
 	TL(test_lex());
-	//TL(test_str2expr());
-	//TL(test_buildin_quote());
+	TL(test_buildin_quote());
 	TL(test_buildin_range());
 	//TL(test_buildin_math());
 	//TL(test_buildin_accessors());

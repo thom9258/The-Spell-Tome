@@ -29,6 +29,7 @@ For more information, please refer to
 ## CHANGELOG
 - [0.2] Implemented a lexer for reading of s expressions.
         Cleaning up impl and purging unused stuff
+        fixed lexer errors with proper tokenization.
 - [0.1] Created AST structure and imported base lib functionality.
 - [0.0] Initialized library.
 */
@@ -36,6 +37,13 @@ For more information, please refer to
 /*
 https://buildyourownlisp.com/chapter9_s_expressions#lists_and_lisps
 http://www.ulisp.com/show?1BLW
+*/
+
+/*
+  TODO: The stringifyexpr in error returns are the ones doing memory leaks, fix
+  them by not directly returning string with result stringifyexpr.
+  It would be possible if stringifyexpr is not used but by creating a variable
+  type called error, then it would remove itself on env_destroy()
 */
 
 #ifndef YAL_H
@@ -58,6 +66,13 @@ http://www.ulisp.com/show?1BLW
     printf(before); printexpr(expr);  printf("\n");
 
 #define while_not_nil(expr) while (!is_nil(cdr(expr)))
+
+#define with_stringified_expr(exprname, expr, body)                     \
+    do {                                                                \
+      tstr exprname = stringifyexpr(expr);                              \
+      body;                                                             \
+      tstr_destroy(&exprname);                                          \
+    } while (0)
 
 enum TYPE {
     TYPE_CONS = 0,
@@ -110,16 +125,9 @@ typedef struct expr expr;
 
 typedef struct {
     char type;
-    tstr msg;
     expr* result;
+    char* msg;
 }Result;
-
-#define RESULT_OK(result) \
-    (Result) {RESTYPE_OK, tstr_view((char*)"OK"), result}
-#define RESULT_WARNING(result, msg, ...) \
-    (Result) {RESTYPE_WARNING, tstr_fmt((char*)msg, ##__VA_ARGS__), result}
-#define RESULT_ERROR(msg, ...) \
-    (Result) {RESTYPE_ERROR, tstr_fmt((char*)msg, ##__VA_ARGS__), NIL()}
 
 typedef struct {
     char type;
@@ -155,6 +163,8 @@ struct Environment {
     Buildins buildins;
     sbAllocator variable_allocator;
     VariableScope global;
+    /*TODO: Make this a traceable list of err msgs that is appended to..*/
+    tstr errmsg;
 };
 
 /* =========================================================
@@ -180,7 +190,10 @@ struct Environment {
 
 #define RESULT_NOT_OK(RESULT) (((RESULT).type != RESTYPE_OK) ? 1 : 0)
 
-/*Environment management*/
+/*System management*/
+
+Result Result_ok(Environment* _env, expr* _res);
+Result Result_error(Environment* _env, tstr _errmsg);
 
 Environment* Env_new(Environment* _env);
 void Env_destroy(Environment* _env);
@@ -189,6 +202,7 @@ VariableScope* VariableScope_new(VariableScope* _this, VariableScope* _outer, En
 void VariableScope_destroy(VariableScope* _scope);
 
 /*Checks*/
+expr* NIL(void);
 char is_nil(expr* _args);
 char is_cons(expr* _args);
 char is_symbol(expr* _args);
@@ -208,9 +222,8 @@ expr* nth(int _n, expr* _args);
 expr* cons(VariableScope *_env, expr* _car, expr* _cdr);
 expr* real(VariableScope *_env, int _v);
 expr* decimal(VariableScope *_env, float _v);
-expr* symbol(VariableScope *_env, tstr _v);
-expr* csymbol(VariableScope *_env, char* _v);
-expr* string(VariableScope *_env, tstr _v);
+expr* symbol(VariableScope *_env, char* _v);
+expr* string(VariableScope *_env, char* _v);
 void variable_delete(VariableScope *_scope, expr* _atom);
 
 /*Printing*/
@@ -220,13 +233,39 @@ tstr stringifyexpr(expr* _args);
 /*Core*/
 Result read(VariableScope* _env, char* _program_str);
 Result eval(VariableScope* _env, expr* _in);
-Result progc(VariableScope* _env, expr* _in);
+Result list(VariableScope* _env, expr* _in);
 
 
 /******************************************************************************/
 #define YAL_IMPLEMENTATION
 #ifdef YAL_IMPLEMENTATION
 
+Result
+Result_ok(Environment* _env, expr* _res)
+{
+    Result result = {0};
+    result.result = _res;
+    result.type = RESTYPE_OK;
+    tstr_destroy(&_env->errmsg);
+    _env->errmsg = tstr_view("OK.");
+    result.msg = _env->errmsg.c_str;
+    return result;
+}
+
+Result
+Result_error(Environment* _env, tstr _errmsg)
+{
+    Result result = {0};
+    result.result = NIL();
+    result.type = RESTYPE_ERROR;
+    tstr_destroy(&_env->errmsg);
+    _env->errmsg = _errmsg;
+    result.msg = _env->errmsg.c_str;
+    return result;
+}
+
+#define RESULT_ERROR(env, msg, ...) \
+    Result_error(env, tstr_fmt(msg, ##__VA_ARGS__))
 
 Environment*
 Env_new(Environment* _env)
@@ -247,6 +286,7 @@ Env_destroy(Environment* _env)
     Buildins_destroy(&_env->buildins);
     sbAllocator_destroy(&_env->variable_allocator);
     VariableScope_destroy(&_env->global);
+    tstr_destroy(&_env->errmsg);
 }
 
 VariableScope*
@@ -441,28 +481,22 @@ decimal(VariableScope *_scope, float _v)
 }
 
 expr*
-symbol(VariableScope *_scope, tstr _v)
+symbol(VariableScope *_scope, char* _v)
 {
     ASSERT_INV_SCOPE(_scope);
     expr* e = _variable_new(_scope);
     e->type = TYPE_SYMBOL;
-    e->symbol = _v;
+    e->symbol = tstr_(_v);
     return e;
 }
 
 expr*
-csymbol(VariableScope* _scope, char* _sym)
-{
-    return symbol(_scope, tstr_(_sym));
-}
-
-expr*
-string(VariableScope *_scope, tstr _v)
+string(VariableScope *_scope, char* _v)
 {
     ASSERT_INV_SCOPE(_scope);
     expr* e = _variable_new(_scope);
     e->type = TYPE_STRING;
-    e->string = _v;
+    e->string = tstr_(_v);
     return e;
 }
 
@@ -501,6 +535,8 @@ _stringifycons(expr* _args, char* _open, char* _close)
         tstr_add2end(&dst, &space);
         tstr_add2end(&dst, &tmpcdr);
     }
+    tstr_destroy(&tmpcar);
+    tstr_destroy(&tmpcdr);
     return dst;
 }
 
@@ -539,7 +575,7 @@ stringifyexpr(expr* _arg)
         dst = tstr_(_arg->symbol.c_str);
         break;
     case TYPE_STRING:
-        dst = tstr_fmt("\"%s\"", &_arg->string);
+        dst = tstr_fmt("\"%s\"", _arg->string.c_str);
         break;
     default:
         ASSERT_UNREACHABLE();
@@ -548,63 +584,55 @@ stringifyexpr(expr* _arg)
 }
 
 char
-_is_symbol_real_or_decimal(tstr* _num)
-/*TODO: Make this more robust..*/
+_is_token_real(tstr* _num)
 {
     tstr decimal_indicator = tstr_view(".");
     if (tstr_find(_num, &decimal_indicator) == TSTR_INVALID)
-        return TYPE_REAL;
-    return TYPE_DECIMAL;
+        return 1;
+    return 0;
 }
 
-//////////////////////////////////////////////////////////////
-// TEST LEXING
-//////////////////////////////////////////////////////////////
-
-#define _IS_WHITESPACE(C) \
-    (((C) == ' ' || (C) == '\t' || (C) == '\n') ? 1 : 0)
-
-
 char
-is_literal_token(char _t)    
+_is_literal_token(char _t)    
 {
-    const char ltokens[] = {'(', ')', '\'','\'', '\"', '[', ']'};
-    const char ltoken_len = sizeof(ltokens) / sizeof(ltokens[0]);
-    char i;
+    char ltokens[] = {'(', ')', '\'','\'', '\"', '[', ']'};
+    int ltoken_len = sizeof(ltokens) / sizeof(ltokens[0]);
+    int i;
     for (i = 0; i < ltoken_len; i++)
         if (ltokens[i] == _t)
             return _t;
     return 0;
 }
 
+#define _IS_WHITESPACE(C) \
+    (((C) == ' ' || (C) == '\t' || (C) == '\n') ? 1 : 0)
+
 tstr
-_get_next_token(VariableScope *_scope, char** _cursor)
+_get_next_token(char* _source, int* _cursor)
 {
     tstr token = {0};
     int len = 0;
-    while (!_IS_WHITESPACE(*_cursor[len]) && !is_literal_token(*_cursor[len]))
-        len++;
-    token = tstr_n(*_cursor, len);
-    *_cursor += tstr_length(&token);
+    if (_is_literal_token(_source[*_cursor])) {
+        len = 1;
+    } else {
+        while (!_IS_WHITESPACE(_source[*_cursor + len]) &&
+               !_is_literal_token(_source[*_cursor + len]))
+            len++;
+    }
+    token = tstr_n(&_source[*_cursor], len);
+    *_cursor += len;
     return token;
 }
 
 void
-_trim_whitespace(char** _cursor)
+_trim_whitespace(char* _source, int* _cursor)
 {
-    while (_IS_WHITESPACE(**_cursor))
+    while (_IS_WHITESPACE(_source[*_cursor]))
         (*_cursor)++;
 }
 
-char
-tstr_equalc(tstr* _a, char* _b)
-{
-    tstr b = tstr_view(_b);
-    return tstr_equal(_a, &b);
-}
-
 expr*
-_lex(VariableScope* _scope, char* _cursor)
+_lex(VariableScope* _scope, char* _source, int* _cursor)
 {
     /*TODO: Does not support special syntax for:
     quote = '
@@ -616,127 +644,38 @@ _lex(VariableScope* _scope, char* _cursor)
     assert(Buildins_len(&_scope->env->buildins) > 0 && "No buildin functions in environment!");
 
     tstr token;
-    tstr cmp = {0};
     expr* lexed_program = cons(_scope, NULL, NULL);
     expr* curr = lexed_program;
-    expr* extracted = lexed_program;
 
-    while (*_cursor != '\0' || *_cursor == ')') {
-        _trim_whitespace(&_cursor);
-        token = _get_next_token(_scope, &_cursor);
-
-        if (tstr_equalc(&token, "("))
-            extracted = _lex(_scope, _cursor);
-        else if (tstr_equalc(&token, "\""))
-            extracted = _token2string(_scope, &token);
-        else if (_LOOKS_LIKE_NUMBER(token.c_str[0]))
-            extracted = _token2number(_scope, &token);
-        else
-            extracted = _token2symbol(_scope, &token);
-
+    while (_source[*_cursor] != '\0') {
+        _trim_whitespace(_source, _cursor);
+        token = _get_next_token(_source, _cursor);
+        if (tstr_equalc(&token, ")")) {
+            break;
+        }
+        else if (tstr_equalc(&token, "(")) {
+            curr->car = _lex(_scope, _source, _cursor);
+        }
+        else if (tstr_equalc(&token, "\"")) {
+            curr->car = symbol(_scope, token.c_str);
+        }
+        else if (_LOOKS_LIKE_NUMBER(token.c_str[0])) {
+            if (_is_token_real(&token))
+                curr->car = real(_scope, tstr_to_int(&token));
+            else
+                curr->car = decimal(_scope, tstr_to_float(&token));
+        }
+        else {
+            curr->car = symbol(_scope, token.c_str);
+        }
         /*Insert extracted into lexed program*/
-        curr->car = extracted;
+        tstr_destroy(&token);
+        DBPRINT("lexed expr: ", curr->car);
         curr->cdr = cons(_scope, NULL, NULL);
         curr = curr->cdr;
     }
     return lexed_program;
 }
-
-//////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////
-
-#if 0
-expr*
-_lex_number(VariableScope *_scope, char* _start, int* _cursor)
-{
-    tstr str;
-    int len = 0;
-    char type;
-    while (!_IS_WHITESPACE(_start[len]) && _start[len] != '(' && _start[len] != ')')
-        len++;
-    str = tstr_n(_start, len+1);
-    (*_cursor) += tstr_length(&str)-1;
-    type = _is_symbol_real_or_decimal(&str);
-    if (type == TYPE_REAL)
-        return real(_scope, tstr_to_int(&str));
-    return decimal(_scope, tstr_to_float(&str));
-}
-
-expr*
-_lex_string(VariableScope *_scope, char* _start, int* _cursor)
-{
-    int len = 1;
-    tstr str;
-    while (_start[len] != '"')
-        len++;
-    str = tstr_n(_start, len);
-    printf("lexed string [%s]\n", str.c_str);
-    (*_cursor) += tstr_length(&str);
-    return string(_scope, str);
-}
-
-expr*
-_lex_symbol(VariableScope *_scope, char* _start, int* _cursor)
-{
-    int len = 0;
-    tstr str;
-    while (!_IS_WHITESPACE(_start[len]) && _start[len] != '(' && _start[len] != ')')
-        len++;
-    str = tstr_n(_start, len);
-    (*_cursor) += tstr_length(&str)-1;
-    return symbol(_scope, str);
-}
-
-expr*
-_lex(VariableScope* _scope, char* _program, int* _cursor)
-{
-    /*TODO: Does not support special syntax for:
-    quote = '
-    array = []
-    dotted lists (a . 34)
-    */
-    expr* first = NULL;
-    expr* curr = NULL;
-    expr* extracted = NULL;
-    char* index = NULL;
-
-    ASSERT_INV_SCOPE(_scope);
-    assert(_program != NULL && "Invalid program given to lexer");
-    assert(_cursor != NULL && "Invalid cursor given to lexer");
-    assert(Buildins_len(&_scope->env->buildins) > 0 && "No buildin functions in environment!");
-
-    curr = cons(_scope, NULL, NULL);
-    while (1) {
-        index = _program + (*_cursor)++;
-        if (_IS_WHITESPACE(*index)) {
-            continue;
-        }
-        else if (*index == '\0' || *index == ')') {
-            return first;
-        }
-        else if (*index ==  '(') {
-            extracted = _lex(_scope, _program, _cursor);
-        }
-        else if (*index == '"') {
-            extracted = _lex_string(_scope, index+1, _cursor);
-        }
-        else if (_LOOKS_LIKE_NUMBER(*index)) {
-            extracted = _lex_number(_scope, index, _cursor);
-        }
-        else {
-            extracted = _lex_symbol(_scope, index, _cursor);
-        }
-        /*Insert extracted into expression*/
-        curr->car = extracted;
-        if (!first)
-            first = curr; 
-        curr->cdr = cons(_scope, NULL, NULL);
-        curr = curr->cdr;
-    }
-    ASSERT_UNREACHABLE();
-}
-
-#endif
 
 Result
 read(VariableScope* _scope, char* _program_str)
@@ -745,7 +684,7 @@ read(VariableScope* _scope, char* _program_str)
     assert(_program_str != NULL && "Given program str is NULL");
     int cursor = 0;
     expr* lexed = _lex(_scope, _program_str, &cursor);
-    return RESULT_OK(lexed);
+    return Result_ok(_scope->env, lexed);
 }
 
 Buildin*
@@ -769,8 +708,8 @@ _find_buildin(Environment* _env, expr* _sym)
 }
 
 Result
-progc(VariableScope* _scope, expr* _in)
-/*progc() is a list evaller that expects a list of eval-able lists */
+list(VariableScope* _scope, expr* _in)
+/*list() is a list evaller that expects a list of eval-able lists */
 {
     //usermsg msg;
     expr* root = cons(_scope, NULL, NULL);
@@ -778,23 +717,23 @@ progc(VariableScope* _scope, expr* _in)
     expr* tmp = _in;
     Result curres;
     ASSERT_INV_SCOPE(_scope);
-    //DBPRINT("input to progc: ", _in);
+    //DBPRINT("input to list: ", _in);
     if (!is_cons(_in))
-        return RESULT_ERROR("'progc' Expected a list of eval'able arguments!"
-                            "Got %s\n", stringifyexpr(_in));
+        return RESULT_ERROR(_scope->env, "'list' Expected a list of eval'able arguments!"
+                            "Got %s\n", stringifyexpr(_in).c_str);
 
     while_not_nil(tmp) {
         curres = eval(_scope, car(tmp));
         if (RESULT_NOT_OK(curres))
-            return RESULT_ERROR("'progc' could not evaluate expr %s\n", stringifyexpr(car(tmp)));
+            return RESULT_ERROR(_scope->env, "'list' could not evaluate expr %s\n", stringifyexpr(car(tmp)));
         outtmp->car = curres.result;
-        DBPRINT("progc evalled: ", car(tmp));
+        DBPRINT("list evalled: ", car(tmp));
         DBPRINT("to ", car(outtmp));
         outtmp->cdr = cons(_scope, NULL, NULL);
         outtmp = cdr(outtmp);
         tmp = cdr(tmp);
     }
-    return RESULT_OK(root);
+    return Result_ok(_scope->env, root);
 }
 
 Result
@@ -817,16 +756,16 @@ eval(VariableScope* _scope, expr* _in)
         DBPRINT("(eval) NAME: ", fn);
         DBPRINT("(eval) ARGS: ", args);
         if (is_cons(fn) || fn->type != TYPE_SYMBOL)
-            return RESULT_ERROR("'eval' expected callable function, got %s\n", stringifyexpr(fn));
+            return RESULT_ERROR(_scope->env, "'eval' expected callable function, got %s\n", stringifyexpr(fn));
         buildin = _find_buildin(_scope->env, fn);
         result = buildin->fn(_scope, args);
         break;
     case TYPE_SYMBOL:
         /*TODO: Check symbol table and return value of symbol*/
-        return RESULT_OK(_in);
+        return Result_ok(_scope->env, _in);
         break;
     default:
-        return RESULT_OK(_in);
+        return Result_ok(_scope->env, _in);
         break;
     };
 
@@ -841,7 +780,7 @@ Result
 buildin_quote(VariableScope* _scope, expr* _in)
 {
     ASSERT_INV_SCOPE(_scope);
-    return RESULT_OK(_in);
+    return Result_ok(_scope->env, _in);
 }
 
 Result
@@ -849,10 +788,10 @@ buildin_car(VariableScope* _scope, expr* _in)
 {
     Result args;
     ASSERT_INV_SCOPE(_scope);
-    args = progc(_scope, _in);
+    args = list(_scope, _in);
     if (RESULT_NOT_OK(args))
-        return RESULT_ERROR("'car' could not evaluate arguments %s\n", _in);
-    return RESULT_OK(car(args.result));
+        return RESULT_ERROR(_scope->env, "'car' could not evaluate arguments %s\n", _in);
+    return Result_ok(_scope->env, car(args.result));
 }
 
 Result
@@ -860,10 +799,10 @@ buildin_cdr(VariableScope* _scope, expr* _in)
 {
     Result args;
     ASSERT_INV_SCOPE(_scope);
-    args = progc(_scope, _in);
+    args = list(_scope, _in);
     if (RESULT_NOT_OK(args))
-        return RESULT_ERROR("'car' could not evaluate arguments %s\n", _in);
-    return RESULT_OK(cdr(args.result));
+        return RESULT_ERROR(_scope->env, "'car' could not evaluate arguments %s\n", _in);
+    return Result_ok(_scope->env, cdr(args.result));
 }
 
 Result
@@ -871,10 +810,10 @@ buildin_cons(VariableScope* _scope, expr* _in)
 {
     Result args;
     ASSERT_INV_SCOPE(_scope);
-    args = progc(_scope, _in);
+    args = list(_scope, _in);
     if (RESULT_NOT_OK(args))
-        return RESULT_ERROR("'car' could not evaluate arguments %s\n", _in);
-    return RESULT_OK(cons(_scope, first(args.result), second(args.result)));
+        return RESULT_ERROR(_scope->env, "'car' could not evaluate arguments %s\n", _in);
+    return Result_ok(_scope->env, cons(_scope, first(args.result), second(args.result)));
 }
 
 Result
@@ -890,20 +829,20 @@ buildin_range(VariableScope* _scope, expr* _in)
     int i;
 
     ASSERT_INV_SCOPE(_scope);
-    args = progc(_scope, _in);
+    args = list(_scope, _in);
     if (RESULT_NOT_OK(args))
-        return RESULT_ERROR("'range' could not evaluate inputs %s\n", stringifyexpr(_in));
+        return RESULT_ERROR(_scope->env, "'range' could not evaluate inputs %s\n", stringifyexpr(_in));
     if (len(args.result) != 2)
-        return RESULT_ERROR("'range' expected 2 inputs, min & max, not %s\n", stringifyexpr(_in));
+        return RESULT_ERROR(_scope->env, "'range' expected 2 inputs, min & max, not %s\n", stringifyexpr(_in));
 
     start = first(args.result);
     end = second(args.result);
     if (start->type != TYPE_REAL)
-        return RESULT_ERROR("'range' first input is not a REAL type.\n");
+        return RESULT_ERROR(_scope->env, "'range' first input is not a REAL type.\n");
     if (end->type != TYPE_REAL)
-        return RESULT_ERROR("'range' second input is not a REAL type.\n");
+        return RESULT_ERROR(_scope->env, "'range' second input is not a REAL type.\n");
     if (start->real > end->real)
-        return RESULT_ERROR("'range' first input is larger than the second input.\n");
+        return RESULT_ERROR(_scope->env, "'range' first input is larger than the second input.\n");
 
     range = cons(_scope, NULL, NULL);
     curr = range;
@@ -912,7 +851,7 @@ buildin_range(VariableScope* _scope, expr* _in)
         curr->cdr = cons(_scope, NULL, NULL);
         curr = cdr(curr);
     }
-    return RESULT_OK(range);
+    return Result_ok(_scope->env, range);
 }
 
 #if 0
@@ -938,9 +877,9 @@ buildin_plus(Environment* _env, expr** _out, expr* _in)
     int sum = 0;
     expr* tmp;
     ASSERT_INV_SCOPE(_scope);
-    msg = progc(_env, &args, _in);
+    msg = list(_env, &args, _in);
     if (USERMSG_IS_ERROR(&msg)) return msg;
-    //DBPRINT("result of progc in + ", args);
+    //DBPRINT("result of list in + ", args);
 
     tmp = args;
     while_not_nil(tmp) {
@@ -962,7 +901,7 @@ buildin_minus(Environment* _env, expr** _out, expr* _in)
     int sum = 0;
     expr* tmp;
     ASSERT_INV_SCOPE(_scope);
-    msg = progc(_env, &args, _in);
+    msg = list(_env, &args, _in);
     if (USERMSG_IS_ERROR(&msg)) return msg;
     tmp = args;
 
@@ -1001,14 +940,18 @@ Env_add_core(Environment* _env)
     ASSERT_INV_ENV(_env);
     /*List management*/
     Env_add_buildin(_env, "range", buildin_range);
+    Env_add_buildin(_env, "quote", buildin_quote);
+    Env_add_buildin(_env, "list", list);
+    Env_add_buildin(_env, "cons", buildin_cons);
+
+    /*Accessors*/
     Env_add_buildin(_env, "car", buildin_car);
     Env_add_buildin(_env, "cdr", buildin_cdr);
-    Env_add_buildin(_env, "quote", buildin_quote);
-    Env_add_buildin(_env, "cons", buildin_cons);
     //Env_add_buildin(_env, "first", buildin_first);
     //Env_add_buildin(_env, "second", buildin_second);
     //Env_add_buildin(_env, "third", buildin_third);
     //Env_add_buildin(_env, "fourth", buildin_fourth);
+
     /*Arimetrics*/
     //Env_add_buildin(_env, "+", buildin_plus);
     //Env_add_buildin(_env, "-", buildin_minus);

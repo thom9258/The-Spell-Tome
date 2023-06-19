@@ -123,6 +123,7 @@ TSTR_API tstr tstr_fmt(TSTR_CHAR* _fmt, ...);
 TSTR_API int tstr_length(tstr* _str);
 TSTR_API tstr tstr_file(tstr* _path);
 TSTR_API char tstr_equal(tstr* _a, tstr* _b);
+TSTR_API char tstr_equalc(tstr* _a, char* _b);
 TSTR_API tstr* tstr_copy(tstr* _src, tstr* _dst);
 TSTR_API tstr* tstr_cut(tstr* _str, int _f, int _t);
 TSTR_API tstr* tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
@@ -363,6 +364,13 @@ tstr_equal(tstr* _a, tstr* _b)
     return 1;
 }
 
+char
+tstr_equalc(tstr* _a, char* _b)
+{
+    tstr b = tstr_view(_b);
+    return tstr_equal(_a, &b);
+}
+
 TSTR_API
 tstr*
 tstr_copy(tstr* _src, tstr* _dst)
@@ -468,6 +476,7 @@ tstr_add2end(tstr* _dst, tstr* _end)
         newstr = tstr_(_end->c_str);
     else
         newstr = tstr_fmt("%s%s", _dst->c_str, _end->c_str);
+
     tstr_destroy(_dst);
     *_dst = newstr;
     return _dst;
