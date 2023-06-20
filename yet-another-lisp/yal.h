@@ -229,7 +229,6 @@ expr* real(VariableScope *_env, int _v);
 expr* decimal(VariableScope *_env, float _v);
 expr* symbol(VariableScope *_env, char* _v);
 expr* string(VariableScope *_env, char* _v);
-
 void variable_delete(VariableScope *_scope, expr* _atom);
 
 /*Printing*/
@@ -237,9 +236,9 @@ void printexpr(expr* _args);
 tstr stringifyexpr(expr* _args);
 
 /*Core*/
-expr* list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in);
 expr* read(VariableScope* _scope, yal_Msg* _msgdst, char* _program_str);
 expr* eval(VariableScope* _scope, yal_Msg* _msgdst, expr* _in);
+expr* list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in);
 
 /******************************************************************************/
 #define YAL_IMPLEMENTATION
@@ -821,8 +820,7 @@ buildin_cdr(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
         WITH_STRINGEXPR(instr, _in,
                         yal_error(_msgdst,
                                   tstr_fmt("'cdr' could not evaluate arguments %s\n",
-                                           instr.c_str));
-            );
+                                           instr.c_str)););
         return NIL();
     }
     return cdr(args);
@@ -838,8 +836,7 @@ buildin_cons(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
         WITH_STRINGEXPR(instr, _in,
                         yal_error(_msgdst,
                                   tstr_fmt("'cons' could not evaluate arguments %s\n",
-                                           instr.c_str));
-            );
+                                           instr.c_str)););
         return NIL();
     }
     return cons(_scope, first(args), second(args));
@@ -889,79 +886,54 @@ buildin_range(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
     return range;
 }
 
-#if 0
-void
-_arimetric_type_convert(Environment* _env, expr** _target, expr* _new)
+expr*
+_PLUS2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
 {
-    expr* tmp;
-    if (!is_val(*_target) || !is_val(_new))
-        return;
-    else if ((*_target)->type == TYPE_DECIMAL)
-        return;
-    else if (_new->type == TYPE_DECIMAL && (*_target)->type == TYPE_REAL) {
-        tmp = *_target;
-        *_target = decimal(_env, tmp->real);
+    ASSERT_INV_SCOPE(_scope);
+    if (!is_val(_a) || !is_val(_b)) {
+        yal_error(_msgdst, tstr_("'_PLUS2' expects args to be values\n"));
+        return real(_scope, 0);
     }
+    if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+        return decimal(_scope, _a->decimal + _b->decimal);
+    else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+        return decimal(_scope, _a->real + _b->decimal);
+    else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+        return  decimal(_scope, _a->decimal + _b->real);
+    return real(_scope, _a->real + _b->real);
 }
 
-usermsg
-buildin_plus(Environment* _env, expr** _out, expr* _in)
+expr*
+buildin_plus(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 {
-    usermsg msg;
     expr* args;
-    int sum = 0;
     expr* tmp;
+    expr* result;
     ASSERT_INV_SCOPE(_scope);
-    msg = list(_env, &args, _in);
-    if (USERMSG_IS_ERROR(&msg)) return msg;
-    //DBPRINT("result of list in + ", args);
+    args = list(_scope, _msgdst, _in);
 
+    if (yal_is_error(_msgdst)) {
+         WITH_STRINGEXPR(instr, _in,
+                         yal_error(_msgdst, tstr_fmt("'+' could not evaluate arguments %s\n",
+                                                     instr.c_str)););
+        return NIL();
+    }
+    result = real(_scope, 0);
     tmp = args;
     WHILE_NOT_NIL(tmp) {
-        if (!is_val(car(tmp)))
-            return USERERR("Unable to call 'plus' on non-value argument");
+        if (!is_val(car(tmp))) {
+            WITH_STRINGEXPR(instr, _in,
+                            yal_error(_msgdst, tstr_fmt("'+' got non-value arguments in %s\n",
+                                                        instr.c_str)););
+            return NIL();
+        }
         DBPRINT("plus added ", car(tmp))
-        sum += car(tmp)->real;
-        tmp = cdr(tmp);
+        result = _PLUS2(_scope, _msgdst, result, car(tmp));
+        if (yal_is_error(_msgdst))
+            return NIL();
     }
-    *_out = real(_env, sum); 
-    return USERMSG_OK();
+    return result;
 }
-
-usermsg
-buildin_minus(Environment* _env, expr** _out, expr* _in)
-{
-    usermsg msg;
-    expr* args;
-    int sum = 0;
-    expr* tmp;
-    ASSERT_INV_SCOPE(_scope);
-    msg = list(_env, &args, _in);
-    if (USERMSG_IS_ERROR(&msg)) return msg;
-    tmp = args;
-
-    /*Check for non-numbers*/
-    WHILE_NOT_NIL(tmp) {
-        if (!is_val(car(tmp)))
-            return USERERR("Unable to call 'minus' on non-value argument");
-        tmp = cdr(tmp);
-    }
-    /*Make sure to return if there are no numbers in list*/
-    tmp = _in;
-    if (is_nil(car(tmp))) {
-        *_out = real(_env, sum); 
-        return USERMSG_OK();
-    }
-    sum += car(tmp)->real;
-    tmp = cdr(tmp);
-    WHILE_NOT_NIL(tmp) {
-        sum -= car(tmp)->real;
-        tmp = cdr(tmp);
-    }
-    *_out = real(_env, sum); 
-    return USERMSG_OK();
-}
-#endif
 
 void
 Env_add_buildin(Environment* _env, char* _name, buildin_fn _fn)
@@ -988,7 +960,7 @@ Env_add_core(Environment* _env)
     //Env_add_buildin(_env, "fourth", buildin_fourth);
 
     /*Arimetrics*/
-    //Env_add_buildin(_env, "+", buildin_plus);
+    Env_add_buildin(_env, "+", buildin_plus);
     //Env_add_buildin(_env, "-", buildin_minus);
     //Env_add_buildin(_env, "*", buildin_multiply);
     //Env_add_buildin(_env, "/", buildin_divide);
