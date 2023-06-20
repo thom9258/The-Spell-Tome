@@ -7,31 +7,33 @@
 char
 lex_test(VariableScope* _scope, char* _p, char* _expected)
 {
-    Result result;
+    yal_Msg msg = {0};
+    expr* result;
     ASSERT_INV_SCOPE(_scope);
-    result = read(_scope, _p);
-    if (RESULT_NOT_OK(result))
+    result = read(_scope, &msg, _p);
+    if (yal_is_error(&msg))
         return 0;
-    tstr lexed = stringifyexpr(result.result);
+    tstr lexed = stringifyexpr(result);
     tstr expected = tstr_view(_expected);
     printf("LEXED:    %s\n", lexed.c_str);
     printf("EXPECTED: %s\n", expected.c_str);
+    yal_msg_destroy(&msg);
     return tstr_equal(&lexed, &expected);
 }
 
-Result
-read_eval_print(VariableScope* _scope, char* _p)
+expr*
+read_eval_print(VariableScope* _scope, yal_Msg* _msgdst, char* _p)
 {
-    Result read_result;
-    Result eval_result;
+    expr* read_result;
+    expr* eval_result;
     ASSERT_INV_SCOPE(_scope);
-    read_result = read(_scope, _p);
-    if (RESULT_NOT_OK(read_result))
+    read_result = read(_scope, _msgdst, _p);
+    if (yal_is_error(_msgdst))
         return read_result;
-    eval_result = eval(_scope, read_result.result);
-    if (RESULT_NOT_OK(eval_result))
+    eval_result = eval(_scope, _msgdst, read_result);
+    if (yal_is_error(_msgdst))
         return eval_result;
-    DBPRINT("\n", eval_result.result);
+    DBPRINT("\n", eval_result);
     return eval_result;
 }
 
@@ -41,12 +43,17 @@ repl_check(VariableScope* _scope, char* _p, char* _gt)
     char are_equal = 0;
     tstr gt_str = tstr_view(_gt);
     tstr result_str;
-    Result result = read_eval_print(_scope, _p);
-    if (RESULT_NOT_OK(result))
-        printf("yal> ERROR: %s\n", result.msg);
-    result_str = stringifyexpr(result.result);
+    yal_Msg msg = {0};
+    expr* result = read_eval_print(_scope, &msg, _p);
+    if (yal_is_error(&msg))
+        printf("yal> ERROR: %s\n", msg.msg.c_str);
+    yal_msg_destroy(&msg);
+
+    result_str = stringifyexpr(result);
     printf("EXPECTED: %s\n"
-           "GOT:      %s\n", gt_str.c_str, result_str.c_str);
+           "GOT:      %s\n",
+           gt_str.c_str, result_str.c_str);
+
     are_equal = tstr_equal(&result_str, &gt_str);
     tstr_destroy(&result_str);
     return are_equal;
