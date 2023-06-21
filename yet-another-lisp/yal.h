@@ -668,14 +668,27 @@ _tokenize(char* _source, int* _cursor)
     assert(_source != NULL && "Invalid program given to tokenizer");
     assert(_cursor != NULL && "Invalid cursor given to tokenizer");
     Tokens tokens;
+    Tokens_initn(&tokens, 1);
     tstr curr;
+
     while (_source[*_cursor] != '\0') {
         _trim_whitespace(_source, _cursor);
-        printf("cursor(%d) -> ", *_cursor);
+        //printf("cursor(%d) -> ", *_cursor);
         curr = _get_next_token(_source, _cursor);
-        printf("token: %s\n", curr.c_str);
+        //printf("token: %s\n", curr.c_str);
         Tokens_push(&tokens, curr);
     }
+    /*TODO:  Do error checking like matching+even parens*/
+    /*TODO:  Remove first and last paren*/
+    /*TODO:  Remove garbage tokens*/
+    /*TODO:  if you want a tokenizer impl that is isolated, take this
+             and add a tokenization recipe struct with:
+             - garbate token list
+             - literal token list
+             - extra stuff like use newline tokens
+             - etc..
+    */
+
     return tokens;
 }
 
@@ -689,16 +702,18 @@ _lex(VariableScope* _scope, Tokens* _tokens)
     */
     ASSERT_INV_SCOPE(_scope);
     tstr token;
-    expr* lexed_program = cons(_scope, NULL, NULL);
-    expr* curr = lexed_program;
-
     int i;
+    expr* program = cons(_scope, NULL, NULL);
+    expr* curr = program;
+
     for (i = 0; i < Tokens_len(_tokens); i++) {
         token = Tokens_pop_front(_tokens);
-        if (tstr_equalc(&token, ")")) {
+        printf("token(%d): %s\n", i, token.c_str);
+
+        if (tstr_equalc(&token, ")"))
             break;
-        }
         else if (tstr_equalc(&token, "(")) {
+            printf("new lex scope:\n");
             curr->car = _lex(_scope, _tokens);
         }
         else if (tstr_equalc(&token, "\"")) {
@@ -719,7 +734,7 @@ _lex(VariableScope* _scope, Tokens* _tokens)
         curr->cdr = cons(_scope, NULL, NULL);
         curr = curr->cdr;
     }
-    return lexed_program;
+    return program;
 }
 
 expr*
