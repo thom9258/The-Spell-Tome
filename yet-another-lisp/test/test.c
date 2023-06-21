@@ -13,10 +13,10 @@ lex_test(VariableScope* _scope, char* _p, char* _expected)
     result = read(_scope, &msg, _p);
     if (yal_is_error(&msg))
         return 0;
-    tstr lexed = stringifyexpr(result);
+    tstr lexed = stringify(result, "(", ")");
     tstr expected = tstr_view(_expected);
-    printf("LEXED:    %s\n", lexed.c_str);
-    printf("EXPECTED: %s\n", expected.c_str);
+    printf("GT:    %s\n", expected.c_str);
+    printf("LEXED: %s\n", lexed.c_str);
     yal_msg_destroy(&msg);
     return tstr_equal(&lexed, &expected);
 }
@@ -49,7 +49,7 @@ repl_check(VariableScope* _scope, char* _p, char* _gt)
         printf("yal> ERROR: %s\n", msg.msg.c_str);
     yal_msg_destroy(&msg);
 
-    result_str = stringifyexpr(result);
+    result_str = stringify(result, "(", ")");
     printf("EXPECTED: %s\n"
            "GOT:      %s\n",
            gt_str.c_str, result_str.c_str);
@@ -58,6 +58,23 @@ repl_check(VariableScope* _scope, char* _p, char* _gt)
     tstr_destroy(&result_str);
     return are_equal;
 }
+
+
+tstr new_stringify(expr* _args, char* _open, char* _close);
+
+char
+expr_compare(VariableScope* _scope, expr* _p, char* _gt)
+{
+    UNUSED(_scope);
+    tstr result_str = stringify(_p, "(", ")");
+    printf("GT:          %s\n", _gt);
+    printf("STRINGIFIED: %s\n", result_str.c_str);
+    char eq = tstr_equalc(&result_str, _gt);
+    tstr_destroy(&result_str);
+    return eq;
+}
+
+
 
 /*===============================================================*/
 
@@ -139,15 +156,15 @@ void test_print_manual(void)
                         NULL
                        )
         );
-    printexpr(r);
+
+    TL_TEST(expr_compare(&e.global, r, "(print 20)"));
     printf("\n");
 
     r = cons(&e.global,
              symbol(&e.global, "mydottedlistvar"),
              real(&e.global, 22)
         );
-    printexpr(r);
-    printf("\n");
+    TL_TEST(expr_compare(&e.global, r, "(mydottedlistvar . 22)"));
 
     r = cons(&e.global,
              symbol(&e.global, "*"),
@@ -166,8 +183,7 @@ void test_print_manual(void)
                        NULL)
                  )
         );
-    printexpr(r);
-    printf("\n");
+    TL_TEST(expr_compare(&e.global, r, "(* 2 (+ 3 4))"));
 
     expr* a = cons(&e.global,
                    symbol(&e.global, "inc"),
@@ -183,13 +199,19 @@ void test_print_manual(void)
                         NULL
                        )
         );
+
     r = cons(&e.global,
              symbol(&e.global, "+"),
              cons(&e.global, a, cons(&e.global, b, NIL()))
         );
 
-    printexpr(r);
+    TL_TEST(expr_compare(&e.global, r, "(+ (inc 20) (3.571000 -21))"));
     printf("\n");
+
+    r = real(&e.global, 24);
+    TL_TEST(expr_compare(&e.global, r, "24"));
+    printf("\n");
+
 }
 
 void
@@ -227,6 +249,28 @@ test_eval(void)
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
+    Env_destroy(&e);
+}
+
+void
+test_buildin_list(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(repl_check(&e.global,
+                       "(list 1 2 3 )",
+                       "1 2 3"));
+
+    TL_TEST(repl_check(&e.global,
+                       "(list 9.567 -2.123 4.345)",
+                       "9.567 -2.123 4.345000"));
+
+    TL_TEST(repl_check(&e.global,
+                       "(list 1 (+ 1 1) 3 )",
+                       "1 2 3"));
+
     Env_destroy(&e);
 }
 
@@ -323,10 +367,12 @@ int main(int argc, char **argv) {
 	(void)argv;
 
 	TL(test_datatypes());
-	//TL(test_print_manual());
+	TL(test_print_manual());
 	TL(test_lex());
-	TL(test_buildin_quote());
-	TL(test_buildin_range());
+
+	//TL(test_buildin_range());
+	//TL(test_buildin_quote());
+	//TL(test_buildin_list());
 	//TL(test_buildin_math());
 	//TL(test_buildin_accessors());
     tl_summary();

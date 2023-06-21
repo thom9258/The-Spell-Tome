@@ -118,12 +118,12 @@ TSTR_API char tstr_ok(tstr* _str);
 TSTR_API void tstr_destroy(tstr* _str);
 TSTR_API tstr tstr_n(TSTR_CHAR* _str, int _n);
 TSTR_API tstr tstr_(TSTR_CHAR* _str);
-TSTR_API tstr tstr_view(TSTR_CHAR* _str);
-TSTR_API tstr tstr_fmt(TSTR_CHAR* _fmt, ...);
+TSTR_API tstr tstr_view(const TSTR_CHAR* _str);
+TSTR_API tstr tstr_fmt(const TSTR_CHAR* _fmt, ...);
 TSTR_API int tstr_length(tstr* _str);
 TSTR_API tstr tstr_file(tstr* _path);
 TSTR_API char tstr_equal(tstr* _a, tstr* _b);
-TSTR_API char tstr_equalc(tstr* _a, char* _b);
+TSTR_API char tstr_equalc(tstr* _a, const char* _b);
 TSTR_API tstr* tstr_copy(tstr* _src, tstr* _dst);
 TSTR_API tstr* tstr_cut(tstr* _str, int _f, int _t);
 TSTR_API tstr* tstr_split(tstr* _src, tstr* _lhs, tstr* _rhs, int _n);
@@ -215,14 +215,14 @@ tstr_destroy(tstr* _str)
 
 TSTR_API
 tstr
-tstr_view(TSTR_CHAR* _str)
+tstr_view(const TSTR_CHAR* _str)
 {
-    return (tstr) {_str, _rawstr_findchar(_str, '\0'), 1};
+    return (tstr) {(char*)_str, _rawstr_findchar(_str, '\0'), 1};
 }
 
 TSTR_API
 tstr
-tstr_fmt(char* _fmt, ...)
+tstr_fmt(const char* _fmt, ...)
 {
     tstr out = {0};
     va_list va1;
@@ -365,7 +365,7 @@ tstr_equal(tstr* _a, tstr* _b)
 }
 
 char
-tstr_equalc(tstr* _a, char* _b)
+tstr_equalc(tstr* _a, const char* _b)
 {
     tstr b = tstr_view(_b);
     return tstr_equal(_a, &b);

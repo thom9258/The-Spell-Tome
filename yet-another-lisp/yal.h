@@ -46,6 +46,8 @@ http://www.ulisp.com/show?1BLW
   type called error, then it would remove itself on env_destroy()
 */
 
+/*TODO: Seems to segfault if using a buildinsymbol we cant find*/
+
 #ifndef YAL_H
 #define YAL_H
 
@@ -69,9 +71,9 @@ http://www.ulisp.com/show?1BLW
 
 // "Any sufficiently complicated C or Fortran program contains an ad hoc, informally-specified, bug-ridden, slow implementation of half of Common Lisp."
 // -  Greenspun, Philip
-#define WITH_STRINGEXPR(name, expr, body)   \
+#define WITH_STRINGEXPR(name, expr, body)       \
     do {                                        \
-        tstr name = stringifyexpr(expr);        \
+        tstr name = stringify(expr, "(", ")");  \
         body;                                   \
         tstr_destroy(&name);                    \
     } while (0)
@@ -233,7 +235,7 @@ void variable_delete(VariableScope *_scope, expr* _atom);
 
 /*Printing*/
 void printexpr(expr* _args);
-tstr stringifyexpr(expr* _args);
+tstr stringify(expr* _args, char* _open, char* _close);
 
 /*Core*/
 expr* read(VariableScope* _scope, yal_Msg* _msgdst, char* _program_str);
@@ -432,6 +434,27 @@ _variable_new(VariableScope *_scope)
     return e;
 }
 
+expr*
+variable_duplicate(VariableScope *_scope, expr* _atom)
+{
+    ASSERT_INV_SCOPE(_scope);
+    if (is_nil(_atom))
+        return NIL();
+    switch (_atom->type) {
+    case TYPE_SYMBOL:
+        return symbol(_scope, _atom->symbol.c_str);
+    case TYPE_STRING:
+        return string(_scope, _atom->string.c_str);
+    case TYPE_REAL:
+        return real(_scope, _atom->real);
+    case TYPE_DECIMAL:
+        return decimal(_scope, _atom->decimal);
+    case TYPE_CONS:
+    default:
+        ASSERT_UNREACHABLE();
+    };
+}
+
 void
 variable_delete(VariableScope *_scope, expr* _atom)
 {
@@ -506,67 +529,28 @@ string(VariableScope *_scope, char* _v)
 void
 printexpr(expr* _arg)
 {
-    tstr str = stringifyexpr(_arg);
+    tstr str = stringify(_arg, "(", ")");
     printf("%s", str.c_str);
     tstr_destroy(&str);
 }
 
-tstr
-_stringifycons(expr* _args, char* _open, char* _close)
-{
-    tstr dst = {0};
-    tstr tmpcar = {0};
-    tstr tmpcdr = {0};
-    tstr open = tstr_view(_open);
-    tstr close = tstr_view(_close);
-    tstr space = tstr_view(" ");
-
-    /*Handle CAR*/
-    tmpcar = stringifyexpr(car(_args));
-    tmpcdr = stringifyexpr(cdr(_args));
-
-    if (is_cons(car(_args))) {
-        tstr_add2end(&dst, &open);
-        tstr_add2end(&dst, &tmpcar);
-        tstr_add2end(&dst, &close);
-    }
-    else {
-            tstr_add2end(&dst, &tmpcar);
-    }
-    /*Handle CDR*/
-    if (!is_nil(cdr(cdr(_args)))) {
-        tstr_add2end(&dst, &space);
-        tstr_add2end(&dst, &tmpcdr);
-    }
-    tstr_destroy(&tmpcar);
-    tstr_destroy(&tmpcdr);
-    return dst;
-}
 
 tstr
-stringifyexpr(expr* _arg)
+_stringify_value(expr* _arg)
 {
     tstr dst = {0};
     if (is_nil(_arg))
         return tstr_("NIL");
 
-    if (is_dotted(_arg)) {
-        tstr carstr = stringifyexpr(car(_arg));
-        tstr cdrstr = stringifyexpr(cdr(_arg));
-        dst = tstr_fmt("(%s . %s)", carstr.c_str, cdrstr.c_str);
-        tstr_destroy(&carstr);
-        tstr_destroy(&cdrstr);
-        return dst;
-    }
     switch (_arg->type) {
     case TYPE_CONS:
-        dst = _stringifycons(_arg, "(", ")");
+        dst = stringify(_arg, "(", ")");
         break;
     case TYPE_ARRAY:
-        dst  =_stringifycons(_arg, "[", "]");
+        dst  = stringify(_arg, "[", "]");
         break;
     case TYPE_DICTIONARY:
-        dst = _stringifycons(_arg, "#{", "}");
+        dst = stringify(_arg, "#{", "}");
         break;
     case TYPE_REAL:
         dst = tstr_from_int(_arg->real);
@@ -583,6 +567,46 @@ stringifyexpr(expr* _arg)
     default:
         ASSERT_UNREACHABLE();
     };
+    return dst;
+}
+
+tstr
+stringify(expr* _args, char* _open, char* _close)
+{
+    tstr dst = {0};
+    expr* curr = _args;
+    tstr currstr = {0};
+    tstr open = tstr_view(_open);
+    tstr close = tstr_view(_close);
+    tstr space = tstr_view(" ");
+
+    if (_args->type != TYPE_CONS)
+        return _stringify_value(curr);
+
+    if (is_dotted(_args)) {
+        tstr carstr = _stringify_value(car(_args));
+        tstr cdrstr = _stringify_value(cdr(_args));
+        dst = tstr_fmt("(%s . %s)", carstr.c_str, cdrstr.c_str);
+        tstr_destroy(&carstr);
+        tstr_destroy(&cdrstr);
+        return dst;
+    }
+    /*Manage head value*/
+    tstr_add2end(&dst, &open);
+    currstr = _stringify_value(car(curr));
+    tstr_add2end(&dst, &currstr);
+    curr = cdr(curr);
+
+    /*Manage tail values*/
+    while (!is_nil(curr)) {
+        if (is_nil(car(curr)) && is_nil(cdr(curr)))
+            break;
+        tstr_add2end(&dst, &space);
+        currstr = _stringify_value(car(curr));
+        tstr_add2end(&dst, &currstr);
+        curr = cdr(curr);
+    }
+    tstr_add2end(&dst, &close);
     return dst;
 }
 
@@ -634,8 +658,29 @@ _trim_whitespace(char* _source, int* _cursor)
         (*_cursor)++;
 }
 
+#define t_type tstr
+#define arr_t_name Tokens
+#include "vendor/tsarray.h"
+
+Tokens
+_tokenize(char* _source, int* _cursor)
+{
+    assert(_source != NULL && "Invalid program given to tokenizer");
+    assert(_cursor != NULL && "Invalid cursor given to tokenizer");
+    Tokens tokens;
+    tstr curr;
+    while (_source[*_cursor] != '\0') {
+        _trim_whitespace(_source, _cursor);
+        printf("cursor(%d) -> ", *_cursor);
+        curr = _get_next_token(_source, _cursor);
+        printf("token: %s\n", curr.c_str);
+        Tokens_push(&tokens, curr);
+    }
+    return tokens;
+}
+
 expr*
-_lex(VariableScope* _scope, char* _source, int* _cursor)
+_lex(VariableScope* _scope, Tokens* _tokens)
 {
     /*TODO: Does not support special syntax for:
     quote = '
@@ -643,21 +688,18 @@ _lex(VariableScope* _scope, char* _source, int* _cursor)
     dotted lists (a . 34)
     */
     ASSERT_INV_SCOPE(_scope);
-    assert(_cursor != NULL && "Invalid program given to lexer");
-    assert(Buildins_len(&_scope->env->buildins) > 0 && "No buildin functions in environment!");
-
     tstr token;
     expr* lexed_program = cons(_scope, NULL, NULL);
     expr* curr = lexed_program;
 
-    while (_source[*_cursor] != '\0') {
-        _trim_whitespace(_source, _cursor);
-        token = _get_next_token(_source, _cursor);
+    int i;
+    for (i = 0; i < Tokens_len(_tokens); i++) {
+        token = Tokens_pop_front(_tokens);
         if (tstr_equalc(&token, ")")) {
             break;
         }
         else if (tstr_equalc(&token, "(")) {
-            curr->car = _lex(_scope, _source, _cursor);
+            curr->car = _lex(_scope, _tokens);
         }
         else if (tstr_equalc(&token, "\"")) {
             curr->car = symbol(_scope, token.c_str);
@@ -688,7 +730,8 @@ read(VariableScope* _scope, yal_Msg* _msgdst, char* _program_str)
     /*TODO: Need error checking from _lex()*/
     UNUSED(_msgdst);
     int cursor = 0;
-    expr* lexed = _lex(_scope, _program_str, &cursor);
+    Tokens tokens = _tokenize(_program_str, &cursor);
+    expr* lexed = _lex(_scope, &tokens);
     return lexed;
 }
 
@@ -723,13 +766,14 @@ list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
     expr* root = cons(_scope, NULL, NULL);
     expr* curr = root;
     ASSERT_INV_SCOPE(_scope);
-    //DBPRINT("input to list: ", _in);
+    //DBPRINT("input to buildin list: ", _in);
     if (!is_cons(_in)) {
-        tstr instr = stringifyexpr(_in);
-        yal_error(_msgdst,
-                  tstr_fmt("'list' Expected a list of eval'able arguments! Got %s\n",
-                           instr.c_str));
-        tstr_destroy(&instr);
+        WITH_STRINGEXPR(instr, _in,
+                        yal_error(_msgdst,
+                                  tstr_fmt("'list' Expected a list of eval'able arguments! Got %s\n",
+                                           instr.c_str));
+
+            );
         return NIL();
     }
 
@@ -744,6 +788,8 @@ list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
         curr = cdr(curr);
         _in = cdr(_in);
     }
+    /*TODO: we probably need to return in a cons! it would give listable (1 2 3) output..*/
+    //return cons(_scope, root, NIL());
     return root;
 }
 
@@ -756,11 +802,12 @@ eval(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
     expr* result;
 
     ASSERT_INV_SCOPE(_scope);
+    DBPRINT("(eval) INP:  ", _in);
     switch (_in->type) {
     case TYPE_CONS:
         /*We are sanitizing inputs here by removing a cons cell*/
         /*TODO: This is what i think goes wrong*/
-        _in = car(_in);
+        //_in = car(_in);
         fn = car(_in);
         args = cdr(_in);
         DBPRINT("(eval) NAME: ", fn);
@@ -904,6 +951,23 @@ _PLUS2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
 }
 
 expr*
+_MINUS2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
+{
+    ASSERT_INV_SCOPE(_scope);
+    if (!is_val(_a) || !is_val(_b)) {
+        yal_error(_msgdst, tstr_("'_MINUS2' expects args to be values\n"));
+        return real(_scope, 0);
+    }
+    if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+        return decimal(_scope, _a->decimal - _b->decimal);
+    else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+        return decimal(_scope, _a->real - _b->decimal);
+    else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+        return  decimal(_scope, _a->decimal - _b->real);
+    return real(_scope, _a->real - _b->real);
+}
+
+expr*
 buildin_plus(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 {
     expr* args;
@@ -911,6 +975,7 @@ buildin_plus(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
     expr* result;
     ASSERT_INV_SCOPE(_scope);
     args = list(_scope, _msgdst, _in);
+    DBPRINT("'+' args: ", args);
 
     if (yal_is_error(_msgdst)) {
          WITH_STRINGEXPR(instr, _in,
@@ -919,6 +984,8 @@ buildin_plus(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
         return NIL();
     }
     result = real(_scope, 0);
+
+    DBPRINT("'+' sum: ", result);
     tmp = args;
     WHILE_NOT_NIL(tmp) {
         if (!is_val(car(tmp))) {
@@ -929,10 +996,57 @@ buildin_plus(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
         }
         DBPRINT("plus added ", car(tmp))
         result = _PLUS2(_scope, _msgdst, result, car(tmp));
+        tmp = cdr(tmp);
         if (yal_is_error(_msgdst))
             return NIL();
     }
     return result;
+}
+
+expr*
+buildin_minus(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+{
+    expr* args;
+    expr* tmp;
+    expr* result;
+    ASSERT_INV_SCOPE(_scope);
+    args = list(_scope, _msgdst, _in);
+    DBPRINT("'-' args: ", args);
+
+    if (yal_is_error(_msgdst)) {
+         WITH_STRINGEXPR(instr, _in,
+                         yal_error(_msgdst, tstr_fmt("'-' could not evaluate arguments %s\n",
+                                                     instr.c_str)););
+        return NIL();
+    }
+    tmp = args;
+    result = variable_duplicate(_scope, car(tmp));
+    tmp = cdr(tmp);
+
+    DBPRINT("'-' sum: ", result);
+    WHILE_NOT_NIL(tmp) {
+        if (!is_val(car(tmp))) {
+            WITH_STRINGEXPR(instr, _in,
+                            yal_error(_msgdst, tstr_fmt("'-' got non-value arguments in %s\n",
+                                                        instr.c_str)););
+            return NIL();
+        }
+        DBPRINT("minus added ", car(tmp))
+        result = _MINUS2(_scope, _msgdst, result, car(tmp));
+        tmp = cdr(tmp);
+        if (yal_is_error(_msgdst))
+            return NIL();
+    }
+    return result;
+}
+
+expr*
+buildin_defvar(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+{
+    UNUSED(_scope);
+    UNUSED(_msgdst);
+    UNUSED(_in);
+    return NIL();
 }
 
 void
@@ -961,12 +1075,13 @@ Env_add_core(Environment* _env)
 
     /*Arimetrics*/
     Env_add_buildin(_env, "+", buildin_plus);
+    Env_add_buildin(_env, "-", buildin_minus);
     //Env_add_buildin(_env, "-", buildin_minus);
     //Env_add_buildin(_env, "*", buildin_multiply);
     //Env_add_buildin(_env, "/", buildin_divide);
 
-    /*Utils*/
-    //Env_add_buildin(_env, "eval", buildin_eval);
+    /*Program management*/
+    Env_add_buildin(_env, "var", buildin_defvar);
 }
 
 #endif /*YAL_IMPLEMENTATION*/
