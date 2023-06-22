@@ -5,7 +5,7 @@
     if (USERMSG_IS_ERROR((MSGPTR))) printf("USER ERROR:\n\t%s\n", (MSGPTR)->info)
 
 char
-lex_test(VariableScope* _scope, char* _p, char* _expected)
+read_test(VariableScope* _scope, char* _p, char* _expected)
 {
     yal_Msg msg = {0};
     expr* result;
@@ -21,41 +21,43 @@ lex_test(VariableScope* _scope, char* _p, char* _expected)
     return tstr_equal(&lexed, &expected);
 }
 
-expr*
-read_eval_print(VariableScope* _scope, yal_Msg* _msgdst, char* _p)
-{
-    expr* read_result;
-    expr* eval_result;
-    ASSERT_INV_SCOPE(_scope);
-    read_result = read(_scope, _msgdst, _p);
-    if (yal_is_error(_msgdst))
-        return read_result;
-    eval_result = eval(_scope, _msgdst, read_result);
-    if (yal_is_error(_msgdst))
-        return eval_result;
-    DBPRINT("\n", eval_result);
-    return eval_result;
-}
-
 char
-repl_check(VariableScope* _scope, char* _p, char* _gt)
+repl_test(VariableScope* _scope, char* _p, char* _gt)
 {
     char are_equal = 0;
     tstr gt_str = tstr_view(_gt);
-    tstr result_str;
+    tstr read_str = {0};
+    tstr eval_str = {0};
+    expr* read_result;
+    expr* eval_result;
     yal_Msg msg = {0};
-    expr* result = read_eval_print(_scope, &msg, _p);
-    if (yal_is_error(&msg))
+    //expr* result = read_eval_print(_scope, &msg, _p);
+
+    ASSERT_INV_SCOPE(_scope);
+    read_result = read(_scope, &msg, _p);
+    if (yal_is_error(&msg)) {
         printf("yal> ERROR: %s\n", msg.msg.c_str);
+        return 0;
+    }
     yal_msg_destroy(&msg);
 
-    result_str = stringify(result, "(", ")");
-    printf("EXPECTED: %s\n"
-           "GOT:      %s\n",
-           gt_str.c_str, result_str.c_str);
+    eval_result = eval(_scope, &msg, read_result);
+    if (yal_is_error(&msg)) {
+        printf("yal> ERROR: %s\n", msg.msg.c_str);
+        return 0;
+   }
+    yal_msg_destroy(&msg);
 
-    are_equal = tstr_equal(&result_str, &gt_str);
-    tstr_destroy(&result_str);
+    read_str = stringify(read_result, "(", ")");
+    eval_str = stringify(eval_result, "(", ")");
+
+    printf("GT:   %s\n", _gt);
+    printf("READ: %s\n", read_str.c_str);
+    printf("EVAL: %s\n", eval_str.c_str);
+
+    are_equal = tstr_equal(&eval_str, &gt_str);
+    tstr_destroy(&read_str);
+    tstr_destroy(&eval_str);
     return are_equal;
 }
 
@@ -220,22 +222,22 @@ test_lex(void)
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
-    TL_TEST(lex_test(&e.global, "(\t write  3.141592)", "(write 3.141592)"));
-    TL_TEST(lex_test(&e.global, "(write  ( + 2 10))", "(write (+ 2 10))"));
-    TL_TEST(lex_test(&e.global, "()", "(NIL)"));
-    TL_TEST(lex_test(&e.global, "( 2 NIL )", "(2 NIL)"));
-    TL_TEST(lex_test(&e.global, "(write  ( + 2    hi) )", "(write (+ 2 hi))"));
+    TL_TEST(read_test(&e.global, "(\t write  3.141592)", "(write 3.141592)"));
+    TL_TEST(read_test(&e.global, "(write  ( + 2 10))", "(write (+ 2 10))"));
+    TL_TEST(read_test(&e.global, "()", "(NIL)"));
+    TL_TEST(read_test(&e.global, "( 2 NIL )", "(2 NIL)"));
+    TL_TEST(read_test(&e.global, "(write  ( + 2    hi) )", "(write (+ 2 hi))"));
 
 
-    TL_TEST(lex_test(&e.global, "\n(+ \t 2     5 \n  15.432 \n)",  "(+ 2 5 15.432000)"));
-    //TL_TEST(lex_test(&e.global, "(write      \"Hello, World!\")",  "(write \"Hello, World!\")"));
+    TL_TEST(read_test(&e.global, "\n(+ \t 2     5 \n  15.432 \n)",  "(+ 2 5 15.432000)"));
+    //TL_TEST(read_test(&e.global, "(write      \"Hello, World!\")",  "(write \"Hello, World!\")"));
 
-    TL_TEST(lex_test(&e.global,
+    TL_TEST(read_test(&e.global,
                      "(+ (- (range -1 (- 17 4)) M:PI) (* 9 2 7 foo bar baz))",
                      "(+ (- (range -1 (- 17 4)) M:PI) (* 9 2 7 foo bar baz))"));
 
-    TL_TEST(lex_test(&e.global, "(- (+ 3 4) 5 )",  "(- (+ 3 4) 5)"));
-    TL_TEST(lex_test(&e.global,
+    TL_TEST(read_test(&e.global, "(- (+ 3 4) 5 )",  "(- (+ 3 4) 5)"));
+    TL_TEST(read_test(&e.global,
                      "(+ (- 3 4) (* 3 5 6 (/ 2 1)) )",
                      "(+ (- 3 4) (* 3 5 6 (/ 2 1)))"));
 
@@ -259,17 +261,22 @@ test_buildin_list(void)
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(repl_check(&e.global,
+    TL_TEST(repl_test(&e.global,
                        "(list 1 2 3 )",
-                       "1 2 3"));
+                       "(1 2 3)"));
 
-    TL_TEST(repl_check(&e.global,
-                       "(list 9.567 -2.123 4.345)",
-                       "9.567 -2.123 4.345000"));
+    TL_TEST(repl_test(&e.global,
+                       "(list 9.56700 -2.123000 4.345000)",
+                       "(9.56700 -2.123000 4.345000)"));
 
-    TL_TEST(repl_check(&e.global,
+    TL_TEST(repl_test(&e.global,
                        "(list 1 (+ 1 1) 3 )",
-                       "1 2 3"));
+                       "(1 2 3)"));
+
+    TL_TEST(repl_test(&e.global,
+                       "(list 1 (+ -1 1 3) 3 )",
+                       "(1 3 3)"));
+
 
     Env_destroy(&e);
 }
@@ -281,15 +288,15 @@ test_buildin_quote(void)
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(repl_check(&e.global,
+    TL_TEST(repl_test(&e.global,
                        "(quote (foo bar (quote (baz))))",
                        "(foo bar (quote (baz)))"));
 
-    TL_TEST(repl_check(&e.global,
+    TL_TEST(repl_test(&e.global,
                        "(quote (1 2 3 4))",
                        "(1 2 3 4)"));
     
-    TL_TEST(repl_check(&e.global,
+    TL_TEST(repl_test(&e.global,
                        "(quote ()  )",
                        "(NIL)"));
 
@@ -303,14 +310,54 @@ test_buildin_range(void)
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(repl_check(&e.global,
+    TL_TEST(repl_test(&e.global,
                        "(range 2 5)",
-                       "2 3 4"));
+                       "(2 3 4)"));
 
-    TL_TEST(repl_check(&e.global,
+    TL_TEST(repl_test(&e.global,
                        "(range (+ -1 2) 4)",
                        "(1 2 3)"));
+    Env_destroy(&e);
+}
 
+void
+test_buildin_accessors(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(repl_test(&e.global,
+                       "(car (quote (1 2 3 4)))",
+                       "1"));
+
+    TL_TEST(repl_test(&e.global,
+                       "(cdr (quote (1 2 3 4)))",
+                       "(2 3 4)"));
+
+    TL_TEST(repl_test(&e.global,
+                       "(cons 1 2)",
+                       "(1 . 2)"));
+
+    TL_TEST(repl_test(&e.global,
+                       "(cons (quote (a b c)) 3)",
+                       "((a b c) . 3)"));
+
+    TL_TEST(repl_test(&e.global,
+                       "(first (quote (1 2 3 4)))",
+                       "1"));
+
+    TL_TEST(repl_test(&e.global,
+                       "(second (quote ((1 2) (3 4) (5 6)) ))",
+                       "(3 4)"));
+
+    TL_TEST(repl_test(&e.global,
+                       "(third (quote (1 2 3 4)))",
+                       "3"));
+
+    TL_TEST(repl_test(&e.global,
+                       "(fourth (quote (1 2 3 4)))",
+                       "4"));
 
     Env_destroy(&e);
 }
@@ -322,42 +369,36 @@ test_buildin_math(void)
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(repl_check(&e.global, "(+ 1 2)", "3"));
-    TL_TEST(repl_check(&e.global, "(- 7 3)", "4"));
-    TL_TEST(repl_check(&e.global, "(+ 2 (- 5 6) 1)", "2"));
+    TL_TEST(repl_test(&e.global, "(+)", "0"));
+    TL_TEST(repl_test(&e.global, "(-)", "0"));
+    TL_TEST(repl_test(&e.global, "(*)", "1"));
+    TL_TEST(repl_test(&e.global, "(/)", "1"));
+
+    TL_TEST(repl_test(&e.global, "(+ 1 2)", "3"));
+    TL_TEST(repl_test(&e.global, "(- 7 3)", "4"));
+    TL_TEST(repl_test(&e.global, "(* 4 3)", "12"));
+    TL_TEST(repl_test(&e.global, "(/ 8 2)", "4"));
+    TL_TEST(repl_test(&e.global, "(/ 0 2)", "0"));
+
+    TL_TEST(repl_test(&e.global, "(+ 2 (- 5 6) 1)", "2"));
+
+    TL_TEST(repl_test(&e.global, "(+ 4 (* 2 6) (- 10 5))", "21"));
     Env_destroy(&e);
 }
-
 void
-test_buildin_accessors(void)
+test_buildin_equality(void)
 {
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(repl_check(&e.global,
-                       "(car (quote (1 2 3 4)))",
-                       "1"));
-
-    TL_TEST(repl_check(&e.global,
-                       "(cdr (quote (1 2 3 4)))",
-                       "(2 3 4)"));
-
-    TL_TEST(repl_check(&e.global,
-                       "(cons 1 2)",
-                       "(1 . 2)"));
-
-    TL_TEST(repl_check(&e.global,
-                       "(cons (quote (a b c)) 3)",
-                       "((a b c) . 3)"));
-
-    TL_TEST(repl_check(&e.global,
-                       "(first (quote (1 2 3 4)))",
-                       "(1)"));
-
-    TL_TEST(repl_check(&e.global,
-                       "(second (quote ((1 2) (3 4) (5 6)) ))",
-                       "(3 4)"));
+    TL_TEST(repl_test(&e.global, "(= 1 2)", "NIL"));
+    TL_TEST(repl_test(&e.global, "(= 7 3.431)", "NIL"));
+    TL_TEST(repl_test(&e.global, "(= 2 2)", "t"));
+    TL_TEST(repl_test(&e.global, "(= 2.34 2.34)", "t"));
+    TL_TEST(repl_test(&e.global, "(= 7)", "t"));
+    TL_TEST(repl_test(&e.global, "(=)", "t"));
+    TL_TEST(repl_test(&e.global, "(= (+ 2 2) 4 (- 10 6) (* 2 2))", "t"));
 
     Env_destroy(&e);
 }
@@ -369,12 +410,12 @@ int main(int argc, char **argv) {
 	TL(test_datatypes());
 	TL(test_print_manual());
 	TL(test_lex());
-
-	//TL(test_buildin_range());
-	//TL(test_buildin_quote());
-	//TL(test_buildin_list());
-	//TL(test_buildin_math());
-	//TL(test_buildin_accessors());
+	TL(test_buildin_quote());
+	TL(test_buildin_list());
+	TL(test_buildin_range());
+	TL(test_buildin_accessors());
+	TL(test_buildin_math());
+	TL(test_buildin_equality());
     tl_summary();
 
 	return 0;

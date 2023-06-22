@@ -349,15 +349,10 @@ tstr_equal(tstr* _a, tstr* _b)
 		return 1;
 	if (!tstr_ok(_a) || !tstr_ok(_b))
 		return 0;
-
-    //printf("a=%s\nb=%s\n", _a->c_str, _b->c_str);
 	a_len = tstr_length(_a);
 	b_len = tstr_length(_b);
     min = (a_len < b_len) ? a_len : b_len;
-    //printf("alen=%d, blen=%d, min=%d\n", a_len, b_len, min);
-
-    for (i = 0; i < min; i++) {
-        //printf("comparing (%c) == (%c)\n", _a->c_str[i], _b->c_str[i]);
+    for (i = 0; i <= min; i++) {
         if (_a->c_str[i] != _b->c_str[i])
             return 0;
     }
