@@ -98,16 +98,16 @@ const char* TYPE_TO_STR[TYPE_COUNT] = {
     "TYPE_DICTIONARY"
 };
 
-enum MSGTYPE {
-    MSGTYPE_OK = 0,
-    MSGTYPE_ERROR,
+enum EXCEPTYPE {
+    EXCEPTYPE_OK = 0,
+    EXCEPTYPE_ERROR,
 
-    MSGTYPE_COUNT
+    EXCEPTYPE_COUNT
 };
 
-const char* MSGTYPE_TO_STR[MSGTYPE_COUNT] = {
-    "MSGTYPE_OK",
-    "MSGTYPE_ERROR"
+const char* EXCEPTYPE_TO_STR[EXCEPTYPE_COUNT] = {
+    "EXCEPTYPE_OK",
+    "EXCEPTYPE_ERROR"
 };
 
 struct expr {
@@ -132,10 +132,9 @@ typedef struct expr expr;
 typedef struct {
     char type;
     tstr msg;
-}yal_Msg;
+}Exception;
 
 typedef struct {
-    char type;
     tstr symbol;
     expr* value;
 }Variable;
@@ -147,13 +146,16 @@ typedef struct {
 /*Forward declarations*/
 typedef struct Environment Environment;
 typedef struct VariableScope VariableScope;
-typedef expr*(*buildin_fn)(VariableScope*, yal_Msg*, expr*);
+typedef expr*(*buildin_fn)(Environment*, VariableScope*, Exception*, expr*);
 
 struct VariableScope {
-    Environment* env;
     VariableScope* outer;
     Variables variables;
 };
+
+#define t_type VariableScope
+#define arr_t_name VariableScopes
+#include "vendor/tsarray.h"
 
 typedef struct {
     tstr name;
@@ -164,10 +166,12 @@ typedef struct {
 #define arr_t_name Buildins
 #include "vendor/tsarray.h"
 
+
 struct Environment {
     Buildins buildins;
     sbAllocator variable_allocator;
     VariableScope global;
+    VariableScopes active_scopes;
 };
 
 /* =========================================================
@@ -176,12 +180,12 @@ struct Environment {
 #define UNUSED(x) (void)(x)
 #define UNIMPLEMENTED(fun) assert(0 && "UNIMPLEMENTED: " && fun)
 
-#define ERROR_ARGEVALFAIL(msgdst, args)             \
-    _error_argevalfail((char*)__FUNCTION__, msgdst, args)
-#define ERROR_INVALIDARGS(expected, msgdst, args)               \
-    _error_invalidargs((char*)__FUNCTION__, expected, msgdst, args)
-#define ERROR_NONVALUEARG(msgdst, args)               \
-    _error_nonvaluearg((char*)__FUNCTION__, msgdst, args)
+#define THROW_ARGEVALFAIL(msgdst, args)             \
+    _throw_argevalfail((char*)__FUNCTION__, msgdst, args)
+#define THROW_INVALIDARGS(expected, msgdst, args)               \
+    _throw_invalidargs((char*)__FUNCTION__, expected, msgdst, args)
+#define THROW_NONVALUEARG(msgdst, args)               \
+    _throw_nonvaluearg((char*)__FUNCTION__, msgdst, args)
 
 #define ASSERT_UNREACHABLE() \
     assert(0 && "Fatal Error occoured, reached unreachable code!")
@@ -192,8 +196,8 @@ struct Environment {
 #define ASSERT_INV_SCOPE(scope) \
     ASSERT_NULL(scope, "VariableScope*")
 
-#define ASSERT_INV_ENV(scope) \
-    ASSERT_NULL(scope, "Environment*")
+#define ASSERT_INV_ENV(env) \
+    ASSERT_NULL(env, "Environment*")
 
 #define ASSERT_NOMOREMEMORY() \
     assert(0 && "Was unable to allocate more memory!")
@@ -201,17 +205,23 @@ struct Environment {
 #define RESULT_NOT_OK(RESULT) (((RESULT).type != RESTYPE_OK) ? 1 : 0)
 
 /*Error Management*/
-char yal_is_error(yal_Msg* _dst);
-void yal_msg_destroy(yal_Msg* _msg);
+char Exception_is_error(Exception* _dst);
+void Exception_destroy(Exception* _msg);
 
+/*Environment Management*/
 Environment* Env_new(Environment* _env);
 void Env_destroy(Environment* _env);
+void Env_add_buildin(Environment* _env, char* _name, buildin_fn _fn);
+void Env_add_core(Environment* _env);
 
-VariableScope* VariableScope_new(VariableScope* _this, VariableScope* _outer, Environment* _env);
-void VariableScope_destroy(VariableScope* _scope);
+/*Scope Management*/
+VariableScope* VariableScope_new(Environment* _env, VariableScope* _this, VariableScope* _outer);
+void VariableScope_destroy(Environment* _env, VariableScope* _scope);
+
+/*Global Vars*/
+expr* NIL(void);
 
 /*Checks*/
-expr* NIL(void);
 char is_nil(expr* _args);
 char is_cons(expr* _args);
 char is_symbol(expr* _args);
@@ -228,79 +238,101 @@ expr* third(expr* _args);
 expr* fourth(expr* _args);
 expr* nth(int _n, expr* _args);
 
-/*Value creation*/
-expr* cons(VariableScope *_env, expr* _car, expr* _cdr);
-expr* real(VariableScope *_env, int _v);
-expr* decimal(VariableScope *_env, float _v);
-expr* symbol(VariableScope *_env, char* _v);
-expr* string(VariableScope *_env, char* _v);
-void variable_delete(VariableScope *_scope, expr* _atom);
-
 /*Printing*/
 void printexpr(expr* _args);
 tstr stringify(expr* _args, char* _open, char* _close);
 
+/*Value creation*/
+expr* cons(Environment* _env, expr* _car, expr* _cdr);
+expr* real(Environment* _env, int _v);
+expr* decimal(Environment* _env, float _v);
+expr* symbol(Environment* _env, char* _v);
+expr* string(Environment* _env, char* _v);
+void variable_delete(Environment* _env, expr* _atom);
+
 /*Core*/
-expr* read(VariableScope* _scope, yal_Msg* _msgdst, char* _program_str);
-expr* eval(VariableScope* _scope, yal_Msg* _msgdst, expr* _in);
-expr* list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in);
+expr* read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _program_str);
+expr* eval(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* list(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+
+/*Buildins*/
+expr* buildin_read(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_quote(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_cdr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_car(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_cons(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_list(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_len(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_first(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_second(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_third(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_fourth(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_range(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_plus(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_minus(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_multiply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_divide(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+
 
 /******************************************************************************/
 #define YAL_IMPLEMENTATION
 #ifdef YAL_IMPLEMENTATION
 
 void
-_yal_error(yal_Msg* _dst, tstr _msg)
+_throw_error(Exception* _dst, tstr _msg)
 {
      if (_dst == NULL)
         return;
     tstr_destroy(&_dst->msg);
-    _dst->type = MSGTYPE_ERROR;
+    _dst->type = EXCEPTYPE_ERROR;
     _dst->msg = _msg;
 }
 
 char
-yal_is_error(yal_Msg* _dst)
+Exception_is_error(Exception* _dst)
 {
      if (_dst == NULL)
         return 0;
-     return (_dst->type == MSGTYPE_ERROR) ? 1:0;
+     return (_dst->type == EXCEPTYPE_ERROR) ? 1:0;
 }
 
 void
-_error_argevalfail(char* _fnstr, yal_Msg* _msgdst, expr* args)
+_throw_argevalfail(char* _fnstr, Exception* _throwdst, expr* args)
 {
     WITH_STRINGEXPR(str, args,
-                    _yal_error(_msgdst,
+                    _throw_error(_throwdst,
                                tstr_fmt("'%s' could not evaluate arguments %s\n",
                                         _fnstr, str.c_str)););
 }
 
 void
-_error_invalidargs(char* _fnstr, char* _expected, yal_Msg* _msgdst, expr* args)
+_throw_invalidargs(char* _fnstr, char* _expected, Exception* _throwdst, expr* args)
 {
     WITH_STRINGEXPR(str, args,
-                    _yal_error(_msgdst,
+                    _throw_error(_throwdst,
                                tstr_fmt("'%s' %s %s\n",
                                         _fnstr, _expected, str.c_str)););
 }
 
 void
-_error_nonvaluearg(char* _fnstr, yal_Msg* _msgdst, expr* args)
+_throw_nonvaluearg(char* _fnstr, Exception* _throwdst, expr* args)
 {
     WITH_STRINGEXPR(str, args,
-                    _yal_error(_msgdst,
+                    _throw_error(_throwdst,
                                tstr_fmt("'%s' got non-value arguments in %s\n",
                                         _fnstr, str.c_str)););
 }
 
 void
-yal_msg_destroy(yal_Msg* _dst)
+Exception_destroy(Exception* _dst)
 {
      if (_dst == NULL)
         return;
      tstr_destroy(&_dst->msg);
-     _dst->type = MSGTYPE_OK;
+     _dst->type = EXCEPTYPE_OK;
 }
 
 Environment*
@@ -310,41 +342,45 @@ Env_new(Environment* _env)
     /*TODO: 30 is a arbitrary number, change when you know size of buildins*/
     sbAllocator_init(&_env->variable_allocator, sizeof(expr));
     Buildins_initn(&_env->buildins, 30);
-    VariableScope_new(&_env->global, NULL, _env);
+    VariableScope_new(_env, &_env->global, NULL);
     return _env;
 }
 
 void
 Env_destroy(Environment* _env)
 {
+    int i;
+    int n;
     if (_env == NULL)
         return;
     Buildins_destroy(&_env->buildins);
+    VariableScope_destroy(_env, &_env->global);
+    n = VariableScopes_len(&_env->active_scopes);
+    for (i = 0; i < n; i++)
+        VariableScope_destroy(_env, VariableScopes_peek(&_env->active_scopes, i));
+
     sbAllocator_destroy(&_env->variable_allocator);
-    VariableScope_destroy(&_env->global);
 }
 
 VariableScope*
-VariableScope_new(VariableScope* _this, VariableScope* _outer, Environment* _env)
+VariableScope_new(Environment* _env, VariableScope* _this, VariableScope* _outer)
 {
-    VariableScope_destroy(_this);
+    VariableScope_destroy(_env, _this);
     Variables_initn(&_this->variables, 3);
-    _this->env = _env;
     _this->outer = _outer;
     return _this;
 }
 
 void
-VariableScope_destroy(VariableScope* _scope)
+VariableScope_destroy(Environment* _env, VariableScope* _scope)
 {
     int i;
     Variable tmp;
     for (i = 0; i < Variables_len(&_scope->variables); i++) {
         tmp = Variables_get(&_scope->variables, i);
-        variable_delete(_scope, tmp.value);
+        variable_delete(_env, tmp.value);
     }
     Variables_destroy(&_scope->variables);
-    _scope->env = NULL;
     _scope->outer = NULL;
 }
 
@@ -463,30 +499,30 @@ nth(int _n, expr* _args)
 }
 
 expr*
-_variable_new(VariableScope *_scope)
+_variable_new(Environment* _env)
 {
-    ASSERT_INV_SCOPE(_scope);
-    expr* e = (expr*)sbAllocator_get(&_scope->env->variable_allocator);
+    ASSERT_INV_ENV(_env);
+    expr* e = (expr*)sbAllocator_get(&_env->variable_allocator);
     if (e == NULL)
         ASSERT_NOMOREMEMORY();
     return e;
 }
 
 expr*
-variable_duplicate(VariableScope *_scope, expr* _atom)
+variable_duplicate(Environment* _env, expr* _atom)
 {
-    ASSERT_INV_SCOPE(_scope);
+    ASSERT_INV_ENV(_env);
     if (is_nil(_atom))
         return NIL();
     switch (_atom->type) {
     case TYPE_SYMBOL:
-        return symbol(_scope, _atom->symbol.c_str);
+        return symbol(_env, _atom->symbol.c_str);
     case TYPE_STRING:
-        return string(_scope, _atom->string.c_str);
+        return string(_env, _atom->string.c_str);
     case TYPE_REAL:
-        return real(_scope, _atom->real);
+        return real(_env, _atom->real);
     case TYPE_DECIMAL:
-        return decimal(_scope, _atom->decimal);
+        return decimal(_env, _atom->decimal);
     case TYPE_CONS:
     default:
         ASSERT_UNREACHABLE();
@@ -494,9 +530,9 @@ variable_duplicate(VariableScope *_scope, expr* _atom)
 }
 
 void
-variable_delete(VariableScope *_scope, expr* _atom)
+variable_delete(Environment* _env, expr* _atom)
 {
-    ASSERT_INV_SCOPE(_scope);
+    ASSERT_INV_ENV(_env);
     if (is_nil(_atom))
         return;
 
@@ -510,14 +546,14 @@ variable_delete(VariableScope *_scope, expr* _atom)
     default:
         break;
     };
-    sbAllocator_return(&_scope->env->variable_allocator, _atom);
+    sbAllocator_return(&_env->variable_allocator, _atom);
 }
 
 expr*
-cons(VariableScope *_scope, expr* _car, expr* _cdr)
+cons(Environment* _env, expr* _car, expr* _cdr)
 {
-    ASSERT_INV_SCOPE(_scope);
-    expr* e = _variable_new(_scope);
+    ASSERT_INV_ENV(_env);
+    expr* e = _variable_new(_env);
     e->type = TYPE_CONS;
     e->car = _car;
     e->cdr = _cdr;
@@ -525,40 +561,40 @@ cons(VariableScope *_scope, expr* _car, expr* _cdr)
 }
 
 expr*
-real(VariableScope *_scope, int _v)
+real(Environment* _env, int _v)
 {
-    ASSERT_INV_SCOPE(_scope);
-    expr* e = _variable_new(_scope);
+    ASSERT_INV_ENV(_env);
+    expr* e = _variable_new(_env);
     e->type = TYPE_REAL;
     e->real = _v;
     return e;
 }
 
 expr*
-decimal(VariableScope *_scope, float _v)
+decimal(Environment* _env, float _v)
 {
-    ASSERT_INV_SCOPE(_scope);
-    expr* e = _variable_new(_scope);
+    ASSERT_INV_SCOPE(_env);
+    expr* e = _variable_new(_env);
     e->type = TYPE_DECIMAL;
     e->decimal = _v;
     return e;
 }
 
 expr*
-symbol(VariableScope *_scope, char* _v)
+symbol(Environment* _env, char* _v)
 {
-    ASSERT_INV_SCOPE(_scope);
-    expr* e = _variable_new(_scope);
+    ASSERT_INV_ENV(_env);
+    expr* e = _variable_new(_env);
     e->type = TYPE_SYMBOL;
     e->symbol = tstr_(_v);
     return e;
 }
 
 expr*
-string(VariableScope *_scope, char* _v)
+string(Environment* _env, char* _v)
 {
-    ASSERT_INV_SCOPE(_scope);
-    expr* e = _variable_new(_scope);
+    ASSERT_INV_ENV(_env);
+    expr* e = _variable_new(_env);
     e->type = TYPE_STRING;
     e->string = tstr_(_v);
     return e;
@@ -747,18 +783,18 @@ _looks_like_number(tstr _token)
 }
 
 expr*
-_lex(VariableScope* _scope, Tokens* _tokens)
+_lex(Environment* _env, Tokens* _tokens)
 {
     /*TODO: Does not support special syntax for:
     quote = '
     array = []
     dotted lists (a . 34)
     */
-    ASSERT_INV_SCOPE(_scope);
+    ASSERT_INV_ENV(_env);
     assert(_tokens != NULL);
     tstr token;
     int i = 0;
-    expr* program = cons(_scope, NULL, NULL);
+    expr* program = cons(_env, NULL, NULL);
     expr* curr = program;
 
     while (Tokens_len(_tokens) > 0) {
@@ -768,23 +804,23 @@ _lex(VariableScope* _scope, Tokens* _tokens)
             break;
         }
         else if (tstr_equalc(&token, "(")) {
-            curr->car = _lex(_scope, _tokens);
+            curr->car = _lex(_env, _tokens);
         }
         else if (tstr_equalc(&token, "\"")) {
-            curr->car = symbol(_scope, token.c_str);
+            curr->car = symbol(_env, token.c_str);
         }
         else if (_looks_like_number(token)) {
             if (_token_value_type(&token) == TYPE_REAL)
-                curr->car = real(_scope, tstr_to_int(&token));
+                curr->car = real(_env, tstr_to_int(&token));
             else
-                curr->car = decimal(_scope, tstr_to_float(&token));
+                curr->car = decimal(_env, tstr_to_float(&token));
         }
         else {
-            curr->car = symbol(_scope, token.c_str);
+            curr->car = symbol(_env, token.c_str);
         }
         /*Insert extracted into lexed program*/
         tstr_destroy(&token);
-        curr->cdr = cons(_scope, NULL, NULL);
+        curr->cdr = cons(_env, NULL, NULL);
         curr = curr->cdr;
     }
     //DBPRINT("lexed program: ", program);
@@ -792,16 +828,17 @@ _lex(VariableScope* _scope, Tokens* _tokens)
 }
 
 expr*
-read(VariableScope* _scope, yal_Msg* _msgdst, char* _program_str)
+read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _program_str)
 {
+    ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
     assert(_program_str != NULL && "Given program str is NULL");
     /*TODO: Need error checking from _lex()*/
-    UNUSED(_msgdst);
+    UNUSED(_throwdst);
     int cursor = 0;
     Tokens tokens = _tokenize(_program_str, &cursor);
     _tokens_post_process(&tokens);
-    expr* program = _lex(_scope, &tokens);
+    expr* program = _lex(_env, &tokens);
     //printf("Amount of programs in 'read' = %d\n", len(program));
     return program;
 }
@@ -826,52 +863,83 @@ _find_buildin(Environment* _env, expr* _sym)
     return NULL;
 }
 
-expr*
-eval(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+Variable*
+_find_variable(VariableScope* _scope, expr* _sym)
 {
-    expr* fn;
-    expr* args;
-    Buildin* buildin;
-    expr* result;
-    ASSERT_INV_SCOPE(_scope);
+    Variable* variable = NULL;
+    int i;
+    if (is_nil(_sym) || !is_symbol(_sym))
+        return NULL;
+    printf("looking for variable '%s'\n", _sym->symbol.c_str);
+
+    for (i = 0; i < Variables_len(&_scope->variables); i++) {
+        variable = Variables_peek(&_scope->variables, i);
+        if (tstr_equal(&variable->symbol, &_sym->symbol)) {
+            printf("found '%s'\n", variable->symbol.c_str);
+            return variable;
+        }
+    }
+    if (_scope->outer != NULL)
+        return _find_variable(_scope->outer, _sym);
+    return NULL;
+}
+
+expr*
+eval(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    expr* fn = NULL;
+    expr* args = NULL;
+    Buildin* buildin = NULL;
+    Variable* variable = NULL;
+    expr* result = NULL;
+    ASSERT_INV_ENV(_env);
 
     if (is_nil(_in))
         return _in;
-
-    //DBPRINT("(eval) INP:  ", _in);
     switch (_in->type) {
     case TYPE_CONS:
         fn = car(_in);
         args = cdr(_in);
-        //DBPRINT("(eval) NAME: ", fn);
-        //DBPRINT("(eval) ARGS: ", args);
+        DBPRINT("(eval) INPUT: ", _in);
+        DBPRINT("(eval) NAME: ", fn);
+        DBPRINT("(eval) ARGS: ", args);
         if (is_cons(fn) || fn->type != TYPE_SYMBOL) {
-            ERROR_INVALIDARGS("expected callable function", _msgdst, _in);
+            THROW_INVALIDARGS("expected callable function", _throwdst, _in);
             return NIL();
         }
-        buildin = _find_buildin(_scope->env, fn);
-        if (buildin == NULL) {
-            ERROR_INVALIDARGS("Could not find function in environment", _msgdst, fn);
-            return NIL();
-        }
-        result = buildin->fn(_scope, _msgdst, args);
-        break;
+        buildin = _find_buildin(_env, fn);
+        if (buildin != NULL) {
+            result = buildin->fn(_env, _scope, _throwdst, args);
+            printf("buildin [%s]\n", buildin->name.c_str);
+            DBPRINT("(eval) RESULT: ", result);
+            return result;
+        } 
+        return NIL();
+
     case TYPE_SYMBOL:
-        /*TODO: Check symbol table and return value of symbol*/
-        return _in;
-        break;
+        DBPRINT("TRYING TO ACCESS VAR: ", _in);
+        //variable = _find_variable(_scope, fn);
+        if (variable != NULL) {
+            return variable->value;
+        }
+        return NIL();
+
+    case TYPE_REAL:
+    case TYPE_DECIMAL:
+    case TYPE_STRING:
     default:
         return _in;
-        break;
     };
-    return result;
+
+    ASSERT_UNREACHABLE();
+    return NIL();
 }
 
-expr* buildin_list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in);
+expr* buildin_list(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr*
-list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+list(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
-    return buildin_list(_scope, _msgdst, _in);
+    return buildin_list(_env, _scope, _throwdst, _in);
 }
 
 /*********************************************************************/
@@ -879,36 +947,34 @@ list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 /*********************************************************************/
 
 expr*
-buildin_read(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_read(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     if (!is_string(_in)) {
-        ERROR_INVALIDARGS("expected string input", _msgdst, _in);
+        THROW_INVALIDARGS("expected string input", _throwdst, _in);
         return NIL();
     }
-    return read(_scope, _msgdst, _in->string.c_str);
+    return read(_env, _scope, _throwdst, _in->string.c_str);
 }
 
 expr*
-buildin_list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_list(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     /*list() is a list evaller that expects a list of eval-able lists */
-    expr* root = cons(_scope, NULL, NULL);
+    expr* root = cons(_env, NULL, NULL);
     expr* curr = root;
     ASSERT_INV_SCOPE(_scope);
-    //DBPRINT("input to buildin list: ", _in);
+    DBPRINT("input to buildin list: ", _in);
     if (!is_cons(_in)) {
-        ERROR_INVALIDARGS("expected list input", _msgdst, _in);
+        THROW_INVALIDARGS("expected list input", _throwdst, _in);
         return NIL();
     }
-
-    //while (!is_nil(_in)) {
-    WHILE_NOT_NIL(_in) {
-        curr->car = eval(_scope, _msgdst, car(_in));
-        if (yal_is_error(_msgdst))
+    while (!is_nil(cdr(_in))) {
+        curr->car = eval(_env, _scope, _throwdst, car(_in));
+        if (Exception_is_error(_throwdst))
             return NIL();
-        //DBPRINT("list evalled: ", car(_in));
-        //DBPRINT("to ", car(curr));
-        curr->cdr = cons(_scope, NULL, NULL);
+        DBPRINT("list evalled: ", car(_in));
+        DBPRINT("to ", car(curr));
+        curr->cdr = cons(_env, NULL, NULL);
         curr = cdr(curr);
         _in = cdr(_in);
     }
@@ -916,25 +982,44 @@ buildin_list(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 }
 
 expr*
-buildin_quote(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_len(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    expr* args;
+    ASSERT_INV_SCOPE(_scope);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
+        return NIL();
+    }
+    if (len(args) != 1) {
+        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
+        return NIL();
+    }
+    args = first(args);
+    return real(_env, len(args));
+}
+
+expr*
+buildin_quote(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     ASSERT_INV_SCOPE(_scope);
-    UNUSED(_msgdst);
+    ASSERT_INV_SCOPE(_env);
+    UNUSED(_throwdst);
     return car(_in);
 }
 
 expr*
-buildin_car(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_car(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, _in);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
         return NIL();
     }
     if (len(args) != 1) {
-        ERROR_INVALIDARGS("Expected only 1 input", _msgdst, _in);
+        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
         return NIL();
     }
     args = first(args);
@@ -942,17 +1027,17 @@ buildin_car(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 }
 
 expr*
-buildin_cdr(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_cdr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, _in);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
         return NIL();
     }
     if (len(args) != 1) {
-        ERROR_INVALIDARGS("Expected only 1 input", _msgdst, _in);
+        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
         return NIL();
     }
     args = first(args);
@@ -960,35 +1045,35 @@ buildin_cdr(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 }
 
 expr*
-buildin_cons(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_cons(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, _in);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
         return NIL();
     }
     if (len(args) != 2) {
-        ERROR_INVALIDARGS("Expected 2 inputs", _msgdst, _in);
+        THROW_INVALIDARGS("Expected 2 inputs", _throwdst, _in);
         return NIL();
     }
-
-    return cons(_scope, first(args), second(args));
+    DBPRINT("cons args: ", args);
+    return cons(_env, first(args), second(args));
 }
 
 expr*
-buildin_first(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_first(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, _in);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
         return NIL();
     }
     if (len(args) != 1) {
-        ERROR_INVALIDARGS("Expected only 1 input", _msgdst, _in);
+        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
         return NIL();
     }
     args = first(args);
@@ -996,17 +1081,17 @@ buildin_first(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 }
 
 expr*
-buildin_second(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_second(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, _in);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
         return NIL();
     }
     if (len(args) != 1) {
-        ERROR_INVALIDARGS("Expected only 1 input", _msgdst, _in);
+        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
         return NIL();
     }
     args = first(args);
@@ -1014,17 +1099,17 @@ buildin_second(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 }
 
 expr*
-buildin_third(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_third(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, _in);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
         return NIL();
     }
     if (len(args) != 1) {
-        ERROR_INVALIDARGS("Expected only 1 input", _msgdst, _in);
+        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
         return NIL();
     }
     args = first(args);
@@ -1032,17 +1117,17 @@ buildin_third(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 }
 
 expr*
-buildin_fourth(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_fourth(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, _in);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
         return NIL();
     }
     if (len(args) != 1) {
-        ERROR_INVALIDARGS("Expected only 1 input", _msgdst, _in);
+        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
         return NIL();
     }
     args = first(args);
@@ -1050,7 +1135,7 @@ buildin_fourth(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
 }
 
 expr*
-buildin_range(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_range(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     expr* start;
@@ -1062,262 +1147,260 @@ buildin_range(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
     ASSERT_INV_SCOPE(_scope);
 
     DBPRINT("'range' input: ", _in);
-    args = list(_scope, _msgdst, _in);
+    args = list(_env, _scope, _throwdst, _in);
     DBPRINT("'range' args: ", args);
 
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
         return NIL();
     }
     if (len(args) != 2) {
-        ERROR_INVALIDARGS("expected 2 inputs", _msgdst, args);
+        THROW_INVALIDARGS("expected 2 inputs", _throwdst, args);
         return NIL();
     }
     start = first(args);
     end = second(args);
     if (start->type != TYPE_REAL || end->type != TYPE_REAL) {
-        ERROR_INVALIDARGS("expected inputs of type REAL", _msgdst, args);
+        THROW_INVALIDARGS("expected inputs of type REAL", _throwdst, args);
         return NIL();
     }
     if (start->real > end->real) {
-        ERROR_INVALIDARGS("expected input 1 to be smaller than input 2", _msgdst, args);
+        THROW_INVALIDARGS("expected input 1 to be smaller than input 2", _throwdst, args);
         return NIL();
     }
-    range = cons(_scope, NULL, NULL);
+    range = cons(_env, NULL, NULL);
     curr = range;
     for (i = start->real; i < end->real; i++) {
-        curr->car = real(_scope, i);
-        curr->cdr = cons(_scope, NULL, NULL);
+        curr->car = real(_env, i);
+        curr->cdr = cons(_env, NULL, NULL);
         curr = cdr(curr);
     }
     return range;
 }
 
 expr*
-_PLUS2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
+_PLUS2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
-    ASSERT_INV_SCOPE(_scope);
     if (!is_val(_a) || !is_val(_b)) {
-        ERROR_INVALIDARGS("expected inputs to be values", _msgdst, cons(_scope, _a, _b));
-        return real(_scope, 0);
+        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        return real(_env, 0);
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-        return decimal(_scope, _a->decimal + _b->decimal);
+        return decimal(_env, _a->decimal + _b->decimal);
     else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-        return decimal(_scope, _a->real + _b->decimal);
+        return decimal(_env, _a->real + _b->decimal);
     else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-        return  decimal(_scope, _a->decimal + _b->real);
-    return real(_scope, _a->real + _b->real);
+        return  decimal(_env, _a->decimal + _b->real);
+    return real(_env, _a->real + _b->real);
 }
 
 expr*
-buildin_plus(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_plus(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     expr* tmp;
     expr* result;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, args);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, args);
         return NIL();
     }
     if (len(args) == 0) {
-        return real(_scope, 0);
+        return real(_env, 0);
     }
     /*Check for non value inputs*/
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            ERROR_NONVALUEARG(_msgdst, args);
+            THROW_NONVALUEARG(_throwdst, args);
             return NIL();
         }
         tmp = cdr(tmp);
     }
     /*Do the math*/
     tmp = args;
-    result = real(_scope, 0);
+    result = real(_env, 0);
     while (!is_nil(cdr(tmp))) {
-        result = _PLUS2(_scope, _msgdst, result, car(tmp));
+        result = _PLUS2(_env, _throwdst, result, car(tmp));
         tmp = cdr(tmp);
-        if (yal_is_error(_msgdst))
+        if (Exception_is_error(_throwdst))
             return NIL();
     }
     return result;
 }
 
 expr*
-_MINUS2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
+_MINUS2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
-    ASSERT_INV_SCOPE(_scope);
     if (!is_val(_a) || !is_val(_b)) {
-        ERROR_INVALIDARGS("expected inputs to be values", _msgdst, cons(_scope, _a, _b));
-        return real(_scope, 0);
+        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        return real(_env, 0);
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-        return decimal(_scope, _a->decimal - _b->decimal);
+        return decimal(_env, _a->decimal - _b->decimal);
     else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-        return decimal(_scope, _a->real - _b->decimal);
+        return decimal(_env, _a->real - _b->decimal);
     else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-        return  decimal(_scope, _a->decimal - _b->real);
-    return real(_scope, _a->real - _b->real);
+        return  decimal(_env, _a->decimal - _b->real);
+    return real(_env, _a->real - _b->real);
 }
 
 expr*
-buildin_minus(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_minus(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     expr* tmp;
     expr* result;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, args);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, args);
         return NIL();
     }
     /*Check for non value inputs*/
     if (len(args) == 0) {
-        return real(_scope, 0);
+        return real(_env, 0);
     }
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            ERROR_NONVALUEARG(_msgdst, args);
+            THROW_NONVALUEARG(_throwdst, args);
             return NIL();
         }
         tmp = cdr(tmp);
     }
     /*Do the math*/
     tmp = args;
-    result = variable_duplicate(_scope, first(args));
+    result = variable_duplicate(_env, first(args));
     tmp = cdr(tmp);
     while (!is_nil(cdr(tmp))) {
-        result = _MINUS2(_scope, _msgdst, result, car(tmp));
+        result = _MINUS2(_env, _throwdst, result, car(tmp));
         tmp = cdr(tmp);
-        if (yal_is_error(_msgdst))
+        if (Exception_is_error(_throwdst))
             return NIL();
     }
     return result;
 }
 
 expr*
-_MULTIPLY2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
+_MULTIPLY2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
-    ASSERT_INV_SCOPE(_scope);
+    ASSERT_INV_ENV(_env);
     if (!is_val(_a) || !is_val(_b)) {
-        ERROR_INVALIDARGS("expected inputs to be values", _msgdst, cons(_scope, _a, _b));
-        return real(_scope, 0);
+        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        return real(_env, 0);
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-        return decimal(_scope, _a->decimal * _b->decimal);
+        return decimal(_env, _a->decimal * _b->decimal);
     else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-        return decimal(_scope, _a->real * _b->decimal);
+        return decimal(_env, _a->real * _b->decimal);
     else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-        return  decimal(_scope, _a->decimal * _b->real);
-    return real(_scope, _a->real * _b->real);
+        return  decimal(_env, _a->decimal * _b->real);
+    return real(_env, _a->real * _b->real);
 }
 
 expr*
-buildin_multiply(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_multiply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     expr* tmp;
     expr* result;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, args);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, args);
         return NIL();
     }
     /*Check for non value inputs*/
     if (len(args) == 0) {
-        return real(_scope, 1);
+        return real(_env, 1);
     }
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            ERROR_NONVALUEARG(_msgdst, args);
+            THROW_NONVALUEARG(_throwdst, args);
             return NIL();
         }
         tmp = cdr(tmp);
     }
     /*Do the math*/
     tmp = args;
-    result = real(_scope, 1);
+    result = real(_env, 1);
     while (!is_nil(cdr(tmp))) {
-        result = _MULTIPLY2(_scope, _msgdst, result, car(tmp));
+        result = _MULTIPLY2(_env, _throwdst, result, car(tmp));
         tmp = cdr(tmp);
-        if (yal_is_error(_msgdst))
+        if (Exception_is_error(_throwdst))
             return NIL();
     }
     return result;
 }
 
 expr*
-_DIVIDE2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
+_DIVIDE2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
-    ASSERT_INV_SCOPE(_scope);
+    ASSERT_INV_ENV(_env);
     if (!is_val(_a) || !is_val(_b)) {
-        ERROR_INVALIDARGS("expected inputs to be values", _msgdst, cons(_scope, _a, _b));
-        return real(_scope, 0);
+        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        return real(_env, 0);
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-        return decimal(_scope, _a->decimal / _b->decimal);
+        return decimal(_env, _a->decimal / _b->decimal);
     else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-        return decimal(_scope, _a->real / _b->decimal);
+        return decimal(_env, _a->real / _b->decimal);
     else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-        return  decimal(_scope, _a->decimal / _b->real);
-    return real(_scope, _a->real / _b->real);
+        return  decimal(_env, _a->decimal / _b->real);
+    return real(_env, _a->real / _b->real);
 }
 
 expr*
-buildin_divide(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_divide(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     expr* tmp;
     expr* result;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, args);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, args);
         return NIL();
     }
     if (len(args) == 0) {
-        return real(_scope, 1);
+        return real(_env, 1);
     }
     /*Check for non value inputs*/
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            ERROR_NONVALUEARG(_msgdst, args);
+            THROW_NONVALUEARG(_throwdst, args);
             return NIL();
         }
         if ((tmp->type == TYPE_REAL && tmp->real == 0) ||
             (tmp->type == TYPE_DECIMAL && tmp->decimal == 0.f)) {
-            ERROR_INVALIDARGS("division by zero!", _msgdst, args);
-            return real(_scope, 0);
+            THROW_INVALIDARGS("division by zero!", _throwdst, args);
+            return real(_env, 0);
         }
         tmp = cdr(tmp);
     }
     /*Do the math*/
     tmp = args;
-    result = variable_duplicate(_scope, first(args));
+    result = variable_duplicate(_env, first(args));
     tmp = cdr(tmp);
     while (!is_nil(cdr(tmp))) {
-        result = _DIVIDE2(_scope, _msgdst, result, car(tmp));
+        result = _DIVIDE2(_env, _throwdst, result, car(tmp));
         tmp = cdr(tmp);
-        if (yal_is_error(_msgdst))
+        if (Exception_is_error(_throwdst))
             return NIL();
     }
     return result;
 }
 
 char
-_MATHEQUAL2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
+_MATHEQUAL2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
-    ASSERT_INV_SCOPE(_scope);
+    ASSERT_INV_ENV(_env);
     if (!is_val(_a) || !is_val(_b)) {
-        ERROR_INVALIDARGS("expected inputs to be values", _msgdst, cons(_scope, _a, _b));
+        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
         return 0;
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
@@ -1330,26 +1413,26 @@ _MATHEQUAL2(VariableScope* _scope, yal_Msg* _msgdst, expr* _a, expr* _b)
 }
 
 expr*
-buildin_mathequal(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* args;
     expr* oldtmp;
     expr* tmp;
     ASSERT_INV_SCOPE(_scope);
-    args = list(_scope, _msgdst, _in);
-    if (yal_is_error(_msgdst)) {
-        ERROR_ARGEVALFAIL(_msgdst, args);
-        return symbol(_scope, "NIL");
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, args);
+        return symbol(_env, "NIL");
     }
     if (len(args) < 2) {
-        return symbol(_scope, "t");
+        return symbol(_env, "t");
     }
     /*Check for non value inputs*/
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            ERROR_NONVALUEARG(_msgdst, args);
-            return symbol(_scope, "NIL");
+            THROW_NONVALUEARG(_throwdst, args);
+            return symbol(_env, "NIL");
         }
         tmp = cdr(tmp);
     }
@@ -1357,23 +1440,46 @@ buildin_mathequal(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
     oldtmp = first(args);
     tmp = second(args);
     while (!is_nil(tmp)) {
-        if(!_MATHEQUAL2(_scope, _msgdst, oldtmp, tmp))
-            return symbol(_scope, "NIL");
-        if (yal_is_error(_msgdst))
-            return symbol(_scope, "NIL");
+        if(!_MATHEQUAL2(_env, _throwdst, oldtmp, tmp))
+            return symbol(_env, "NIL");
+        if (Exception_is_error(_throwdst))
+            return symbol(_env, "NIL");
         tmp = cdr(tmp);
         oldtmp = cdr(oldtmp);
     }
-    return symbol(_scope, "t");
+    return symbol(_env, "t");
 }
 
 expr*
-buildin_defvar(VariableScope* _scope, yal_Msg* _msgdst, expr* _in)
+buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
-    UNUSED(_scope);
-    UNUSED(_msgdst);
-    UNUSED(_in);
-    return NIL();
+    ASSERT_INV_SCOPE(_scope);
+    Variable v = {0};
+    expr* args;
+    expr* sym;
+    expr* val;
+
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, args);
+        return NIL();
+    }
+    if (len(args) > 2) {
+        THROW_INVALIDARGS("expected 1-2 arguments", _throwdst, args);
+        return NIL();
+    }
+    sym = first(args);
+    val = second(args);
+    if (!is_symbol(sym)) {
+        THROW_INVALIDARGS("expected first argument to be symbol", _throwdst, sym);
+        return NIL();
+    }
+    v.symbol = tstr_(first(args)->symbol.c_str);
+    v.value = variable_duplicate(_env, val);
+    Variables_push(&_env->global.variables, v);
+    DBPRINT("created global: ", sym);
+    DBPRINT("with value: ", val);
+    return sym;
 }
 
 void
@@ -1391,12 +1497,18 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "eval", eval);
     Env_add_buildin(_env, "range", buildin_range);
     Env_add_buildin(_env, "quote", buildin_quote);
-    Env_add_buildin(_env, "list", list);
+    Env_add_buildin(_env, "list", buildin_list);
     Env_add_buildin(_env, "cons", buildin_cons);
+    Env_add_buildin(_env, "len", buildin_len);
+    //Env_add_buildin(_env, "put", buildin_put);
+    //Env_add_buildin(_env, "pop", buildin_pop);
 
     /*Accessors*/
     Env_add_buildin(_env, "car", buildin_car);
+    Env_add_buildin(_env, "head", buildin_car);
     Env_add_buildin(_env, "cdr", buildin_cdr);
+    Env_add_buildin(_env, "tail", buildin_cdr);
+    Env_add_buildin(_env, "rest", buildin_cdr);
     Env_add_buildin(_env, "first", buildin_first);
     Env_add_buildin(_env, "second", buildin_second);
     Env_add_buildin(_env, "third", buildin_third);
@@ -1409,8 +1521,19 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "/", buildin_divide);
     Env_add_buildin(_env, "=", buildin_mathequal);
 
-    /*Program management*/
-    //Env_add_buildin(_env, "var", buildin_defvar);
+    /*Variable management*/
+    Env_add_buildin(_env, "global", buildin_defglobal);
+    //Env_add_buildin(_env, "set", buildin_set);
+    //Env_add_buildin(_env, "const", buildin_defconst);
+
+    /*Condition management*/
+    //Env_add_buildin(_env, "cond", buildin_cond);
+    //Env_add_buildin(_env, "if", buildin_if);
+
+    /*Function management*/
+    //Env_add_buildin(_env, "fn", buildin_defn);
+    //Env_add_buildin(_env, "macro", buildin_macro);
+    //Env_add_buildin(_env, "lambda", buildin_lambda);
 }
 
 #endif /*YAL_IMPLEMENTATION*/
