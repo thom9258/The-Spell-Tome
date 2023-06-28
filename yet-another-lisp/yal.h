@@ -30,6 +30,7 @@ For more information, please refer to
 - [0.2] Implemented a lexer for reading of s expressions.
         Cleaning up impl and purging unused stuff
         fixed lexer errors with proper tokenization.
+        Fixed bug when lexing numbers starting with 9 and 0
 - [0.1] Created AST structure and imported base lib functionality.
 - [0.0] Initialized library.
 */
@@ -252,7 +253,7 @@ void variable_delete(Environment* _env, expr* _atom);
 
 /*Core*/
 expr* read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _program_str);
-expr* eval(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* list(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 
 /*Buildins*/
@@ -769,6 +770,7 @@ _tokens_post_process(Tokens* _tokens)
 {
   /*TODO: Here we remove the outer scope of the lexed function.
     if we lex more than one scope we cant do this..
+    On top of this, we cant lex non-list inputs..
    */
     Tokens_pop(_tokens);
     Tokens_pop_front(_tokens);
@@ -778,8 +780,8 @@ char
 _looks_like_number(tstr _token)
 {
     if (tstr_length(&_token) > 1 && (_token.c_str[0] == '-' || _token.c_str[0] == '+'))
-        return (_token.c_str[1] > '0' && (_token.c_str[1]) < '9') ? 1 : 0;
-    return (_token.c_str[0] > '0' && (_token.c_str[0]) < '9') ? 1 : 0;
+        return (_token.c_str[1] >= '0' && (_token.c_str[1]) <= '9') ? 1 : 0;
+    return (_token.c_str[0] >= '0' && (_token.c_str[0]) <= '9') ? 1 : 0;
 }
 
 expr*
@@ -793,13 +795,12 @@ _lex(Environment* _env, Tokens* _tokens)
     ASSERT_INV_ENV(_env);
     assert(_tokens != NULL);
     tstr token;
-    int i = 0;
+    //int i = 0;
     expr* program = cons(_env, NULL, NULL);
     expr* curr = program;
 
     while (Tokens_len(_tokens) > 0) {
         token = Tokens_pop_front(_tokens);
-        i++;
         if (tstr_equalc(&token, ")")) {
             break;
         }
@@ -885,7 +886,7 @@ _find_variable(VariableScope* _scope, expr* _sym)
 }
 
 expr*
-eval(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     expr* fn = NULL;
     expr* args = NULL;
@@ -900,9 +901,9 @@ eval(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
     case TYPE_CONS:
         fn = car(_in);
         args = cdr(_in);
-        DBPRINT("(eval) INPUT: ", _in);
-        DBPRINT("(eval) NAME: ", fn);
-        DBPRINT("(eval) ARGS: ", args);
+        //DBPRINT("(eval) INPUT: ", _in);
+        //DBPRINT("(eval) NAME: ", fn);
+        //DBPRINT("(eval) ARGS: ", args);
         if (is_cons(fn) || fn->type != TYPE_SYMBOL) {
             THROW_INVALIDARGS("expected callable function", _throwdst, _in);
             return NIL();
@@ -917,8 +918,13 @@ eval(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
         return NIL();
 
     case TYPE_SYMBOL:
-        DBPRINT("TRYING TO ACCESS VAR: ", _in);
-        //variable = _find_variable(_scope, fn);
+        DBPRINT("'eval' scoped symbol search: ", _in);
+        variable = _find_variable(_scope, _in);
+        if (variable != NULL) {
+            return variable->value;
+        }
+        DBPRINT("'eval' global symbol search: ", _in);
+        variable = _find_variable(&_env->global, _in);
         if (variable != NULL) {
             return variable->value;
         }
@@ -946,6 +952,8 @@ list(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 /* Buildin Functions */
 /*********************************************************************/
 
+
+
 expr*
 buildin_read(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
@@ -963,21 +971,25 @@ buildin_list(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
     expr* root = cons(_env, NULL, NULL);
     expr* curr = root;
     ASSERT_INV_SCOPE(_scope);
-    DBPRINT("input to buildin list: ", _in);
+    DBPRINT("'list' input: ", _in);
     if (!is_cons(_in)) {
         THROW_INVALIDARGS("expected list input", _throwdst, _in);
         return NIL();
     }
+    //while (!is_nil(_in)) {
     while (!is_nil(cdr(_in))) {
-        curr->car = eval(_env, _scope, _throwdst, car(_in));
-        if (Exception_is_error(_throwdst))
+        curr->car = eval_expr(_env, _scope, _throwdst, car(_in));
+        if (Exception_is_error(_throwdst)) {
+            THROW_ARGEVALFAIL(_throwdst, curr->car);
             return NIL();
+        }
         DBPRINT("list evalled: ", car(_in));
         DBPRINT("to ", car(curr));
         curr->cdr = cons(_env, NULL, NULL);
         curr = cdr(curr);
         _in = cdr(_in);
     }
+    DBPRINT("'list' args: ", root);
     return root;
 }
 
@@ -1049,6 +1061,7 @@ buildin_cons(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
+    DBPRINT("cons input: ", _in);
     args = list(_env, _scope, _throwdst, _in);
     if (Exception_is_error(_throwdst)) {
         THROW_ARGEVALFAIL(_throwdst, _in);
@@ -1058,7 +1071,8 @@ buildin_cons(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
         THROW_INVALIDARGS("Expected 2 inputs", _throwdst, _in);
         return NIL();
     }
-    DBPRINT("cons args: ", args);
+    DBPRINT("cons a: ", first(args));
+    DBPRINT("cons b: ", second(args));
     return cons(_env, first(args), second(args));
 }
 
@@ -1453,28 +1467,26 @@ buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst
 expr*
 buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
+    ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
     Variable v = {0};
-    expr* args;
     expr* sym;
     expr* val;
-
-    args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, args);
+    if (len(_in) > 2) {
+        THROW_INVALIDARGS("expected 1-2 arguments", _throwdst, _in);
         return NIL();
     }
-    if (len(args) > 2) {
-        THROW_INVALIDARGS("expected 1-2 arguments", _throwdst, args);
+    sym = first(_in);
+    val = eval_expr(_env, _scope, _throwdst, second(_in));
+    if (len(_in) > 2) {
+        THROW_ARGEVALFAIL(_throwdst, second(_in));
         return NIL();
     }
-    sym = first(args);
-    val = second(args);
     if (!is_symbol(sym)) {
         THROW_INVALIDARGS("expected first argument to be symbol", _throwdst, sym);
         return NIL();
     }
-    v.symbol = tstr_(first(args)->symbol.c_str);
+    v.symbol = tstr_(sym->symbol.c_str);
     v.value = variable_duplicate(_env, val);
     Variables_push(&_env->global.variables, v);
     DBPRINT("created global: ", sym);
@@ -1494,22 +1506,21 @@ Env_add_core(Environment* _env)
     ASSERT_INV_ENV(_env);
 
     /*List management*/
-    Env_add_buildin(_env, "eval", eval);
     Env_add_buildin(_env, "range", buildin_range);
     Env_add_buildin(_env, "quote", buildin_quote);
     Env_add_buildin(_env, "list", buildin_list);
     Env_add_buildin(_env, "cons", buildin_cons);
     Env_add_buildin(_env, "len", buildin_len);
-    //Env_add_buildin(_env, "put", buildin_put);
-    //Env_add_buildin(_env, "pop", buildin_pop);
+    //Env_add_buildin(_env, "put!", buildin_put);
+    //Env_add_buildin(_env, "pop!", buildin_pop);
 
     /*Accessors*/
     Env_add_buildin(_env, "car", buildin_car);
-    Env_add_buildin(_env, "head", buildin_car);
     Env_add_buildin(_env, "cdr", buildin_cdr);
+    Env_add_buildin(_env, "head", buildin_car);
     Env_add_buildin(_env, "tail", buildin_cdr);
+    Env_add_buildin(_env, "first", buildin_car);
     Env_add_buildin(_env, "rest", buildin_cdr);
-    Env_add_buildin(_env, "first", buildin_first);
     Env_add_buildin(_env, "second", buildin_second);
     Env_add_buildin(_env, "third", buildin_third);
     Env_add_buildin(_env, "fourth", buildin_fourth);

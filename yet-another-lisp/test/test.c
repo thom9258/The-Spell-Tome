@@ -5,6 +5,28 @@
     if (USERMSG_IS_ERROR((MSGPTR))) printf("USER ERROR:\n\t%s\n", (MSGPTR)->info)
 
 char
+lex_type_test(Environment* _env, VariableScope* _scope, char* _p, const int _type)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    Exception msg = {0};
+    expr* result;
+
+    result = read(_env, _scope, &msg, _p);
+    if (Exception_is_error(&msg)) {
+        Exception_destroy(&msg);
+        printf("YAL ERROR: %s\n", msg.msg.c_str);
+        return 0;
+    }
+    Exception_destroy(&msg);
+    result = car(result);
+    DBPRINT("result = ", result);
+    DBPRINT("LEXED: ", result);
+    printf("Expected type %s, got %s\n", TYPE_TO_STR[_type], TYPE_TO_STR[result->type]);
+    return _type == result->type;
+}
+
+char
 read_test(Environment* _env, VariableScope* _scope, char* _p, char* _expected)
 {
     Exception msg = {0};
@@ -35,13 +57,14 @@ repl_test(Environment* _env, VariableScope* _scope, char* _p, char* _gt)
 
     ASSERT_INV_SCOPE(_scope);
     read_result = read(_env, _scope, &msg, _p);
+
     if (Exception_is_error(&msg)) {
         printf("yal> ERROR: %s\n", msg.msg.c_str);
         return 0;
     }
     Exception_destroy(&msg);
 
-    eval_result = eval(_env, _scope, &msg, read_result);
+    eval_result = eval_expr(_env, _scope, &msg, read_result);
     if (Exception_is_error(&msg)) {
         printf("yal> ERROR: %s\n", msg.msg.c_str);
         return 0;
@@ -213,6 +236,27 @@ void test_print_manual(void)
 
 }
 
+
+void
+test_lex_types(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+    TL_TEST(lex_type_test(&e, &e.global, "(myvar)", TYPE_SYMBOL));
+    TL_TEST(lex_type_test(&e, &e.global, "(my/other-var_)", TYPE_SYMBOL));
+    TL_TEST(lex_type_test(&e, &e.global, "(2)", TYPE_REAL));
+    TL_TEST(lex_type_test(&e, &e.global, "(-2)", TYPE_REAL));
+    TL_TEST(lex_type_test(&e, &e.global, "(3.14)", TYPE_DECIMAL));
+    TL_TEST(lex_type_test(&e, &e.global, "(-3.14)", TYPE_DECIMAL));
+    TL_TEST(lex_type_test(&e, &e.global, "(9.56700)", TYPE_DECIMAL));
+    //TL_TEST(lex_type_test(&e, &e.global, "(\"hi everyone!\")", TYPE_STRING));
+
+    Env_destroy(&e);
+}
+
+
+
 void
 test_lex(void)
 {
@@ -243,11 +287,17 @@ test_lex(void)
 }
 
 void
-test_eval(void)
+test_buildin_eval(void)
 {
     Environment e;
     Env_new(&e);
     Env_add_core(&e);
+
+    TL_TEST(repl_test(&e, &e.global,
+                       "(eval (quote (+ 1 1)))",
+                       "(2)"));
+
+
     Env_destroy(&e);
 }
 
@@ -263,16 +313,27 @@ test_buildin_list(void)
                        "(1 2 3)"));
 
     TL_TEST(repl_test(&e, &e.global,
-                       "(list 9.56700 -2.123000 4.345000)",
-                       "(9.56700 -2.123000 4.345000)"));
+                       "(list 2.4 -2 5 1)",
+                       "(2.400000 -2 5 1)"));
+
+    /*TODO: Not valid!*/
+    /*
+    TL_TEST(repl_test(&e, &e.global,
+                       "(list 2. .1)",
+                       "(2.000000 0.100000)"));
+    */
+
+    TL_TEST(repl_test(&e, &e.global,
+                       "(list 9.566000 -2.123000 4.345000)",
+                       "(9.566000 -2.123000 4.345000)"));
 
     TL_TEST(repl_test(&e, &e.global,
                        "(list 1 (+ 1 1) 3 )",
                        "(1 2 3)"));
 
     TL_TEST(repl_test(&e, &e.global,
-                       "(list 1 (+ -1 1 3) 3 )",
-                       "(1 3 3)"));
+                       "(list 3 (+ -1 1 3) (+ 1 1 1))",
+                       "(3 3 3)"));
 
 
     Env_destroy(&e);
@@ -361,6 +422,14 @@ test_buildin_accessors(void)
                        "(1 . 2)"));
 
     TL_TEST(repl_test(&e, &e.global,
+                       "(cons (+ 2 2) 5)",
+                       "(4 . 5)"));
+
+    TL_TEST(repl_test(&e, &e.global,
+                       "(cons (list 2 2) 1)",
+                       "((2 2) . 1)"));
+
+    TL_TEST(repl_test(&e, &e.global,
                        "(cons (quote (a b c)) 3)",
                        "((a b c) . 3)"));
 
@@ -404,7 +473,8 @@ test_buildin_math(void)
     TL_TEST(repl_test(&e, &e.global, "(+ 2 (- 5 6) 1)", "2"));
     TL_TEST(repl_test(&e, &e.global, "(+ 4 (* 2 6) (- 10 5))", "21"));
 
-    TL_TEST(repl_test(&e, &e.global, "(+ (range 0 10))", "55"));
+    /*TODO: This is not valid, needs an apply function for this*/
+    //TL_TEST(repl_test(&e, &e.global, "(+ (range 0 10))", "55"));
     Env_destroy(&e);
 }
 
@@ -444,14 +514,21 @@ test_variables(void)
         v = Variables_peek(&e.global.variables, i);
         if (tstr_equal(&v->symbol, &pi)) {
             printf("found '%s'\n", v->symbol.c_str);
+            found = 1;
         }
     }
-
     TL_TEST(found == 1);
 
-    //TL_TEST(repl_test(&e.global, "(pi)", "3.14"));
+
     TL_TEST(repl_test(&e, &e.global, "(global name)", "name"));
-    //TL_TEST(repl_test(&e.global, "(name)", "NIL"));
+    TL_TEST(Variables_len(&e.global.variables) == 2);
+
+    TL_TEST(repl_test(&e, &e.global, "(global my/list (list 2 (+ 3 3)))", "my/list"));
+    TL_TEST(Variables_len(&e.global.variables) == 3);
+
+    TL_TEST(repl_test(&e, &e.global, "(pi)", "3.14"));
+    TL_TEST(repl_test(&e, &e.global, "(name)", "NIL"));
+
 
     Env_destroy(&e);
 }
@@ -463,14 +540,16 @@ int main(int argc, char **argv) {
 	TL(test_datatypes());
 	TL(test_print_manual());
 	TL(test_lex());
-	TL(test_buildin_quote());
+    TL(test_lex_types());
+    TL(test_buildin_quote());
 	TL(test_buildin_list());
-	//TL(test_buildin_range());
-	//TL(test_buildin_accessors());
-	//TL(test_buildin_math());
-	//TL(test_buildin_equality());
-	//TL(test_variables());
+	TL(test_buildin_accessors());
+	TL(test_buildin_range());
+	TL(test_buildin_math());
+	TL(test_buildin_equality());
+	TL(test_variables());
     //TL(test_list_management());
+	//TL(test_buildin_eval());
 
     tl_summary();
 
