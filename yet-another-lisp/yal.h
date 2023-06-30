@@ -110,32 +110,32 @@ const char* TYPE_TO_STR[TYPE_COUNT] = {
     //"TYPE_DICTIONARY"
 };
 
-enum EXCEPTYPE {
-    EXCEPTYPE_OK = 0,
-    EXCEPTYPE_UNKNOWN,
-    EXCEPTYPE_INVALIDARGEVAL,
-    EXCEPTYPE_INVALIDINPUT,
-    EXCEPTYPE_CANTSETCONST,
-    EXCEPTYPE_EVAL,
-    EXCEPTYPE_SYMNOTFOUND,
-    EXCEPTYPE_FNNOTFOUND,
-    EXCEPTYPE_NOTIMPLEMENTED,
-    EXCEPTYPE_NOTAVALUE,
+enum EXCEPTION {
+    EXCEPTION_OK = 0,
+    EXCEPTION_UNKNOWN,
+    EXCEPTION_INVALIDARGEVAL,
+    EXCEPTION_INVALIDINPUT,
+    EXCEPTION_CANTSETCONST,
+    EXCEPTION_EVAL,
+    EXCEPTION_SYMNOTFOUND,
+    EXCEPTION_FNNOTFOUND,
+    EXCEPTION_NOTIMPLEMENTED,
+    EXCEPTION_NOTAVALUE,
 
-    EXCEPTYPE_COUNT
+    EXCEPTION_COUNT
 };
 
-const char* EXCEPTYPE_TO_STR[EXCEPTYPE_COUNT] = {
-    "EXCEPTYPE_OK",
-    "EXCEPTYPE_UNKNOWN"
-    "EXCEPTYPE_INVALIDARGEVAL",
-    "EXCEPTYPE_INVALIDINPUT",
-    "EXCEPTYPE_CANTSETCONST",
-    "EXCEPTYPE_EVAL",
-    "EXCEPTYPE_SYMNOTFOUND",
-    "EXCEPTYPE_FNNOTFOUND",
-    "EXCEPTYPE_NOTIMPLEMENTED",
-    "EXCEPTYPE_NOTAVALUE",
+const char* EXCEPTION_TO_STR[EXCEPTION_COUNT] = {
+    "EXCEPTION_OK",
+    "EXCEPTION_UNKNOWN"
+    "EXCEPTION_INVALIDARGEVAL",
+    "EXCEPTION_INVALIDINPUT",
+    "EXCEPTION_CANTSETCONST",
+    "EXCEPTION_EVAL",
+    "EXCEPTION_SYMNOTFOUND",
+    "EXCEPTION_FNNOTFOUND",
+    "EXCEPTION_NOTIMPLEMENTED",
+    "EXCEPTION_NOTAVALUE",
 };
 
 struct expr {
@@ -209,19 +209,30 @@ struct Environment {
 #define UNUSED(x) (void)(x)
 #define UNIMPLEMENTED(fun) assert(0 && "UNIMPLEMENTED: " && fun)
 
-#define THROW_ARGEVALFAIL(msgdst, args)             \
-    _throw_argevalfail((char*)__FUNCTION__, msgdst, args)
-#define THROW_INVALIDARGS(expected, msgdst, args)               \
-    _throw_invalidargs((char*)__FUNCTION__, expected, msgdst, args)
+#define THROW_ARGEVALFAIL(msgdst, fnsym, args)             \
+    _throw_error(msgdst, fnsym, EXCEPTION_INVALIDARGEVAL, "Could not evaluate arguments.", args)
 
-#define THROW_INVALIDSYMBOL(msgdst, args)               \
-    _throw_invalidargs((char*)__FUNCTION__, (char*)"Symbol not found, ", msgdst, args)
+#define THROW_INVALIDINPUT(msgdst, fnsym, expected, args)                     \
+    _throw_error(msgdst, fnsym, EXCEPTION_INVALIDINPUT, expected, args)
 
-#define THROW_INVALIDFUNCTION(msgdst, args)               \
-    _throw_invalidargs((char*)__FUNCTION__, (char*)"Function not found, ", msgdst, args)
+#define THROW_INVALIDSYMBOL(msgdst, fnsym, args)               \
+    _throw_error(msgdst, fnsym, EXCEPTION_SYMNOTFOUND, "Symbol does not exist", args)
 
-#define THROW_NONVALUEARG(msgdst, args)               \
-    _throw_nonvaluearg((char*)__FUNCTION__, msgdst, args)
+#define THROW_INVALIDFUNCTION(msgdst, fnsym, args)               \
+    _throw_error(msgdst, fnsym, EXCEPTION_FNNOTFOUND, "Function does not exist", args)
+
+#define THROW_INVALIDTYPE(msgdst, fnsym, type, args)                    \
+    _throw_error(msgdst, fnsym, EXCEPTION_NOTAVALUE, "Invalid type, expected " #type, args)
+
+#define THROW_NONVALUEARG(msgdst, fnsym, args)               \
+    _throw_error(msgdst, fnsym, EXCEPTION_NOTAVALUE, "Not a value", args)
+
+#define THROW_NOTIMPLEMENTED(msgdst, fnsym, args)               \
+    _throw_error(msgdst, fnsym, EXCEPTION_NOTIMPLEMENTED, "called function is not implemented", args)
+
+#define RETURN_ON_EXCEPTION(msgdst, ret) \
+    do { if (Exception_is_error(msgdst)) return ret; } while (0)
+
 
 #define ASSERT_UNREACHABLE() \
     assert(0 && "Fatal Error occoured, reached unreachable code!")
@@ -320,13 +331,23 @@ expr* buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throw
 #ifdef YAL_IMPLEMENTATION
 
 void
-_throw_error(Exception* _dst, char _type, tstr _msg)
+_throw_error(Exception* _dst,
+             const char* _fnsym,
+             char _type,
+             const char* _msg,
+             expr* _expr)
 {
-     if (_dst == NULL)
+    UUNUSED(_fnsym);
+    tstr msg;
+    if (_dst == NULL)
         return;
-    tstr_destroy(&_dst->msg);
-    _dst->type = _type;
-    _dst->msg = _msg;
+
+    WITH_STRINGEXPR(str, _expr,
+                    msg = tstr_fmt("%s, %s\n", _msg, str.c_str);
+                    tstr_destroy(&_dst->msg);
+                    _dst->type = _type;
+                    _dst->msg = msg;
+        );
 }
 
 char
@@ -334,34 +355,7 @@ Exception_is_error(Exception* _dst)
 {
      if (_dst == NULL)
         return 0;
-     return (_dst->type != EXCEPTYPE_OK) ? 1:0;
-}
-
-void
-_throw_argevalfail(char* _fnstr, Exception* _throwdst, expr* args)
-{
-    WITH_STRINGEXPR(str, args,
-                    _throw_error(_throwdst, EXCEPTYPE_INVALIDARGEVAL,
-                               tstr_fmt("'%s' could not evaluate arguments %s\n",
-                                        _fnstr, str.c_str)););
-}
-
-void
-_throw_invalidargs(char* _fnstr, char* _expected, Exception* _throwdst, expr* args)
-{
-    WITH_STRINGEXPR(str, args,
-                    _throw_error(_throwdst, EXCEPTYPE_INVALIDINPUT,
-                               tstr_fmt("'%s' %s %s\n",
-                                        _fnstr, _expected, str.c_str)););
-}
-
-void
-_throw_nonvaluearg(char* _fnstr, Exception* _throwdst, expr* args)
-{
-    WITH_STRINGEXPR(str, args,
-                    _throw_error(_throwdst, EXCEPTYPE_NOTAVALUE,
-                               tstr_fmt("'%s' got non-value arguments in %s\n",
-                                        _fnstr, str.c_str)););
+     return (_dst->type != EXCEPTION_OK) ? 1:0;
 }
 
 void
@@ -370,7 +364,7 @@ Exception_destroy(Exception* _dst)
      if (_dst == NULL)
         return;
      tstr_destroy(&_dst->msg);
-     _dst->type = EXCEPTYPE_OK;
+     _dst->type = EXCEPTION_OK;
 }
 
 Environment*
@@ -1032,7 +1026,7 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
         //DBPRINT("(eval) NAME: ", fn);
         //DBPRINT("(eval) ARGS: ", args);
         if (is_cons(fn) || fn->type != TYPE_SYMBOL) {
-            THROW_INVALIDARGS("expected callable function", _throwdst, _in);
+            THROW_INVALIDINPUT(_throwdst, "eval", "expected callable function", _in);
             return NIL();
         }
         buildin = _find_buildin(_env, fn);
@@ -1043,7 +1037,7 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
             return result;
         } 
 
-        THROW_INVALIDFUNCTION(_throwdst, _in);
+        THROW_INVALIDFUNCTION(_throwdst, "eval", _in);
         return NIL();
 
     case TYPE_SYMBOL:
@@ -1062,7 +1056,7 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
         if (variable != NULL) {
             return variable->value;
         }
-        THROW_INVALIDSYMBOL(_throwdst, _in);
+        THROW_INVALIDSYMBOL(_throwdst, "eval", _in);
         return NIL();
 
     case TYPE_REAL:
@@ -1093,7 +1087,7 @@ expr*
 buildin_read(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     if (!is_string(_in)) {
-        THROW_INVALIDARGS("expected string input", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "read", "expected string input", _in);
         return NIL();
     }
     return read(_env, _scope, _throwdst, _in->string.c_str);
@@ -1108,16 +1102,14 @@ buildin_list(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
     ASSERT_INV_SCOPE(_scope);
     //DBPRINT("'list' input: ", _in);
     if (!is_cons(_in)) {
-        THROW_INVALIDARGS("expected list input", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "list", "expected a list", _in);
         return NIL();
     }
     //while (!is_nil(_in)) {
     while (!is_nil(cdr(_in))) {
         curr->car = eval_expr(_env, _scope, _throwdst, car(_in));
-        if (Exception_is_error(_throwdst)) {
-            THROW_ARGEVALFAIL(_throwdst, curr->car);
-            return NIL();
-        }
+        RETURN_ON_EXCEPTION(_throwdst, NIL());
+
         //DBPRINT("list evalled: ", car(_in));
         //DBPRINT("to ", car(curr));
         curr->cdr = cons(_env, NULL, NULL);
@@ -1134,12 +1126,9 @@ buildin_len(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
     expr* args;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 1) {
-        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "len", "Expected only 1 input", _in);
         return NIL();
     }
     args = first(args);
@@ -1161,12 +1150,9 @@ buildin_car(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
     expr* args;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 1) {
-        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "car", "Expected only 1 input", _in);
         return NIL();
     }
     args = first(args);
@@ -1179,12 +1165,9 @@ buildin_cdr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
     expr* args;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 1) {
-        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "cdr", "Expected only 1 input", _in);
         return NIL();
     }
     args = first(args);
@@ -1198,12 +1181,9 @@ buildin_cons(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
     ASSERT_INV_SCOPE(_scope);
     //DBPRINT("cons input: ", _in);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 2) {
-        THROW_INVALIDARGS("Expected 2 inputs", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "cdr", "Expected only 2 inputs", _in);
         return NIL();
     }
     //DBPRINT("cons a: ", first(args));
@@ -1217,12 +1197,9 @@ buildin_first(Environment* _env, VariableScope* _scope, Exception* _throwdst, ex
     expr* args;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
-    if (len(args) != 1) {
-        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
+    if (len(args) != 2) {
+        THROW_INVALIDINPUT(_throwdst, "first", "Expected only 1 input", _in);
         return NIL();
     }
     args = first(args);
@@ -1235,12 +1212,9 @@ buildin_second(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
     expr* args;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 1) {
-        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "second", "Expected only 1 input", _in);
         return NIL();
     }
     args = first(args);
@@ -1253,12 +1227,9 @@ buildin_third(Environment* _env, VariableScope* _scope, Exception* _throwdst, ex
     expr* args;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 1) {
-        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "third", "Expected only 1 input", _in);
         return NIL();
     }
     args = first(args);
@@ -1271,12 +1242,9 @@ buildin_fourth(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
     expr* args;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 1) {
-        THROW_INVALIDARGS("Expected only 1 input", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "fourth", "Expected only 1 input", _in);
         return NIL();
     }
     args = first(args);
@@ -1290,18 +1258,15 @@ buildin_nth(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
     expr* n;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 2) {
-        THROW_INVALIDARGS("Expected 2 inputs", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "nth", "Expected only 2 inputs", _in);
         return NIL();
     }
     n = first(args);
     args = second(args);
     if (n->type != TYPE_REAL) {
-        THROW_INVALIDARGS("Expected TYPE_REAL index", _throwdst, n);
+        THROW_INVALIDTYPE(_throwdst, "nth", TYPE_REAL, n);
         return NIL();
     }
     return nth(n->real, args);
@@ -1322,23 +1287,19 @@ buildin_range(Environment* _env, VariableScope* _scope, Exception* _throwdst, ex
     DBPRINT("'range' input: ", _in);
     args = list(_env, _scope, _throwdst, _in);
     DBPRINT("'range' args: ", args);
-
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, _in);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 2) {
-        THROW_INVALIDARGS("expected 2 inputs", _throwdst, args);
+        THROW_INVALIDINPUT(_throwdst, "range", "Expected only 2 inputs", _in);
         return NIL();
     }
     start = first(args);
     end = second(args);
     if (start->type != TYPE_REAL || end->type != TYPE_REAL) {
-        THROW_INVALIDARGS("expected inputs of type REAL", _throwdst, args);
+        THROW_INVALIDTYPE(_throwdst, "range", TYPE_REAL, args);
         return NIL();
     }
     if (start->real > end->real) {
-        THROW_INVALIDARGS("expected input 1 to be smaller than input 2", _throwdst, args);
+        THROW_INVALIDINPUT(_throwdst, "range", "expected first input to be smaller than second input", _in);
         return NIL();
     }
     range = cons(_env, NULL, NULL);
@@ -1355,7 +1316,7 @@ expr*
 _PLUS2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
     if (!is_val(_a) || !is_val(_b)) {
-        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        THROW_INVALIDINPUT(_throwdst, "_PLUS2", "expected inputs to be values", cons(_env, _a, _b));
         return real(_env, 0);
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
@@ -1375,10 +1336,7 @@ buildin_plus(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
     expr* result;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, args);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) == 0) {
         return real(_env, 0);
     }
@@ -1386,7 +1344,7 @@ buildin_plus(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            THROW_NONVALUEARG(_throwdst, args);
+            THROW_NONVALUEARG(_throwdst, "+", args);
             return NIL();
         }
         tmp = cdr(tmp);
@@ -1407,7 +1365,7 @@ expr*
 _MINUS2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
     if (!is_val(_a) || !is_val(_b)) {
-        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        THROW_INVALIDINPUT(_throwdst, "_MINUS2", "expected inputs to be values", cons(_env, _a, _b));
         return real(_env, 0);
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
@@ -1427,10 +1385,7 @@ buildin_minus(Environment* _env, VariableScope* _scope, Exception* _throwdst, ex
     expr* result;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, args);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     /*Check for non value inputs*/
     if (len(args) == 0) {
         return real(_env, 0);
@@ -1438,7 +1393,7 @@ buildin_minus(Environment* _env, VariableScope* _scope, Exception* _throwdst, ex
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            THROW_NONVALUEARG(_throwdst, args);
+            THROW_NONVALUEARG(_throwdst, "-", args);
             return NIL();
         }
         tmp = cdr(tmp);
@@ -1461,7 +1416,7 @@ _MULTIPLY2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
     ASSERT_INV_ENV(_env);
     if (!is_val(_a) || !is_val(_b)) {
-        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        THROW_INVALIDINPUT(_throwdst, "_MULTIPLY2", "expected inputs to be values", cons(_env, _a, _b));
         return real(_env, 0);
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
@@ -1481,10 +1436,7 @@ buildin_multiply(Environment* _env, VariableScope* _scope, Exception* _throwdst,
     expr* result;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, args);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     /*Check for non value inputs*/
     if (len(args) == 0) {
         return real(_env, 1);
@@ -1492,7 +1444,7 @@ buildin_multiply(Environment* _env, VariableScope* _scope, Exception* _throwdst,
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            THROW_NONVALUEARG(_throwdst, args);
+            THROW_NONVALUEARG(_throwdst, "*", args);
             return NIL();
         }
         tmp = cdr(tmp);
@@ -1514,7 +1466,7 @@ _DIVIDE2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
     ASSERT_INV_ENV(_env);
     if (!is_val(_a) || !is_val(_b)) {
-        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        THROW_INVALIDINPUT(_throwdst, "_DIVIDE2", "expected inputs to be values", cons(_env, _a, _b));
         return real(_env, 0);
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
@@ -1534,10 +1486,7 @@ buildin_divide(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
     expr* result;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, args);
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) == 0) {
         return real(_env, 1);
     }
@@ -1545,12 +1494,12 @@ buildin_divide(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            THROW_NONVALUEARG(_throwdst, args);
+            THROW_NONVALUEARG(_throwdst, "/", args);
             return NIL();
         }
         if ((tmp->type == TYPE_REAL && tmp->real == 0) ||
             (tmp->type == TYPE_DECIMAL && tmp->decimal == 0.f)) {
-            THROW_INVALIDARGS("division by zero!", _throwdst, args);
+            THROW_INVALIDINPUT(_throwdst, "divide", "division by zero!", args);
             return real(_env, 0);
         }
         tmp = cdr(tmp);
@@ -1573,7 +1522,7 @@ _MATHEQUAL2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
     ASSERT_INV_ENV(_env);
     if (!is_val(_a) || !is_val(_b)) {
-        THROW_INVALIDARGS("expected inputs to be values", _throwdst, cons(_env, _a, _b));
+        THROW_INVALIDTYPE(_throwdst, "_MATHEQUAL2", "expected inputs to be values", cons(_env, _a, _b));
         return 0;
     }
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
@@ -1593,10 +1542,7 @@ buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst
     expr* tmp;
     ASSERT_INV_SCOPE(_scope);
     args = list(_env, _scope, _throwdst, _in);
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, args);
-        return symbol(_env, "NIL");
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) < 2) {
         return symbol(_env, "t");
     }
@@ -1604,7 +1550,7 @@ buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
-            THROW_NONVALUEARG(_throwdst, args);
+            THROW_NONVALUEARG(_throwdst, "=", args);
             return symbol(_env, "NIL");
         }
         tmp = cdr(tmp);
@@ -1639,16 +1585,13 @@ buildin_defconst(Environment* _env, VariableScope* _scope, Exception* _throwdst,
     ASSERT_INV_SCOPE(_scope);
     expr* val;
     if (len(_in) != 2) {
-        THROW_INVALIDARGS("expected 2 arguments", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "const", "expected 2 arguments", _in);
         return NIL();
     }
     val = eval_expr(_env, _scope, _throwdst, second(_in));
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, second(_in));
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(_in) < 1 || len(_in) > 2 || !is_symbol(first(_in))) {
-        THROW_INVALIDARGS("expected 1-2 args, and first arg to be symbol", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "const", "expected 1-2 args, and first arg to be symbol", _in);
         return NIL();
     }
     _add_to_variablescope(&_env->constants.variables, first(_in), val);
@@ -1669,13 +1612,9 @@ buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst
     DBPRINT("global symbol value ", second(_in));
     val = eval_expr(_env, _scope, _throwdst, second(_in));
     DBPRINT("global evaled symbol value to ", val);
-    if (Exception_is_error(_throwdst)) {
-        printf("GLOBAL EVAL ERROR!\n");
-        //THROW_ARGEVALFAIL(_throwdst, second(_in));
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(_in) < 1 || len(_in) > 2 || !is_symbol(first(_in))) {
-        THROW_INVALIDARGS("expected 1-2 args, and first arg to be symbol", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "global", "expected 1-2 args, and first arg to be symbol", _in);
         return NIL();
     }
     _add_to_variablescope(&_env->globals.variables, first(_in), val);
@@ -1690,17 +1629,10 @@ buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
     expr* val;
-    if (len(_in) != 2) {
-        THROW_INVALIDARGS("expected 2 arguments", _throwdst, _in);
-        return NIL();
-    }
     val = eval_expr(_env, _scope, _throwdst, second(_in));
-    if (Exception_is_error(_throwdst)) {
-        THROW_ARGEVALFAIL(_throwdst, second(_in));
-        return NIL();
-    }
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(_in) < 1 || len(_in) > 2 || !is_symbol(first(_in))) {
-        THROW_INVALIDARGS("expected 1-2 args, and first arg to be symbol", _throwdst, _in);
+        THROW_INVALIDINPUT(_throwdst, "var", "expected 1-2 args, and first arg to be symbol", _in);
         return NIL();
     }
     _add_to_variablescope(&_scope->variables, first(_in), val);
@@ -1748,9 +1680,6 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "second", buildin_second);
     Env_add_buildin(_env, "third", buildin_third);
     Env_add_buildin(_env, "fourth", buildin_fourth);
-    Env_add_buildin(_env, "nth", buildin_nth);
-
-    /*Arimetrics*/
     Env_add_buildin(_env, "+", buildin_plus);
     Env_add_buildin(_env, "-", buildin_minus);
     Env_add_buildin(_env, "*", buildin_multiply);
