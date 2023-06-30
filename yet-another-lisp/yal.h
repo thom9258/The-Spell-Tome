@@ -31,6 +31,12 @@ For more information, please refer to
         Cleaning up impl and purging unused stuff
         fixed lexer errors with proper tokenization.
         Fixed bug when lexing numbers starting with 9 and 0
+        Added env_add_constant to setup.
+        Fixed tons of errors,
+        - error management
+        - variable lookup
+        - variable defines
+        Fixed Tokenization of quotes and arrays
 - [0.1] Created AST structure and imported base lib functionality.
 - [0.0] Initialized library.
 */
@@ -40,14 +46,19 @@ https://buildyourownlisp.com/chapter9_s_expressions#lists_and_lisps
 http://www.ulisp.com/show?1BLW
 */
 
-/*
-  TODO: The stringifyexpr in error returns are the ones doing memory leaks, fix
-  them by not directly returning string with result stringifyexpr.
-  It would be possible if stringifyexpr is not used but by creating a variable
-  type called error, then it would remove itself on env_destroy()
-*/
+/*Major todos*/
+/*TODO: Garbage collection (with info stats)*/
+/*TODO: function, lambda and macro creation*/
+/*TODO: create try, catch and throw functions*/
 
-/*TODO: Seems to segfault if using a buildinsymbol we cant find*/
+/*Minor todos*/
+/*TODO: Make sure the correct errors are returned*/
+/*TODO: set! function that throws an error if set is used on constant*/
+/*TODO: print ' and [] instead of quote and array*/
+/*TODO: terminal repl binary*/
+/*TODO: put! and pop! functions*/
+/*TODO: reverse and reverse! functions*/
+/*TODO: Replace raw v->car = val access with setcar(v, val) access for safety*/
 
 #ifndef YAL_H
 #define YAL_H
@@ -83,8 +94,8 @@ enum TYPE {
     TYPE_DECIMAL,
     TYPE_SYMBOL,
     TYPE_STRING,
-    TYPE_ARRAY,
-    TYPE_DICTIONARY,
+    //TYPE_ARRAY,
+    //TYPE_DICTIONARY,
 
     TYPE_COUNT
 };
@@ -95,20 +106,36 @@ const char* TYPE_TO_STR[TYPE_COUNT] = {
     "TYPE_DECIMAL",
     "TYPE_SYMBOL",
     "TYPE_STRING", 
-    "TYPE_ARRAY",
-    "TYPE_DICTIONARY"
+    //"TYPE_ARRAY",
+    //"TYPE_DICTIONARY"
 };
 
 enum EXCEPTYPE {
     EXCEPTYPE_OK = 0,
-    EXCEPTYPE_ERROR,
+    EXCEPTYPE_UNKNOWN,
+    EXCEPTYPE_INVALIDARGEVAL,
+    EXCEPTYPE_INVALIDINPUT,
+    EXCEPTYPE_CANTSETCONST,
+    EXCEPTYPE_EVAL,
+    EXCEPTYPE_SYMNOTFOUND,
+    EXCEPTYPE_FNNOTFOUND,
+    EXCEPTYPE_NOTIMPLEMENTED,
+    EXCEPTYPE_NOTAVALUE,
 
     EXCEPTYPE_COUNT
 };
 
 const char* EXCEPTYPE_TO_STR[EXCEPTYPE_COUNT] = {
     "EXCEPTYPE_OK",
-    "EXCEPTYPE_ERROR"
+    "EXCEPTYPE_UNKNOWN"
+    "EXCEPTYPE_INVALIDARGEVAL",
+    "EXCEPTYPE_INVALIDINPUT",
+    "EXCEPTYPE_CANTSETCONST",
+    "EXCEPTYPE_EVAL",
+    "EXCEPTYPE_SYMNOTFOUND",
+    "EXCEPTYPE_FNNOTFOUND",
+    "EXCEPTYPE_NOTIMPLEMENTED",
+    "EXCEPTYPE_NOTAVALUE",
 };
 
 struct expr {
@@ -171,7 +198,8 @@ typedef struct {
 struct Environment {
     Buildins buildins;
     sbAllocator variable_allocator;
-    VariableScope global;
+    VariableScope constants;
+    VariableScope globals;
     VariableScopes active_scopes;
 };
 
@@ -185,6 +213,13 @@ struct Environment {
     _throw_argevalfail((char*)__FUNCTION__, msgdst, args)
 #define THROW_INVALIDARGS(expected, msgdst, args)               \
     _throw_invalidargs((char*)__FUNCTION__, expected, msgdst, args)
+
+#define THROW_INVALIDSYMBOL(msgdst, args)               \
+    _throw_invalidargs((char*)__FUNCTION__, (char*)"Symbol not found, ", msgdst, args)
+
+#define THROW_INVALIDFUNCTION(msgdst, args)               \
+    _throw_invalidargs((char*)__FUNCTION__, (char*)"Function not found, ", msgdst, args)
+
 #define THROW_NONVALUEARG(msgdst, args)               \
     _throw_nonvaluearg((char*)__FUNCTION__, msgdst, args)
 
@@ -241,7 +276,7 @@ expr* nth(int _n, expr* _args);
 
 /*Printing*/
 void printexpr(expr* _args);
-tstr stringify(expr* _args, char* _open, char* _close);
+tstr stringify(expr* _args, const char* _open, const char* _close);
 
 /*Value creation*/
 expr* cons(Environment* _env, expr* _car, expr* _cdr);
@@ -249,6 +284,7 @@ expr* real(Environment* _env, int _v);
 expr* decimal(Environment* _env, float _v);
 expr* symbol(Environment* _env, char* _v);
 expr* string(Environment* _env, char* _v);
+expr* stringnq(Environment* _env, char* _v);
 void variable_delete(Environment* _env, expr* _atom);
 
 /*Core*/
@@ -274,8 +310,9 @@ expr* buildin_minus(Environment* _env, VariableScope* _scope, Exception* _throwd
 expr* buildin_multiply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_divide(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_defconst(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
-expr* buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 
 
 /******************************************************************************/
@@ -283,12 +320,12 @@ expr* buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _th
 #ifdef YAL_IMPLEMENTATION
 
 void
-_throw_error(Exception* _dst, tstr _msg)
+_throw_error(Exception* _dst, char _type, tstr _msg)
 {
      if (_dst == NULL)
         return;
     tstr_destroy(&_dst->msg);
-    _dst->type = EXCEPTYPE_ERROR;
+    _dst->type = _type;
     _dst->msg = _msg;
 }
 
@@ -297,14 +334,14 @@ Exception_is_error(Exception* _dst)
 {
      if (_dst == NULL)
         return 0;
-     return (_dst->type == EXCEPTYPE_ERROR) ? 1:0;
+     return (_dst->type != EXCEPTYPE_OK) ? 1:0;
 }
 
 void
 _throw_argevalfail(char* _fnstr, Exception* _throwdst, expr* args)
 {
     WITH_STRINGEXPR(str, args,
-                    _throw_error(_throwdst,
+                    _throw_error(_throwdst, EXCEPTYPE_INVALIDARGEVAL,
                                tstr_fmt("'%s' could not evaluate arguments %s\n",
                                         _fnstr, str.c_str)););
 }
@@ -313,7 +350,7 @@ void
 _throw_invalidargs(char* _fnstr, char* _expected, Exception* _throwdst, expr* args)
 {
     WITH_STRINGEXPR(str, args,
-                    _throw_error(_throwdst,
+                    _throw_error(_throwdst, EXCEPTYPE_INVALIDINPUT,
                                tstr_fmt("'%s' %s %s\n",
                                         _fnstr, _expected, str.c_str)););
 }
@@ -322,7 +359,7 @@ void
 _throw_nonvaluearg(char* _fnstr, Exception* _throwdst, expr* args)
 {
     WITH_STRINGEXPR(str, args,
-                    _throw_error(_throwdst,
+                    _throw_error(_throwdst, EXCEPTYPE_NOTAVALUE,
                                tstr_fmt("'%s' got non-value arguments in %s\n",
                                         _fnstr, str.c_str)););
 }
@@ -343,7 +380,8 @@ Env_new(Environment* _env)
     /*TODO: 30 is a arbitrary number, change when you know size of buildins*/
     sbAllocator_init(&_env->variable_allocator, sizeof(expr));
     Buildins_initn(&_env->buildins, 30);
-    VariableScope_new(_env, &_env->global, NULL);
+    VariableScope_destroy(_env, &_env->globals);
+    VariableScope_new(_env, &_env->globals, NULL);
     return _env;
 }
 
@@ -355,7 +393,7 @@ Env_destroy(Environment* _env)
     if (_env == NULL)
         return;
     Buildins_destroy(&_env->buildins);
-    VariableScope_destroy(_env, &_env->global);
+    VariableScope_destroy(_env, &_env->globals);
     n = VariableScopes_len(&_env->active_scopes);
     for (i = 0; i < n; i++)
         VariableScope_destroy(_env, VariableScopes_peek(&_env->active_scopes, i));
@@ -367,7 +405,7 @@ VariableScope*
 VariableScope_new(Environment* _env, VariableScope* _this, VariableScope* _outer)
 {
     VariableScope_destroy(_env, _this);
-    Variables_initn(&_this->variables, 3);
+    Variables_initn(&_this->variables, 1);
     _this->outer = _outer;
     return _this;
 }
@@ -525,6 +563,9 @@ variable_duplicate(Environment* _env, expr* _atom)
     case TYPE_DECIMAL:
         return decimal(_env, _atom->decimal);
     case TYPE_CONS:
+        return cons(_env,
+                    variable_duplicate(_env, car(_atom)),
+                    variable_duplicate(_env, cdr(_atom)));
     default:
         ASSERT_UNREACHABLE();
     };
@@ -621,12 +662,12 @@ _stringify_value(expr* _arg)
     case TYPE_CONS:
         dst = stringify(_arg, "(", ")");
         break;
-    case TYPE_ARRAY:
-        dst  = stringify(_arg, "[", "]");
-        break;
-    case TYPE_DICTIONARY:
-        dst = stringify(_arg, "#{", "}");
-        break;
+        //case TYPE_ARRAY:
+        //    dst  = stringify(_arg, "[", "]");
+        //    break;
+        //case TYPE_DICTIONARY:
+        //    dst = stringify(_arg, "#{", "}");
+        //    break;
     case TYPE_REAL:
         dst = tstr_from_int(_arg->real);
         break;
@@ -637,7 +678,9 @@ _stringify_value(expr* _arg)
         dst = tstr_(_arg->symbol.c_str);
         break;
     case TYPE_STRING:
-        dst = tstr_fmt("\"%s\"", _arg->string.c_str);
+        /*NOTE: The quotes are part of the string datatype now*/
+        dst = tstr_(_arg->string.c_str);
+        //dst = tstr_fmt("\"%s\"", _arg->string.c_str);
         break;
     default:
         ASSERT_UNREACHABLE();
@@ -646,7 +689,7 @@ _stringify_value(expr* _arg)
 }
 
 tstr
-stringify(expr* _args, char* _open, char* _close)
+stringify(expr* _args, const char* _open, const char* _close)
 {
     tstr dst = {0};
     expr* curr = _args;
@@ -694,33 +737,61 @@ _token_value_type(tstr* _num)
     return TYPE_DECIMAL;
 }
 
-char
-_is_literal_token(char _t)    
+tstr
+_try_get_special_token(char* _t)    
 {
-    char ltokens[] = {'(', ')', '\'','\'', '\"', '[', ']'};
-    int ltoken_len = sizeof(ltokens) / sizeof(ltokens[0]);
+    const char* stokens[] = {
+        "(", ")","'(",
+        "{", "}","'{",
+        "[", "]","'[",
+        };
+    const int stoken_len = sizeof(stokens) / sizeof(stokens[0]);
+    tstr stok;
     int i;
-    for (i = 0; i < ltoken_len; i++)
-        if (ltokens[i] == _t)
-            return _t;
-    return 0;
+    for (i = 0; i < stoken_len; i++) {
+        stok = tstr_view(stokens[i]);
+        if (_rawstr_is_equal(stok.c_str, _t, tstr_length(&stok)))
+            return stok;
+    }
+    return (tstr) {0};
 }
 
 #define _IS_WHITESPACE(C) \
     (((C) == ' ' || (C) == '\t' || (C) == '\n') ? 1 : 0)
 
+
 tstr
 _get_next_token(char* _source, int* _cursor)
 {
     tstr token = {0};
+    tstr maybestoken = {0};
     int len = 0;
-    if (_is_literal_token(_source[*_cursor])) {
-        len = 1;
-    } else {
-        while (!_IS_WHITESPACE(_source[*_cursor + len]) &&
-               !_is_literal_token(_source[*_cursor + len]))
-            len++;
+
+    maybestoken = _try_get_special_token(&_source[*_cursor]);
+
+    if (tstr_ok(&maybestoken)) {
+        len = tstr_length(&maybestoken);
     }
+    else if (_source[*_cursor + len] == '\"') {
+        len++;
+        while (_source[*_cursor + len] != '\"' && _source[*_cursor + len] != '\0') {
+            len++;
+        }
+        len++;
+        token = tstr_n(&_source[*_cursor], len);
+        *_cursor += len;
+        return token;
+    }
+    else {
+        while (!_IS_WHITESPACE(_source[*_cursor + len]) &&
+               _source[*_cursor + len] != '\0') {
+            len++;
+            maybestoken = _try_get_special_token(&_source[*_cursor + len]);
+            if (tstr_ok(&maybestoken))
+                break;
+        }
+    }
+    /*Create Token*/
     token = tstr_n(&_source[*_cursor], len);
     *_cursor += len;
     return token;
@@ -766,59 +837,115 @@ _tokenize(char* _source, int* _cursor)
 }
 
 void
+tokens_print(Tokens* _tokens, const char* _start, const char* _end, const char* _sep)
+{
+    int i;
+    int n = Tokens_len(_tokens);
+    printf("TOKENS(%d): ", n);
+    for (i = 0; i < n; i++) {
+        printf("%s%s%s%s", _start, Tokens_peek(_tokens, i)->c_str, _end, _sep);
+    }
+    printf("\n");
+}
+
+void
 _tokens_post_process(Tokens* _tokens)
 {
   /*TODO: Here we remove the outer scope of the lexed function.
     if we lex more than one scope we cant do this..
     On top of this, we cant lex non-list inputs..
    */
-    Tokens_pop(_tokens);
-    Tokens_pop_front(_tokens);
+    UNUSED(_tokens);
+    //tokens_print(_tokens, "[", "]", " ");
+    //Tokens_pop(_tokens);
+    //Tokens_pop_front(_tokens);
 }
 
 char
 _looks_like_number(tstr _token)
 {
+  /*TODO: We can do cool stuff like allowing _ in numbers and remove them before
+          lexing so that 100_000_000 is a valid number.
+  */
     if (tstr_length(&_token) > 1 && (_token.c_str[0] == '-' || _token.c_str[0] == '+'))
         return (_token.c_str[1] >= '0' && (_token.c_str[1]) <= '9') ? 1 : 0;
     return (_token.c_str[0] >= '0' && (_token.c_str[0]) <= '9') ? 1 : 0;
+}
+
+char
+_looks_like_string(tstr _token)
+{
+    if (tstr_length(&_token) < 2)
+        return 0;
+    return (_token.c_str[0] == '\"');
+}
+
+char
+tstr_cstartswith(tstr* _src, const char* _st)    
+{
+    tstr st = tstr_view(_st);
+    if (tstr_length(_src) < tstr_length(&st))
+        return 0;
+    return _rawstr_is_equal(_src->c_str, st.c_str, tstr_length(&st));
+}
+
+expr*
+_lex_value(Environment* _env, tstr* _token)
+{
+    if (_looks_like_string(*_token)) {
+        return string(_env, _token->c_str);
+    }
+    else if (_looks_like_number(*_token)) {
+        if (_token_value_type(_token) == TYPE_REAL)
+            return real(_env, tstr_to_int(_token));
+        else
+            return decimal(_env, tstr_to_float(_token));
+    }
+    return symbol(_env, _token->c_str);
 }
 
 expr*
 _lex(Environment* _env, Tokens* _tokens)
 {
     /*TODO: Does not support special syntax for:
-    quote = '
-    array = []
     dotted lists (a . 34)
     */
     ASSERT_INV_ENV(_env);
     assert(_tokens != NULL);
     tstr token;
-    //int i = 0;
     expr* program = cons(_env, NULL, NULL);
     expr* curr = program;
 
     while (Tokens_len(_tokens) > 0) {
         token = Tokens_pop_front(_tokens);
-        if (tstr_equalc(&token, ")")) {
+        if (tstr_equalc(&token, ")") || tstr_equalc(&token, "]")) {
             break;
         }
         else if (tstr_equalc(&token, "(")) {
             curr->car = _lex(_env, _tokens);
         }
-        else if (tstr_equalc(&token, "\"")) {
-            curr->car = symbol(_env, token.c_str);
+        else if (tstr_equalc(&token, "[")) {
+            curr->car = cons(_env, symbol(_env, "list"), _lex(_env, _tokens));
         }
-        else if (_looks_like_number(token)) {
-            if (_token_value_type(&token) == TYPE_REAL)
-                curr->car = real(_env, tstr_to_int(&token));
-            else
-                curr->car = decimal(_env, tstr_to_float(&token));
+        else if (tstr_equalc(&token, "{")) {
+            ASSERT_UNREACHABLE();
+            /*TODO: we dont support maps or vectors*/
+            curr->car = cons(_env, symbol(_env, "map"), _lex(_env, _tokens));
+        }
+        else if (tstr_cstartswith(&token, "'")) {
+            tstr resttok = tstr_(token.c_str+1);
+            if (tstr_equalc(&resttok, "(") ||
+                tstr_equalc(&resttok, "[") ||
+                tstr_equalc(&resttok, "{")) {
+                curr->car = cons(_env, symbol(_env, "quote"), cons(_env, _lex(_env, _tokens), NULL));
+            } else {
+                 curr->car = cons(_env, symbol(_env, "quote"), cons(_env, _lex_value(_env, &resttok), NULL));
+            }
         }
         else {
-            curr->car = symbol(_env, token.c_str);
+            curr->car = _lex_value(_env, &token);
         }
+
         /*Insert extracted into lexed program*/
         tstr_destroy(&token);
         curr->cdr = cons(_env, NULL, NULL);
@@ -840,7 +967,12 @@ read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _prog
     Tokens tokens = _tokenize(_program_str, &cursor);
     _tokens_post_process(&tokens);
     expr* program = _lex(_env, &tokens);
+
+    /*TODO: This mighr be wrong to do!*/
+    //DBPRINT("program in 'read' ", program);
     //printf("Amount of programs in 'read' = %d\n", len(program));
+    if (len(program) == 1)
+        return car(program);
     return program;
 }
 
@@ -869,14 +1001,9 @@ _find_variable(VariableScope* _scope, expr* _sym)
 {
     Variable* variable = NULL;
     int i;
-    if (is_nil(_sym) || !is_symbol(_sym))
-        return NULL;
-    printf("looking for variable '%s'\n", _sym->symbol.c_str);
-
     for (i = 0; i < Variables_len(&_scope->variables); i++) {
         variable = Variables_peek(&_scope->variables, i);
         if (tstr_equal(&variable->symbol, &_sym->symbol)) {
-            printf("found '%s'\n", variable->symbol.c_str);
             return variable;
         }
     }
@@ -894,6 +1021,7 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
     Variable* variable = NULL;
     expr* result = NULL;
     ASSERT_INV_ENV(_env);
+    //DBPRINT("'eval' INPUT: ", _in);
 
     if (is_nil(_in))
         return _in;
@@ -901,7 +1029,6 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
     case TYPE_CONS:
         fn = car(_in);
         args = cdr(_in);
-        //DBPRINT("(eval) INPUT: ", _in);
         //DBPRINT("(eval) NAME: ", fn);
         //DBPRINT("(eval) ARGS: ", args);
         if (is_cons(fn) || fn->type != TYPE_SYMBOL) {
@@ -911,32 +1038,40 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
         buildin = _find_buildin(_env, fn);
         if (buildin != NULL) {
             result = buildin->fn(_env, _scope, _throwdst, args);
-            printf("buildin [%s]\n", buildin->name.c_str);
-            DBPRINT("(eval) RESULT: ", result);
+            //printf("buildin [%s]\n", buildin->name.c_str);
+            //DBPRINT("(eval) RESULT: ", result);
             return result;
         } 
+
+        THROW_INVALIDFUNCTION(_throwdst, _in);
         return NIL();
 
     case TYPE_SYMBOL:
-        DBPRINT("'eval' scoped symbol search: ", _in);
+        //DBPRINT("'eval' constant search: ", _in);
+        variable = _find_variable(&_env->constants, _in);
+        if (variable != NULL) {
+            return variable->value;
+        }
+        //DBPRINT("'eval' scoped symbol search: ", _in);
         variable = _find_variable(_scope, _in);
         if (variable != NULL) {
             return variable->value;
         }
-        DBPRINT("'eval' global symbol search: ", _in);
-        variable = _find_variable(&_env->global, _in);
+        //DBPRINT("'eval' global symbol search: ", _in);
+        variable = _find_variable(&_env->globals, _in);
         if (variable != NULL) {
             return variable->value;
         }
+        THROW_INVALIDSYMBOL(_throwdst, _in);
         return NIL();
 
     case TYPE_REAL:
     case TYPE_DECIMAL:
     case TYPE_STRING:
-    default:
         return _in;
+    default:
+        ASSERT_UNREACHABLE();
     };
-
     ASSERT_UNREACHABLE();
     return NIL();
 }
@@ -971,7 +1106,7 @@ buildin_list(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
     expr* root = cons(_env, NULL, NULL);
     expr* curr = root;
     ASSERT_INV_SCOPE(_scope);
-    DBPRINT("'list' input: ", _in);
+    //DBPRINT("'list' input: ", _in);
     if (!is_cons(_in)) {
         THROW_INVALIDARGS("expected list input", _throwdst, _in);
         return NIL();
@@ -983,13 +1118,13 @@ buildin_list(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
             THROW_ARGEVALFAIL(_throwdst, curr->car);
             return NIL();
         }
-        DBPRINT("list evalled: ", car(_in));
-        DBPRINT("to ", car(curr));
+        //DBPRINT("list evalled: ", car(_in));
+        //DBPRINT("to ", car(curr));
         curr->cdr = cons(_env, NULL, NULL);
         curr = cdr(curr);
         _in = cdr(_in);
     }
-    DBPRINT("'list' args: ", root);
+    //DBPRINT("'list' args: ", root);
     return root;
 }
 
@@ -1061,7 +1196,7 @@ buildin_cons(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
 {
     expr* args;
     ASSERT_INV_SCOPE(_scope);
-    DBPRINT("cons input: ", _in);
+    //DBPRINT("cons input: ", _in);
     args = list(_env, _scope, _throwdst, _in);
     if (Exception_is_error(_throwdst)) {
         THROW_ARGEVALFAIL(_throwdst, _in);
@@ -1071,8 +1206,8 @@ buildin_cons(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
         THROW_INVALIDARGS("Expected 2 inputs", _throwdst, _in);
         return NIL();
     }
-    DBPRINT("cons a: ", first(args));
-    DBPRINT("cons b: ", second(args));
+    //DBPRINT("cons a: ", first(args));
+    //DBPRINT("cons b: ", second(args));
     return cons(_env, first(args), second(args));
 }
 
@@ -1146,6 +1281,30 @@ buildin_fourth(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
     }
     args = first(args);
     return fourth(args);
+}
+
+expr*
+buildin_nth(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    expr* args;
+    expr* n;
+    ASSERT_INV_SCOPE(_scope);
+    args = list(_env, _scope, _throwdst, _in);
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, _in);
+        return NIL();
+    }
+    if (len(args) != 2) {
+        THROW_INVALIDARGS("Expected 2 inputs", _throwdst, _in);
+        return NIL();
+    }
+    n = first(args);
+    args = second(args);
+    if (n->type != TYPE_REAL) {
+        THROW_INVALIDARGS("Expected TYPE_REAL index", _throwdst, n);
+        return NIL();
+    }
+    return nth(n->real, args);
 }
 
 expr*
@@ -1464,40 +1623,105 @@ buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst
     return symbol(_env, "t");
 }
 
+void
+_add_to_variablescope(Variables* _dst, expr* _n, expr* _v)
+{
+    Variable v = {0};
+    tstr_copy(&_n->symbol, &v.symbol);
+    v.value = _v;
+    Variables_push(_dst, v);
+}
+
+expr*
+buildin_defconst(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    expr* val;
+    if (len(_in) != 2) {
+        THROW_INVALIDARGS("expected 2 arguments", _throwdst, _in);
+        return NIL();
+    }
+    val = eval_expr(_env, _scope, _throwdst, second(_in));
+    if (Exception_is_error(_throwdst)) {
+        THROW_ARGEVALFAIL(_throwdst, second(_in));
+        return NIL();
+    }
+    if (len(_in) < 1 || len(_in) > 2 || !is_symbol(first(_in))) {
+        THROW_INVALIDARGS("expected 1-2 args, and first arg to be symbol", _throwdst, _in);
+        return NIL();
+    }
+    _add_to_variablescope(&_env->constants.variables, first(_in), val);
+    DBPRINT("created constant: ", first(_in));
+    DBPRINT("with value: ", val);
+    return first(_in);
+}
+
 expr*
 buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    Variable v = {0};
-    expr* sym;
     expr* val;
-    if (len(_in) > 2) {
-        THROW_INVALIDARGS("expected 1-2 arguments", _throwdst, _in);
+
+    DBPRINT("global input ", _in);
+    DBPRINT("global symbol name ", first(_in));
+    DBPRINT("global symbol value ", second(_in));
+    val = eval_expr(_env, _scope, _throwdst, second(_in));
+    DBPRINT("global evaled symbol value to ", val);
+    if (Exception_is_error(_throwdst)) {
+        printf("GLOBAL EVAL ERROR!\n");
+        //THROW_ARGEVALFAIL(_throwdst, second(_in));
         return NIL();
     }
-    sym = first(_in);
+    if (len(_in) < 1 || len(_in) > 2 || !is_symbol(first(_in))) {
+        THROW_INVALIDARGS("expected 1-2 args, and first arg to be symbol", _throwdst, _in);
+        return NIL();
+    }
+    _add_to_variablescope(&_env->globals.variables, first(_in), val);
+    DBPRINT("created global: ", first(_in));
+    DBPRINT("with value: ", val);
+    return first(_in);
+}
+
+expr*
+buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    expr* val;
+    if (len(_in) != 2) {
+        THROW_INVALIDARGS("expected 2 arguments", _throwdst, _in);
+        return NIL();
+    }
     val = eval_expr(_env, _scope, _throwdst, second(_in));
-    if (len(_in) > 2) {
+    if (Exception_is_error(_throwdst)) {
         THROW_ARGEVALFAIL(_throwdst, second(_in));
         return NIL();
     }
-    if (!is_symbol(sym)) {
-        THROW_INVALIDARGS("expected first argument to be symbol", _throwdst, sym);
+    if (len(_in) < 1 || len(_in) > 2 || !is_symbol(first(_in))) {
+        THROW_INVALIDARGS("expected 1-2 args, and first arg to be symbol", _throwdst, _in);
         return NIL();
     }
-    v.symbol = tstr_(sym->symbol.c_str);
-    v.value = variable_duplicate(_env, val);
-    Variables_push(&_env->global.variables, v);
-    DBPRINT("created global: ", sym);
+    _add_to_variablescope(&_scope->variables, first(_in), val);
+    DBPRINT("created variable: ", first(_in));
     DBPRINT("with value: ", val);
-    return sym;
+    return first(_in);
 }
 
 void
 Env_add_buildin(Environment* _env, char* _name, buildin_fn _fn)
 {
     Buildins_push(&_env->buildins, (Buildin){tstr_(_name), _fn});
+}
+
+void
+Env_add_constant(Environment* _env, char* _name, expr* value)
+{
+    Variable v = {0};
+    v.symbol = tstr_(_name);
+    v.value = variable_duplicate(_env, value);
+    Variables_push(&_env->constants.variables, v);
 }
 
 void
@@ -1524,6 +1748,7 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "second", buildin_second);
     Env_add_buildin(_env, "third", buildin_third);
     Env_add_buildin(_env, "fourth", buildin_fourth);
+    Env_add_buildin(_env, "nth", buildin_nth);
 
     /*Arimetrics*/
     Env_add_buildin(_env, "+", buildin_plus);
@@ -1533,7 +1758,9 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "=", buildin_mathequal);
 
     /*Variable management*/
+    Env_add_buildin(_env, "const", buildin_defconst);
     Env_add_buildin(_env, "global", buildin_defglobal);
+    Env_add_buildin(_env, "var", buildin_defvar);
     //Env_add_buildin(_env, "set", buildin_set);
     //Env_add_buildin(_env, "const", buildin_defconst);
 
@@ -1545,6 +1772,13 @@ Env_add_core(Environment* _env)
     //Env_add_buildin(_env, "fn", buildin_defn);
     //Env_add_buildin(_env, "macro", buildin_macro);
     //Env_add_buildin(_env, "lambda", buildin_lambda);
+
+    /*Math constants*/
+    Env_add_constant(_env, "PI", decimal(_env, 3.14));
+    Env_add_constant(_env, "PI/2", decimal(_env, 0.5*3.14));
+    Env_add_constant(_env, "2PI", decimal(_env, 2*3.14));
+    Env_add_constant(_env, "E", decimal(_env, 2.71828));
+    Env_add_constant(_env, "E-constant", decimal(_env, 0.57721));
 }
 
 #endif /*YAL_IMPLEMENTATION*/
