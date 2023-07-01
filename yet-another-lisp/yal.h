@@ -37,6 +37,7 @@ For more information, please refer to
         - variable lookup
         - variable defines
         Fixed Tokenization of quotes and arrays
+        Added most of the standard functions that needs to be implemented.
 - [0.1] Created AST structure and imported base lib functionality.
 - [0.0] Initialized library.
 */
@@ -46,12 +47,19 @@ https://buildyourownlisp.com/chapter9_s_expressions#lists_and_lisps
 http://www.ulisp.com/show?1BLW
 */
 
+/*NOTE: If i dont know how to return i can always throw an exception like
+  NORMAL_RETURN, and treat it as a non-exception msg that says stop to
+  functions like 'do' etc.
+*/
+
 /*Major todos*/
 /*TODO: Garbage collection (with info stats)*/
 /*TODO: function, lambda and macro creation*/
 /*TODO: create try, catch and throw functions*/
+/*TODO: string library functions*/
 
 /*Minor todos*/
+/*TODO: Make sure all types have type? checkers*/
 /*TODO: Make sure the correct errors are returned*/
 /*TODO: set! function that throws an error if set is used on constant*/
 /*TODO: print ' and [] instead of quote and array*/
@@ -74,8 +82,6 @@ http://www.ulisp.com/show?1BLW
 #define TSTR_IMPLEMENTATION
 #include "vendor/tstr.h"
 
-#define WHILE_NOT_NIL(expr) while (!is_nil(cdr(expr)))
-
 // "Any sufficiently complicated C or Fortran program contains an ad hoc, informally-specified, bug-ridden, slow implementation of half of Common Lisp."
 // -  Greenspun, Philip
 #define WITH_STRINGEXPR(name, expr, body)                       \
@@ -94,20 +100,13 @@ enum TYPE {
     TYPE_DECIMAL,
     TYPE_SYMBOL,
     TYPE_STRING,
-    //TYPE_ARRAY,
-    //TYPE_DICTIONARY,
+    TYPE_FUNCTION,
+    TYPE_MACRO,
+    TYPE_ERROR,
+    TYPE_ARRAY,
+    TYPE_DICTIONARY,
 
     TYPE_COUNT
-};
-
-const char* TYPE_TO_STR[TYPE_COUNT] = {
-    "TYPE_CONS",
-    "TYPE_REAL",
-    "TYPE_DECIMAL",
-    "TYPE_SYMBOL",
-    "TYPE_STRING", 
-    //"TYPE_ARRAY",
-    //"TYPE_DICTIONARY"
 };
 
 enum EXCEPTION {
@@ -123,19 +122,6 @@ enum EXCEPTION {
     EXCEPTION_NOTAVALUE,
 
     EXCEPTION_COUNT
-};
-
-const char* EXCEPTION_TO_STR[EXCEPTION_COUNT] = {
-    "EXCEPTION_OK",
-    "EXCEPTION_UNKNOWN"
-    "EXCEPTION_INVALIDARGEVAL",
-    "EXCEPTION_INVALIDINPUT",
-    "EXCEPTION_CANTSETCONST",
-    "EXCEPTION_EVAL",
-    "EXCEPTION_SYMNOTFOUND",
-    "EXCEPTION_FNNOTFOUND",
-    "EXCEPTION_NOTIMPLEMENTED",
-    "EXCEPTION_NOTAVALUE",
 };
 
 struct expr {
@@ -227,8 +213,8 @@ struct Environment {
 #define THROW_NONVALUEARG(msgdst, fnsym, args)               \
     _throw_error(msgdst, fnsym, EXCEPTION_NOTAVALUE, "Not a value", args)
 
-#define THROW_NOTIMPLEMENTED(msgdst, fnsym, args)               \
-    _throw_error(msgdst, fnsym, EXCEPTION_NOTIMPLEMENTED, "called function is not implemented", args)
+#define THROW_NOTIMPLEMENTED(msgdst, fnsym)               \
+    _throw_error(msgdst, fnsym, EXCEPTION_NOTIMPLEMENTED, "called function is not implemented", NIL())
 
 #define RETURN_ON_EXCEPTION(msgdst, ret) \
     do { if (Exception_is_error(msgdst)) return ret; } while (0)
@@ -252,13 +238,16 @@ struct Environment {
 #define RESULT_NOT_OK(RESULT) (((RESULT).type != RESTYPE_OK) ? 1 : 0)
 
 /*Error Management*/
+const char* Exception_to_str(int _e);
 char Exception_is_error(Exception* _dst);
 void Exception_destroy(Exception* _msg);
 
 /*Environment Management*/
 Environment* Env_new(Environment* _env);
 void Env_destroy(Environment* _env);
-void Env_add_buildin(Environment* _env, char* _name, buildin_fn _fn);
+void Env_add_buildin(Environment* _env, const char* _name, buildin_fn _fn);
+void Env_add_constant(Environment* _env, const char* _name, expr* _value);
+void Env_add_global(Environment* _env, const char* _name, expr* _value);
 void Env_add_core(Environment* _env);
 
 /*Scope Management*/
@@ -290,13 +279,13 @@ void printexpr(expr* _args);
 tstr stringify(expr* _args, const char* _open, const char* _close);
 
 /*Value creation*/
+void variable_delete(Environment* _env, expr* _atom);
+const char* type_to_str(int _e);
 expr* cons(Environment* _env, expr* _car, expr* _cdr);
 expr* real(Environment* _env, int _v);
 expr* decimal(Environment* _env, float _v);
 expr* symbol(Environment* _env, char* _v);
 expr* string(Environment* _env, char* _v);
-expr* stringnq(Environment* _env, char* _v);
-void variable_delete(Environment* _env, expr* _atom);
 
 /*Core*/
 expr* read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _program_str);
@@ -315,6 +304,7 @@ expr* buildin_first(Environment* _env, VariableScope* _scope, Exception* _throwd
 expr* buildin_second(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_third(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_fourth(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_nth(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_range(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_plus(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_minus(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
@@ -324,6 +314,12 @@ expr* buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _th
 expr* buildin_defconst(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_set(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_pop(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_put(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_reverse(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_do(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_apply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 
 
 /******************************************************************************/
@@ -337,7 +333,7 @@ _throw_error(Exception* _dst,
              const char* _msg,
              expr* _expr)
 {
-    UUNUSED(_fnsym);
+    UNUSED(_fnsym);
     tstr msg;
     if (_dst == NULL)
         return;
@@ -348,6 +344,36 @@ _throw_error(Exception* _dst,
                     _dst->type = _type;
                     _dst->msg = msg;
         );
+}
+
+const char*
+Exception_to_str(int _e)    
+{
+    switch (_e) {
+    case EXCEPTION_OK:
+        return "EXCEPTION_OK";
+    case EXCEPTION_UNKNOWN:
+        return "EXCEPTION_UNKNOWN";
+    case EXCEPTION_INVALIDARGEVAL:
+        return "EXCEPTION_INVALIDARGEVAL";
+    case EXCEPTION_INVALIDINPUT:
+        return "EXCEPTION_INVALIDINPUT";
+    case EXCEPTION_CANTSETCONST:
+        return "EXCEPTION_CANTSETCONST";
+    case EXCEPTION_EVAL:
+        return "EXCEPTION_EVAL";
+    case EXCEPTION_SYMNOTFOUND:
+        return "EXCEPTION_SYMNOTFOUND";
+    case EXCEPTION_FNNOTFOUND:
+        return "EXCEPTION_FNNOTFOUND";
+    case EXCEPTION_NOTIMPLEMENTED:
+        return "EXCEPTION_NOTIMPLEMENTED";
+    case EXCEPTION_NOTAVALUE:
+        return "EXCEPTION_NOTAVALUE";
+    default:
+        ASSERT_UNREACHABLE();
+    };
+    return NULL;
 }
 
 char
@@ -482,12 +508,11 @@ is_string(expr* _args)
 int
 len(expr* _args)
 {
-    /*http://clhs.lisp.se/Body/f_list_l.htm*/
     if (is_nil(_args)) return 0;
     if (is_val(_args)) return 1;
     int cnt = 0;
     expr* tmp = _args;
-    WHILE_NOT_NIL(tmp) {
+    while (!is_nil(cdr(tmp))) {
         tmp = cdr(tmp);
         cnt++;
     }
@@ -583,6 +608,36 @@ variable_delete(Environment* _env, expr* _atom)
         break;
     };
     sbAllocator_return(&_env->variable_allocator, _atom);
+}
+
+const char*
+type_to_str(int _e)
+{
+    switch (_e) {
+    case TYPE_CONS:
+        return "TYPE_CONS";
+    case TYPE_REAL:
+        return "TYPE_REAL";
+    case TYPE_DECIMAL:
+        return "TYPE_DECIMAL";
+    case TYPE_SYMBOL:
+        return "TYPE_SYMBOL";
+    case TYPE_STRING:
+        return "TYPE_STRING"; 
+    case TYPE_FUNCTION:
+        return "TYPE_FUNCTION";
+    case TYPE_MACRO:
+        return "TYPE_MACRO";
+    case TYPE_ERROR:
+        return "TYPE_ERROR";
+    case TYPE_ARRAY:
+        return "TYPE_ARRAY";
+    case TYPE_DICTIONARY:
+        return "TYPE_DICTIONARY";
+    default:
+        ASSERT_UNREACHABLE();
+    };
+    return NULL;
 }
 
 expr*
@@ -1105,11 +1160,9 @@ buildin_list(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
         THROW_INVALIDINPUT(_throwdst, "list", "expected a list", _in);
         return NIL();
     }
-    //while (!is_nil(_in)) {
     while (!is_nil(cdr(_in))) {
         curr->car = eval_expr(_env, _scope, _throwdst, car(_in));
         RETURN_ON_EXCEPTION(_throwdst, NIL());
-
         //DBPRINT("list evalled: ", car(_in));
         //DBPRINT("to ", car(curr));
         curr->cdr = cons(_env, NULL, NULL);
@@ -1569,6 +1622,25 @@ buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst
     return symbol(_env, "t");
 }
 
+expr*
+buildin_do(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    expr* tmp = _in;
+    expr* last = NIL();
+    while (!is_nil(cdr(tmp))) {
+        if (!is_cons(tmp)) {
+            THROW_INVALIDINPUT(_throwdst, "do", "expected callable functions", _in);
+            return NIL();
+        }
+        last = eval_expr(_env, _scope, _throwdst, car(tmp));
+        RETURN_ON_EXCEPTION(_throwdst, NIL());
+        tmp = cdr(tmp);
+    }
+    return last;
+}
+
 void
 _add_to_variablescope(Variables* _dst, expr* _n, expr* _v)
 {
@@ -1584,10 +1656,6 @@ buildin_defconst(Environment* _env, VariableScope* _scope, Exception* _throwdst,
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
     expr* val;
-    if (len(_in) != 2) {
-        THROW_INVALIDINPUT(_throwdst, "const", "expected 2 arguments", _in);
-        return NIL();
-    }
     val = eval_expr(_env, _scope, _throwdst, second(_in));
     RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(_in) < 1 || len(_in) > 2 || !is_symbol(first(_in))) {
@@ -1641,19 +1709,220 @@ buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
     return first(_in);
 }
 
-void
-Env_add_buildin(Environment* _env, char* _name, buildin_fn _fn)
+expr*
+buildin_set(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
-    Buildins_push(&_env->buildins, (Buildin){tstr_(_name), _fn});
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "set!");
+    return _in;
+}
+
+expr*
+buildin_put(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "put!");
+    return _in;
+}
+
+expr*
+buildin_pop(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "pop!");
+    return _in;
+}
+
+expr*
+buildin_reverse(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "reverse");
+    return _in;
+}
+
+expr*
+buildin_apply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "apply");
+    return _in;
+}
+
+expr*
+buildin_map(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "map");
+    return _in;
+}
+
+expr*
+buildin_deffn(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "fn");
+    return _in;
+}
+
+expr*
+buildin_defmacro(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "macro");
+    return _in;
+}
+
+VariableScope*
+_bind(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+    DBPRINT("binds: ", _in);
+    VariableScope bound;
+    VariableScope_new(_env, &bound, _scope);
+    return bound;
+}
+
+expr*
+buildin_deflambda(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+
+    expr* binds = first(_in); 
+    expr* body = second(_in); 
+
+    VariableScope* loc = _bind(_env, _scope, _throwdst, _in);
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
+    DBPRINT("lambda body: ", body);
+
+
+    return _in;
+}
+
+expr*
+buildin_if(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "if");
+    return _in;
+}
+
+expr*
+buildin_cond(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "cond");
+    return _in;
+}
+
+expr*
+buildin_not(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "not");
+    return _in;
+}
+
+expr*
+buildin_gc_run(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "gc-run");
+    return _in;
+}
+
+expr*
+buildin_gc_info(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "gc-info");
+    return _in;
+}
+
+expr*
+buildin_gc_memused(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "gc-mem-used");
+    return _in;
+}
+
+expr*
+buildin_try(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "try");
+    return _in;
+}
+
+expr*
+buildin_catch(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "catch");
+    return _in;
+}
+
+expr*
+buildin_throw(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "throw");
+    return _in;
+}
+
+expr*
+buildin_print_env(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "print-env");
+    return _in;
 }
 
 void
-Env_add_constant(Environment* _env, char* _name, expr* value)
+Env_add_buildin(Environment* _env, const char* _name, buildin_fn _fn)
+{
+    Buildins_push(&_env->buildins, (Buildin){tstr_((char*)_name), _fn});
+}
+
+void
+Env_add_constant(Environment* _env, const char* _name, expr* value)
 {
     Variable v = {0};
-    v.symbol = tstr_(_name);
+    v.symbol = tstr_((char*)_name);
     v.value = variable_duplicate(_env, value);
     Variables_push(&_env->constants.variables, v);
+}
+
+void
+Env_add_global(Environment* _env, const char* _name, expr* value)
+{
+    Variable v = {0};
+    v.symbol = tstr_((char*)_name);
+    v.value = variable_duplicate(_env, value);
+    Variables_push(&_env->globals.variables, v);
 }
 
 void
@@ -1667,8 +1936,24 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "list", buildin_list);
     Env_add_buildin(_env, "cons", buildin_cons);
     Env_add_buildin(_env, "len", buildin_len);
-    //Env_add_buildin(_env, "put!", buildin_put);
-    //Env_add_buildin(_env, "pop!", buildin_pop);
+    Env_add_buildin(_env, "put!", buildin_put);
+    Env_add_buildin(_env, "pop!", buildin_pop);
+    Env_add_buildin(_env, "reverse", buildin_reverse);
+
+    /*Evaluation*/
+    Env_add_buildin(_env, "apply", buildin_apply);
+    Env_add_buildin(_env, "do", buildin_do);
+    Env_add_buildin(_env, "map", buildin_map);
+
+    /*Garbage Collection*/
+    Env_add_buildin(_env, "gc-run", buildin_gc_run);
+    Env_add_buildin(_env, "gc-info", buildin_gc_info);
+    Env_add_buildin(_env, "gc-mem-used", buildin_gc_memused);
+
+    /*Error Management*/
+    Env_add_buildin(_env, "try", buildin_try);
+    Env_add_buildin(_env, "catch", buildin_catch);
+    Env_add_buildin(_env, "throw", buildin_throw);
 
     /*Accessors*/
     Env_add_buildin(_env, "car", buildin_car);
@@ -1680,6 +1965,11 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "second", buildin_second);
     Env_add_buildin(_env, "third", buildin_third);
     Env_add_buildin(_env, "fourth", buildin_fourth);
+    Env_add_buildin(_env, "nth", buildin_nth);
+
+    /*String management*/
+
+    /*Math operators*/
     Env_add_buildin(_env, "+", buildin_plus);
     Env_add_buildin(_env, "-", buildin_minus);
     Env_add_buildin(_env, "*", buildin_multiply);
@@ -1690,19 +1980,22 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "const", buildin_defconst);
     Env_add_buildin(_env, "global", buildin_defglobal);
     Env_add_buildin(_env, "var", buildin_defvar);
-    //Env_add_buildin(_env, "set", buildin_set);
-    //Env_add_buildin(_env, "const", buildin_defconst);
+    Env_add_buildin(_env, "set", buildin_set);
+    Env_add_buildin(_env, "print-env", buildin_print_env);
 
     /*Condition management*/
-    //Env_add_buildin(_env, "cond", buildin_cond);
-    //Env_add_buildin(_env, "if", buildin_if);
+    Env_add_buildin(_env, "cond", buildin_cond);
+    Env_add_buildin(_env, "if", buildin_if);
+    Env_add_buildin(_env, "not", buildin_not);
 
     /*Function management*/
-    //Env_add_buildin(_env, "fn", buildin_defn);
-    //Env_add_buildin(_env, "macro", buildin_macro);
-    //Env_add_buildin(_env, "lambda", buildin_lambda);
+    Env_add_buildin(_env, "fn", buildin_deffn);
+    Env_add_buildin(_env, "macro", buildin_defmacro);
+    Env_add_buildin(_env, "lambda", buildin_deflambda);
 
-    /*Math constants*/
+    /*Useful Constants*/
+    Env_add_constant(_env, "NIL", symbol(_env, "NIL"));
+    Env_add_constant(_env, "t", symbol(_env, "t"));
     Env_add_constant(_env, "PI", decimal(_env, 3.14));
     Env_add_constant(_env, "PI/2", decimal(_env, 0.5*3.14));
     Env_add_constant(_env, "2PI", decimal(_env, 2*3.14));

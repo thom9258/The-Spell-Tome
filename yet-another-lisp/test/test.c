@@ -14,15 +14,41 @@ lex_type_test(Environment* _env, VariableScope* _scope, char* _p, const int _typ
 
     result = read(_env, _scope, &msg, _p);
     if (Exception_is_error(&msg)) {
-        Exception_destroy(&msg);
         printf("YAL ERROR: %s\n", msg.msg.c_str);
-        return 0;
     }
     Exception_destroy(&msg);
-    DBPRINT("result = ", result);
     DBPRINT("LEXED: ", result);
-    printf("Expected type %s, got %s\n", TYPE_TO_STR[_type], TYPE_TO_STR[result->type]);
+    printf("Expected type %s, got %s\n",
+           type_to_str(_type),
+           type_to_str(msg.type));
     return _type == result->type;
+}
+
+char
+exception_test(Environment* _env, VariableScope* _scope, char* _p, const int _exc)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    Exception msg = {0};
+    expr* result;
+    char out;
+
+    result = read(_env, _scope, &msg, _p);
+    if (Exception_is_error(&msg)) {
+        printf("YAL ERROR: %s\n", msg.msg.c_str);
+    }
+    Exception_destroy(&msg);
+    result = eval_expr(_env, _scope, &msg, result);
+    if (Exception_is_error(&msg)) {
+        printf("yal> ERROR: %s\n", msg.msg.c_str);
+   }
+    out = (_exc == msg.type);
+    DBPRINT("result = ", result);
+    printf("Expected Exception %s, got %s\n",
+           Exception_to_str(_exc),
+           Exception_to_str(msg.type));
+    Exception_destroy(&msg);
+    return out;
 }
 
 char
@@ -304,8 +330,11 @@ test_errors(void)
     Env_new(&e);
     Env_add_core(&e);
 
-    TL_TEST(repl_test(&e, &e.globals, "[1 invalidsym]", "(NIL)"));
-    TL_TEST(repl_test(&e, &e.globals, "(invalidfunciton 1 2 3)", "(NIL)"));
+    TL_TEST(exception_test(&e, &e.globals, "[1 invalidsym]", EXCEPTION_SYMNOTFOUND));
+    TL_TEST(exception_test(&e, &e.globals, "(invalidfunciton 1 2 3)", EXCEPTION_FNNOTFOUND));
+
+
+    TL_TEST(exception_test(&e, &e.globals, "(range 5 2 3)", EXCEPTION_INVALIDINPUT));
 
     Env_destroy(&e);
 }
@@ -510,6 +539,7 @@ test_buildin_math(void)
     TL_TEST(repl_test(&e, &e.globals, "(+ 2 (- 5 6) 1)", "2"));
     TL_TEST(repl_test(&e, &e.globals, "(+ 4 (* 2 6) (- 10 5))", "21"));
 
+    TL_TEST(repl_test(&e, &e.globals, "(- 5 2)", "3"));
     /*TODO: This is not valid, needs an apply function for this*/
     //TL_TEST(repl_test(&e, &e.globals, "(+ (range 0 10))", "55"));
     Env_destroy(&e);
@@ -608,7 +638,51 @@ test_variables(void)
     Env_destroy(&e);
 }
 
+void
+test_buildin_do(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
 
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(do)",
+                       "(NIL)"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(do (+ 2 3) (- 5 2))",
+                       "3"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(do (+ 30 51) (* 10 3 2) (range 0 5) [1 2 3])",
+                       "(1 2 3)"));
+
+
+
+    Env_destroy(&e);
+}
+
+void
+test_lambda(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(lambda (a) a)",
+                       "#<lambda>"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda (a) a) 12)",
+                       "12"));
+ 
+    TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda (a b) (* a b)) 4 6)",
+                       "24"));
+
+    Env_destroy(&e);
+}
 
 int main(int argc, char **argv) {
 	(void)argc;
@@ -628,8 +702,10 @@ int main(int argc, char **argv) {
 	TL(test_buildin_equality());
     TL(test_variable_duplicate());
 	TL(test_global());
+	TL(test_variables());
 	TL(test_errors());
-	//TL(test_variables());
+	TL(test_buildin_do());
+	TL(test_lambda());
     //TL(test_list_management());
 
     tl_summary();
