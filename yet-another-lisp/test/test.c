@@ -292,6 +292,7 @@ test_lex(void)
     Env_add_core(&e);
     TL_TEST(read_test(&e, &e.globals, "(\t write  3.141592)", "(write 3.141592)"));
     TL_TEST(read_test(&e, &e.globals, "(write  ( + 2 10))", "(write (+ 2 10))"));
+    /*TODO: This is an error i think*/
     TL_TEST(read_test(&e, &e.globals, "()", "(NIL)"));
     TL_TEST(read_test(&e, &e.globals, "( 2 NIL )", "(2 NIL)"));
     TL_TEST(read_test(&e, &e.globals, "(write  ( + 2    hi) )", "(write (+ 2 hi))"));
@@ -512,7 +513,7 @@ test_buildin_accessors(void)
 
     TL_TEST(repl_test(&e, &e.globals,
                        "(nth 21 (range 0 20))",
-                       "(NIL)"));
+                       "NIL"));
 
 
     Env_destroy(&e);
@@ -542,6 +543,10 @@ test_buildin_math(void)
     TL_TEST(repl_test(&e, &e.globals, "(- 5 2)", "3"));
     /*TODO: This is not valid, needs an apply function for this*/
     //TL_TEST(repl_test(&e, &e.globals, "(+ (range 0 10))", "55"));
+
+    TL_TEST(repl_test(&e, &e.globals, "(/ (- (+ 515 (* -87 311)) 296) 27)", "-994"));
+
+
     Env_destroy(&e);
 }
 
@@ -592,13 +597,13 @@ test_global(void)
 
     TL_TEST(repl_test(&e, &e.globals, "pi", "3.140000"));
     TL_TEST(repl_test(&e, &e.globals, "(global name)", "name"));
-    TL_TEST(repl_test(&e, &e.globals, "name", "(NIL)"));
+    TL_TEST(repl_test(&e, &e.globals, "name", "NIL"));
     TL_TEST(Variables_len(&e.globals.variables) == 2);
     TL_TEST(repl_test(&e, &e.globals, "(global thislist [1 2 3]", "thislist"));
     TL_TEST(repl_test(&e, &e.globals, "thislist", "(1 2 3)"));
     TL_TEST(repl_test(&e, &e.globals, "(global my/list [2 (+ 3 3)]", "my/list"));
     TL_TEST(repl_test(&e, &e.globals, "my/list", "(2 6)"));
-    TL_TEST(repl_test(&e, &e.globals, "(global)", "(NIL)"));
+    TL_TEST(repl_test(&e, &e.globals, "(global)", "NIL"));
 
 
     Env_destroy(&e);
@@ -635,6 +640,9 @@ test_variables(void)
     TL_TEST(repl_test(&e, &e.globals, "thislist", "(1 2 3)"));
     TL_TEST(repl_test(&e, &e.globals, "my/list", "(2 6)"));
 
+    TL_TEST(repl_test(&e, &e.globals, "(var my/var 10)", "my/var"));
+    TL_TEST(repl_test(&e, &e.globals, "(* my/var 2)", "20"));
+
     Env_destroy(&e);
 }
 
@@ -647,7 +655,7 @@ test_buildin_do(void)
 
     TL_TEST(repl_test(&e, &e.globals,
                        "(do)",
-                       "(NIL)"));
+                       "NIL"));
 
     TL_TEST(repl_test(&e, &e.globals,
                        "(do (+ 2 3) (- 5 2))",
@@ -657,7 +665,9 @@ test_buildin_do(void)
                        "(do (+ 30 51) (* 10 3 2) (range 0 5) [1 2 3])",
                        "(1 2 3)"));
 
-
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(do 5)",
+                       "5"));
 
     Env_destroy(&e);
 }
@@ -676,10 +686,182 @@ test_lambda(void)
     TL_TEST(repl_test(&e, &e.globals,
                        "((lambda (a) a) 12)",
                        "12"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda () 5))",
+                       "5"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda () '(1 1 1)))",
+                       "(1 1 1)"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda (n) [n 2 3]) 2)",
+                       "(2 2 3)"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda (a) (+ a 10)) 4)",
+                       "14"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda (b c) (+ b c)) 4 6)",
+                       "10"));
+
+     TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda (a b) (+ a b)) 10 20)",
+                       "30"));
  
+    TL_TEST(repl_test(&e, &e.globals,
+                       "((lambda () (* 5 3)))",
+                       "15"));
+
     TL_TEST(repl_test(&e, &e.globals,
                        "((lambda (a b) (* a b)) 4 6)",
                        "24"));
+    TL_TEST(repl_test(&e, &e.globals,
+                      "((lambda (a b c) "
+                      "(var s (* a b))"
+                      "(+ s c))"
+                      "2 4 3)",
+                      "11"));
+
+    Env_destroy(&e);
+}
+void
+test_fn(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(fn same (a) a)",
+                       "same"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(same 12)",
+                       "12"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(fn add2 (a b) (+ a b))",
+                       "add2"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(add2 5 10)",
+                       "15"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(add2 5 (+ 5 5))",
+                       "15"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(fn move (this scale offset) (add2 offset (* this scale)))",
+                       "move"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(move 5 10 3)",
+                       "53"));
+
+    /*
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(cusum (l h) "
+                      "(var s (range l h))"
+                      "(apply '+ s)",
+                      "cusum"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(cusum 1 10)",
+                       "55"));
+
+     */
+    Env_destroy(&e);
+}
+
+void
+test_conditionals(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(if (= 2 2) 4)",
+                       "4"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(if (= 2 2) 4 0)",
+                       "4"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(if t 2)",
+                       "2"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(if nil 2 3)",
+                       "3"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(if (= 2 3) t nil)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(if (= 2 3) 1 0)",
+                       "0"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(fn is10 (v) "
+                      "  (if (= v 10) t nil))",
+                      "is10"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(is10 7)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(is10 10)",
+                       "t"));
+
+    /*
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(fn upto10 (a)"
+                      "  (if (= a 10) "
+                      "    (+ 1 (upto10 (+ a 1)))"
+                      "    0"
+                      "))",
+                      "upto10"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(upto10 0)",
+                       "10"));
+     */
+
+    Env_destroy(&e);
+}
+
+void
+test_recursion(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+    /*
+(defun factorial (n)
+  (if (= n 0)
+      1
+      (* n (factorial (- n 1))) ) )
+    */
+
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(fn factorial (v)"
+                      "  (if (= v 0) "
+                      "    1"
+                      "    (* v (factorial (- v 1)))"
+                      "))",
+                      "factorial"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(factorial 5)",
+                       "120"));
 
     Env_destroy(&e);
 }
@@ -706,6 +888,9 @@ int main(int argc, char **argv) {
 	TL(test_errors());
 	TL(test_buildin_do());
 	TL(test_lambda());
+	TL(test_fn());
+	TL(test_conditionals());
+	TL(test_recursion());
     //TL(test_list_management());
 
     tl_summary();

@@ -54,11 +54,12 @@ http://www.ulisp.com/show?1BLW
 
 /*Major todos*/
 /*TODO: Garbage collection (with info stats)*/
-/*TODO: function, lambda and macro creation*/
-/*TODO: create try, catch and throw functions*/
-/*TODO: string library functions*/
+/*TODO: Conditionals*/
 
 /*Minor todos*/
+/*TODO: string library functions*/
+/*TODO: create try, catch and throw functions*/
+/*TODO: Fix binding by adding support for &rest and keyword binds aswell*/
 /*TODO: Make sure all types have type? checkers*/
 /*TODO: Make sure the correct errors are returned*/
 /*TODO: set! function that throws an error if set is used on constant*/
@@ -101,9 +102,10 @@ enum TYPE {
     TYPE_SYMBOL,
     TYPE_STRING,
     TYPE_FUNCTION,
+    TYPE_LAMBDA,
     TYPE_MACRO,
     TYPE_ERROR,
-    TYPE_ARRAY,
+    TYPE_VECTOR,
     TYPE_DICTIONARY,
 
     TYPE_COUNT
@@ -133,6 +135,10 @@ struct expr {
             float decimal;
             tstr string;
             tstr symbol;
+            struct {
+                struct expr* binds;
+                struct expr* body;
+            }callable;
         };
         /*Cons atom*/
         struct {
@@ -248,6 +254,7 @@ void Env_destroy(Environment* _env);
 void Env_add_buildin(Environment* _env, const char* _name, buildin_fn _fn);
 void Env_add_constant(Environment* _env, const char* _name, expr* _value);
 void Env_add_global(Environment* _env, const char* _name, expr* _value);
+void Env_add_variable(Environment* _env, VariableScope* _scope, const char* _name, expr* value);
 void Env_add_core(Environment* _env);
 
 /*Scope Management*/
@@ -459,6 +466,10 @@ is_nil(expr* _args)
 {
     if (_args == NULL || _args == NIL())
         return 1;
+    if (_args->type == TYPE_SYMBOL && tstr_equalc(&_args->symbol, "nil"))
+        return 1;
+    if (_args->type == TYPE_SYMBOL && tstr_equalc(&_args->symbol, "NIL"))
+        return 1;
     return 0;
 }
 
@@ -624,14 +635,16 @@ type_to_str(int _e)
         return "TYPE_SYMBOL";
     case TYPE_STRING:
         return "TYPE_STRING"; 
+    case TYPE_LAMBDA:
+        return "TYPE_LAMBDA";
     case TYPE_FUNCTION:
         return "TYPE_FUNCTION";
     case TYPE_MACRO:
         return "TYPE_MACRO";
     case TYPE_ERROR:
         return "TYPE_ERROR";
-    case TYPE_ARRAY:
-        return "TYPE_ARRAY";
+    case TYPE_VECTOR:
+        return "TYPE_VECTOR";
     case TYPE_DICTIONARY:
         return "TYPE_DICTIONARY";
     default:
@@ -711,12 +724,21 @@ _stringify_value(expr* _arg)
     case TYPE_CONS:
         dst = stringify(_arg, "(", ")");
         break;
-        //case TYPE_ARRAY:
-        //    dst  = stringify(_arg, "[", "]");
-        //    break;
-        //case TYPE_DICTIONARY:
-        //    dst = stringify(_arg, "#{", "}");
-        //    break;
+    case TYPE_VECTOR:
+        dst = stringify(_arg, "{", "}");
+        break;
+    case TYPE_DICTIONARY:
+        dst = stringify(_arg, "#[", "]");
+        break;
+    case TYPE_LAMBDA:
+        dst = tstr_("#<lambda>");
+        break;
+    case TYPE_MACRO:
+        dst = tstr_("#<macro>");
+        break;
+    case TYPE_FUNCTION:
+        dst = tstr_("#<function>");
+        break;
     case TYPE_REAL:
         dst = tstr_from_int(_arg->real);
         break;
@@ -746,6 +768,9 @@ stringify(expr* _args, const char* _open, const char* _close)
     tstr open = tstr_view(_open);
     tstr close = tstr_view(_close);
     tstr space = tstr_view(" ");
+
+    if (is_nil(_args))
+        return tstr_("NIL");
 
     if (_args->type != TYPE_CONS)
         return _stringify_value(curr);
@@ -866,6 +891,7 @@ _tokenize(char* _source, int* _cursor)
     Tokens_initn(&tokens, 1);
     tstr curr;
 
+    *_cursor = 0;
     while (_source[*_cursor] != '\0') {
         _trim_whitespace(_source, _cursor);
         //printf("cursor(%d) -> ", *_cursor);
@@ -1061,52 +1087,114 @@ _find_variable(VariableScope* _scope, expr* _sym)
     return NULL;
 }
 
+void
+_bind(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _binds, expr* _values)
+{
+  /*TODO: We just blindly pair binds and values,
+          In the future, add support for &rest and keyword binds aswell*/
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+
+    if (len(_binds) != len(_values))
+        THROW_INVALIDINPUT(_throwdst,
+                           "_bind",
+                           "Expected equal amount of binds and values",
+                           _binds);
+
+    expr* bind = _binds; 
+    expr* val = _values; 
+    DBPRINT("binding ", bind);
+    DBPRINT("to ", val);
+    while (!is_nil(cdr(bind)) && !is_nil(cdr(val))) {
+        Env_add_global(_env, car(bind)->symbol.c_str, car(val));
+        Env_add_variable(_env, _scope, car(bind)->symbol.c_str, car(val));
+        bind = cdr(bind);
+        val = cdr(val);
+    }
+}
+
 expr*
 eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
+    /*TODO: Needs a cleaning*/
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
     expr* fn = NULL;
     expr* args = NULL;
     Buildin* buildin = NULL;
     Variable* variable = NULL;
+    VariableScope local = {0};
     expr* result = NULL;
-    ASSERT_INV_ENV(_env);
-    //DBPRINT("'eval' INPUT: ", _in);
-
     if (is_nil(_in))
         return _in;
+
     switch (_in->type) {
     case TYPE_CONS:
         fn = car(_in);
+        if (fn->type == TYPE_CONS)
+            fn = eval_expr(_env, _scope, _throwdst, fn);
         args = cdr(_in);
-        //DBPRINT("(eval) NAME: ", fn);
-        //DBPRINT("(eval) ARGS: ", args);
-        if (is_cons(fn) || fn->type != TYPE_SYMBOL) {
-            THROW_INVALIDINPUT(_throwdst, "eval", "expected callable function", _in);
+
+        if (fn->type == TYPE_LAMBDA) {
+            //DBPRINT("lambda binds: ", fn->callable.binds);
+            //DBPRINT("lambda body: ", fn->callable.body);
+            args = list(_env, _scope, _throwdst, args);
+            RETURN_ON_EXCEPTION(_throwdst, NIL());
+            VariableScope_new(_env, &local, _scope);
+            _bind(_env, &local, _throwdst, fn->callable.binds, args);
+            result = buildin_do(_env, &local, _throwdst, fn->callable.body);
+            RETURN_ON_EXCEPTION(_throwdst, NIL());
+            VariableScope_destroy(_env, &local);
+            return result;
+        }
+        else if (fn->type == TYPE_SYMBOL) {
+            buildin = _find_buildin(_env, fn);
+            if (buildin != NULL) {
+                result = buildin->fn(_env, _scope, _throwdst, args);
+                //printf("buildin [%s]\n", buildin->name.c_str);
+                //DBPRINT("(eval) RESULT: ", result);
+                return result;
+            }
+            //DBPRINT("trying to locate function variable: ", fn);
+            variable = _find_variable(&_env->globals, fn);
+            if (variable != NULL) {
+                if (variable->value->type == TYPE_FUNCTION) {
+                    //printf("found fn: %s\n", variable->symbol.c_str);
+                    //DBPRINT("fn binds: ", variable->value->callable.binds);
+                    //DBPRINT("fn body: ", variable->value->callable.body);
+                    args = list(_env, _scope, _throwdst, args);
+                    RETURN_ON_EXCEPTION(_throwdst, NIL());
+                    VariableScope_new(_env, &local, _scope);
+                    _bind(_env, &local, _throwdst, variable->value->callable.binds, args);
+                    result = buildin_do(_env, &local, _throwdst, variable->value->callable.body);
+                    RETURN_ON_EXCEPTION(_throwdst, NIL());
+                    VariableScope_destroy(_env, &local);
+                    return result;
+                }
+                else if (variable->value->type == TYPE_MACRO) {
+                    /*TODO: verify this is correct, only diff is i dont eval args!*/
+                    VariableScope_new(_env, &local, _scope);
+                    _bind(_env, &local, _throwdst, variable->value->callable.binds, args);
+                    result = buildin_do(_env, &local, _throwdst, variable->value->callable.body);
+                    RETURN_ON_EXCEPTION(_throwdst, NIL());
+                    VariableScope_destroy(_env, &local);
+                    return result;
+                }
+            }
+            THROW_INVALIDINPUT(_throwdst, "eval", "expected callable buildin function", _in);
             return NIL();
         }
-        buildin = _find_buildin(_env, fn);
-        if (buildin != NULL) {
-            result = buildin->fn(_env, _scope, _throwdst, args);
-            //printf("buildin [%s]\n", buildin->name.c_str);
-            //DBPRINT("(eval) RESULT: ", result);
-            return result;
-        } 
-
         THROW_INVALIDFUNCTION(_throwdst, "eval", _in);
         return NIL();
-
     case TYPE_SYMBOL:
-        //DBPRINT("'eval' constant search: ", _in);
         variable = _find_variable(&_env->constants, _in);
         if (variable != NULL) {
             return variable->value;
         }
-        //DBPRINT("'eval' scoped symbol search: ", _in);
         variable = _find_variable(_scope, _in);
         if (variable != NULL) {
             return variable->value;
         }
-        //DBPRINT("'eval' global symbol search: ", _in);
         variable = _find_variable(&_env->globals, _in);
         if (variable != NULL) {
             return variable->value;
@@ -1629,6 +1717,12 @@ buildin_do(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr*
     ASSERT_INV_SCOPE(_scope);
     expr* tmp = _in;
     expr* last = NIL();
+
+    if (!is_cons(tmp)) {
+        last = eval_expr(_env, _scope, _throwdst, tmp);
+        RETURN_ON_EXCEPTION(_throwdst, NIL());
+        return last;
+    }
     while (!is_nil(cdr(tmp))) {
         if (!is_cons(tmp)) {
             THROW_INVALIDINPUT(_throwdst, "do", "expected callable functions", _in);
@@ -1764,33 +1858,40 @@ buildin_map(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
 }
 
 expr*
-buildin_deffn(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
-{
-    ASSERT_INV_ENV(_env);
-    ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "fn");
-    return _in;
-}
-
-expr*
 buildin_defmacro(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "macro");
+    /*TODO: add safety*/
+    UNUSED(_throwdst);
+
+    Variable var = {0};
+    tstr_copy(&first(_in)->symbol, &var.symbol);
+    var.value = _variable_new(_env);
+    var.value->type = TYPE_MACRO;
+    var.value->callable.binds = second(_in);
+    var.value->callable.body = cdr(cdr(_in));
+    Variables_push(&_env->globals.variables, var);
+
     return _in;
 }
 
-VariableScope*
-_bind(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+expr*
+buildin_deffn(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
+    /*TODO: add safety*/
     UNUSED(_throwdst);
-    DBPRINT("binds: ", _in);
-    VariableScope bound;
-    VariableScope_new(_env, &bound, _scope);
-    return bound;
+
+    Variable var = {0};
+    tstr_copy(&first(_in)->symbol, &var.symbol);
+    var.value = _variable_new(_env);
+    var.value->type = TYPE_FUNCTION;
+    var.value->callable.binds = second(_in);
+    var.value->callable.body = cdr(cdr(_in));
+    Variables_push(&_env->globals.variables, var);
+    return first(_in);
 }
 
 expr*
@@ -1798,17 +1899,14 @@ buildin_deflambda(Environment* _env, VariableScope* _scope, Exception* _throwdst
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
+    /*TODO: add safety*/
     UNUSED(_throwdst);
 
-    expr* binds = first(_in); 
-    expr* body = second(_in); 
-
-    VariableScope* loc = _bind(_env, _scope, _throwdst, _in);
-    RETURN_ON_EXCEPTION(_throwdst, NIL());
-    DBPRINT("lambda body: ", body);
-
-
-    return _in;
+    expr* lambda = _variable_new(_env);
+    lambda->type = TYPE_LAMBDA;
+    lambda->callable.binds = car(_in);
+    lambda->callable.body = cdr(_in);
+    return lambda;
 }
 
 expr*
@@ -1816,8 +1914,20 @@ buildin_if(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr*
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "if");
-    return _in;
+    expr* res;
+    expr* cond;
+    if (len(_in) != 2 && len(_in) != 3) {
+        THROW_INVALIDINPUT(_throwdst, "if", "expected 2-3 inputs", _in);
+        return NIL();
+    }
+    cond = eval_expr(_env, _scope, _throwdst, first(_in));
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
+    if (!is_nil(cond)) {
+        res = eval_expr(_env, _scope, _throwdst, second(_in));
+        RETURN_ON_EXCEPTION(_throwdst, NIL());
+        return res;
+    }
+    return eval_expr(_env, _scope, _throwdst, third(_in));
 }
 
 expr*
@@ -1917,12 +2027,22 @@ Env_add_constant(Environment* _env, const char* _name, expr* value)
 }
 
 void
-Env_add_global(Environment* _env, const char* _name, expr* value)
+Env_add_variable(Environment* _env, VariableScope* _scope, const char* _name, expr* value)
 {
     Variable v = {0};
     v.symbol = tstr_((char*)_name);
     v.value = variable_duplicate(_env, value);
-    Variables_push(&_env->globals.variables, v);
+    Variables_push(&_scope->variables, v);
+}
+
+void
+Env_add_global(Environment* _env, const char* _name, expr* value)
+{
+    Env_add_variable(_env, &_env->globals, _name, value);
+    //Variable v = {0};
+    //v.symbol = tstr_((char*)_name);
+    //v.value = variable_duplicate(_env, value);
+    //Variables_push(&_env->globals.variables, v);
 }
 
 void
@@ -1980,6 +2100,7 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "const", buildin_defconst);
     Env_add_buildin(_env, "global", buildin_defglobal);
     Env_add_buildin(_env, "var", buildin_defvar);
+    //Env_add_buildin(_env, "let*", buildin_letstar);
     Env_add_buildin(_env, "set", buildin_set);
     Env_add_buildin(_env, "print-env", buildin_print_env);
 
@@ -1995,7 +2116,9 @@ Env_add_core(Environment* _env)
 
     /*Useful Constants*/
     Env_add_constant(_env, "NIL", symbol(_env, "NIL"));
+    Env_add_constant(_env, "nil", symbol(_env, "nil"));
     Env_add_constant(_env, "t", symbol(_env, "t"));
+    Env_add_constant(_env, "T", symbol(_env, "T"));
     Env_add_constant(_env, "PI", decimal(_env, 3.14));
     Env_add_constant(_env, "PI/2", decimal(_env, 0.5*3.14));
     Env_add_constant(_env, "2PI", decimal(_env, 2*3.14));
