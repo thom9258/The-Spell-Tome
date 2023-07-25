@@ -318,6 +318,7 @@ expr* buildin_minus(Environment* _env, VariableScope* _scope, Exception* _throwd
 expr* buildin_multiply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_divide(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_simequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_defconst(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
@@ -466,10 +467,16 @@ is_nil(expr* _args)
 {
     if (_args == NULL || _args == NIL())
         return 1;
+    /*TODO: Error on empty cons cell being NIL*/
+    //if (_args->type == TYPE_CONS && _args->car == NULL && _args->cdr == NULL)
+    //return 1;
+    //if (_args->type == TYPE_CONS && is_nil(car(_args)) && is_nil(cdr(_args)))
+    //return 1;
     if (_args->type == TYPE_SYMBOL && tstr_equalc(&_args->symbol, "nil"))
         return 1;
     if (_args->type == TYPE_SYMBOL && tstr_equalc(&_args->symbol, "NIL"))
         return 1;
+
     return 0;
 }
 
@@ -533,7 +540,7 @@ len(expr* _args)
 expr*
 car(expr* _args)
 {
-    if (is_nil(_args) || is_val(_args) || is_nil(_args->car))
+    if (is_nil(_args) || !is_cons(_args) || is_nil(_args->car))
         return NIL();
     return _args->car;
 }
@@ -541,7 +548,8 @@ car(expr* _args)
 expr*
 cdr(expr* _args)
 {
-    if (is_nil(_args) || is_val(_args) || is_nil(_args->cdr))
+
+    if (is_nil(_args) || !is_cons(_args) || is_nil(_args->cdr))
         return NIL();
     return _args->cdr;
 }
@@ -1103,10 +1111,9 @@ _bind(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _bin
 
     expr* bind = _binds; 
     expr* val = _values; 
-    DBPRINT("binding ", bind);
-    DBPRINT("to ", val);
+    //DBPRINT("binding ", car(bind));
+    //DBPRINT("to ", car(val));
     while (!is_nil(cdr(bind)) && !is_nil(cdr(val))) {
-        Env_add_global(_env, car(bind)->symbol.c_str, car(val));
         Env_add_variable(_env, _scope, car(bind)->symbol.c_str, car(val));
         bind = cdr(bind);
         val = cdr(val);
@@ -1425,9 +1432,7 @@ buildin_range(Environment* _env, VariableScope* _scope, Exception* _throwdst, ex
 
     ASSERT_INV_SCOPE(_scope);
 
-    DBPRINT("'range' input: ", _in);
     args = list(_env, _scope, _throwdst, _in);
-    DBPRINT("'range' args: ", args);
     RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (len(args) != 2) {
         THROW_INVALIDINPUT(_throwdst, "range", "Expected only 2 inputs", _in);
@@ -1662,17 +1667,28 @@ char
 _MATHEQUAL2(Environment* _env, Exception* _throwdst, expr* _a, expr* _b)
 {
     ASSERT_INV_ENV(_env);
-    if (!is_val(_a) || !is_val(_b)) {
-        THROW_INVALIDTYPE(_throwdst, "_MATHEQUAL2", "expected inputs to be values", cons(_env, _a, _b));
+    if (is_cons(_a) || is_cons(_b)) {
+        THROW_INVALIDTYPE(_throwdst, "_MATHEQUAL2", "expected inputs to be values, symbols or strings", cons(_env, _a, _b));
         return 0;
     }
+    if (_a == _b)
+        return 1;
+
     if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
         return _a->decimal == _b->decimal;
     else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
         return _a->real == _b->decimal;
     else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
         return  _a->decimal == _b->real;
-    return _a->real == _b->real;
+    else if (_a->type == TYPE_REAL && _b->type == TYPE_REAL)
+        return _a->real == _b->real;
+
+    else if (_a->type == TYPE_SYMBOL && _b->type == TYPE_SYMBOL)
+        return tstr_equal(&_a->symbol, &_b->symbol);
+    else if (_a->type == TYPE_STRING && _b->type == TYPE_STRING)
+        return tstr_equal(&_a->string, &_b->string);
+
+    return 0;
 }
 
 expr*
@@ -1707,6 +1723,71 @@ buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst
         tmp = cdr(tmp);
         oldtmp = cdr(oldtmp);
     }
+    return symbol(_env, "t");
+}
+
+expr*
+buildin_simequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    tstr gt;
+    tstr curr;
+    expr* tmp;
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+
+    if (len(_in) < 2) {
+        return symbol(_env, "t");
+    }
+    tmp = _in;
+    gt = _stringify_value(first(tmp));
+    tmp = cdr(tmp);
+
+    /*check for equality*/
+    while (!is_nil(cdr(tmp))) {
+        curr = _stringify_value(car(tmp));
+        if (!tstr_equal(&gt, &curr)) {
+            tstr_destroy(&gt);
+            tstr_destroy(&curr);
+            return NIL();
+        }
+        tstr_destroy(&curr);
+        tmp = cdr(tmp);
+    }
+    tstr_destroy(&gt);
+    return symbol(_env, "t");
+}
+
+expr*
+buildin_eq(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    tstr gt;
+    tstr curr;
+    expr* tmp;
+    expr* args;
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    args = list(_env, _scope, _throwdst, _in);
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
+    if (len(args) < 2) {
+        return symbol(_env, "t");
+    }
+    tmp = args;
+    gt = _stringify_value(first(tmp));
+    tmp = cdr(tmp);
+
+    /*check for equality*/
+    while (!is_nil(cdr(tmp))) {
+        curr = _stringify_value(car(tmp));
+        if (!tstr_equal(&gt, &curr)) {
+            tstr_destroy(&gt);
+            tstr_destroy(&curr);
+            return NIL();
+        }
+        tstr_destroy(&curr);
+        tmp = cdr(tmp);
+    }
+    tstr_destroy(&gt);
     return symbol(_env, "t");
 }
 
@@ -1920,6 +2001,8 @@ buildin_if(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr*
         THROW_INVALIDINPUT(_throwdst, "if", "expected 2-3 inputs", _in);
         return NIL();
     }
+    if (is_nil(_in))
+        return NIL();
     cond = eval_expr(_env, _scope, _throwdst, first(_in));
     RETURN_ON_EXCEPTION(_throwdst, NIL());
     if (!is_nil(cond)) {
@@ -2095,6 +2178,8 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "*", buildin_multiply);
     Env_add_buildin(_env, "/", buildin_divide);
     Env_add_buildin(_env, "=", buildin_mathequal);
+    Env_add_buildin(_env, "eq", buildin_eq);
+    Env_add_buildin(_env, "equal", buildin_simequal);
 
     /*Variable management*/
     Env_add_buildin(_env, "const", buildin_defconst);
@@ -2107,12 +2192,15 @@ Env_add_core(Environment* _env)
     /*Condition management*/
     Env_add_buildin(_env, "cond", buildin_cond);
     Env_add_buildin(_env, "if", buildin_if);
+    Env_add_buildin(_env, "?", buildin_if);
     Env_add_buildin(_env, "not", buildin_not);
+    Env_add_buildin(_env, "!", buildin_not);
 
     /*Function management*/
     Env_add_buildin(_env, "fn", buildin_deffn);
     Env_add_buildin(_env, "macro", buildin_defmacro);
     Env_add_buildin(_env, "lambda", buildin_deflambda);
+    Env_add_buildin(_env, "/.", buildin_deflambda);
 
     /*Useful Constants*/
     Env_add_constant(_env, "NIL", symbol(_env, "NIL"));

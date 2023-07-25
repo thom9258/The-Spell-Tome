@@ -558,12 +558,23 @@ test_buildin_equality(void)
     Env_add_core(&e);
 
     TL_TEST(repl_test(&e, &e.globals, "(= 1 2)", "NIL"));
+    TL_TEST(repl_test(&e, &e.globals, "(= 'somesym 'somesym)", "t"));
+    TL_TEST(repl_test(&e, &e.globals, "(= \"Hello!\" \"Hello!\")", "t"));
+    TL_TEST(repl_test(&e, &e.globals, "(= \"1\" 1)", "NIL"));
     TL_TEST(repl_test(&e, &e.globals, "(= 7 3.431)", "NIL"));
     TL_TEST(repl_test(&e, &e.globals, "(= 2 2)", "t"));
     TL_TEST(repl_test(&e, &e.globals, "(= 2.34 2.34)", "t"));
     TL_TEST(repl_test(&e, &e.globals, "(= 7)", "t"));
     TL_TEST(repl_test(&e, &e.globals, "(=)", "t"));
     TL_TEST(repl_test(&e, &e.globals, "(= (+ 2 2) 4 (- 10 6) (* 2 2))", "t"));
+    TL_TEST(repl_test(&e, &e.globals, "(= (1 2 3) (1 2 3))", "NIL"));
+
+    TL_TEST(repl_test(&e, &e.globals, "(eq '(1 2 3) [1 2 3] (range 1 4))", "t"));
+    TL_TEST(repl_test(&e, &e.globals, "(eq 4 (+ 2 2))", "t"));
+
+    TL_TEST(repl_test(&e, &e.globals, "(equal 4 (+ 2 2))", "NIL"));
+    TL_TEST(repl_test(&e, &e.globals, "(equal (1 2 3) (1 2 3) (1 2 3))", "t"));
+
 
     Env_destroy(&e);
 }
@@ -797,8 +808,21 @@ test_conditionals(void)
                        "2"));
 
     TL_TEST(repl_test(&e, &e.globals,
+                       "(if '(1 2 3) t)",
+                       "t"));
+
+
+    TL_TEST(repl_test(&e, &e.globals,
                        "(if nil 2 3)",
                        "3"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(if () t nil)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(if (NIL) t nil)",
+                       "NIL"));
 
     TL_TEST(repl_test(&e, &e.globals,
                        "(if (= 2 3) t nil)",
@@ -863,6 +887,29 @@ test_recursion(void)
                        "(factorial 5)",
                        "120"));
 
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(fn list-len (list)"
+                      "  (if list "
+                      "    (+ 1 (list-len (cdr list)))"
+                      "    -1"
+                      "))",
+                      "list-len"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(list-len '(1 2 3))",
+                       "3"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(list-len [1 (+ 2 2) 3])",
+                       "3"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(list-len '(1 ((((3))))))",
+                       "2"));
+
+
+
+
     Env_destroy(&e);
 }
 
@@ -880,8 +927,8 @@ int main(int argc, char **argv) {
 	TL(test_buildin_cons());
 	TL(test_buildin_accessors());
 	TL(test_buildin_range());
+    //TL(test_list_management());
 	TL(test_buildin_math());
-	TL(test_buildin_equality());
     TL(test_variable_duplicate());
 	TL(test_global());
 	TL(test_variables());
@@ -890,8 +937,8 @@ int main(int argc, char **argv) {
 	TL(test_lambda());
 	TL(test_fn());
 	TL(test_conditionals());
+	TL(test_buildin_equality());
 	TL(test_recursion());
-    //TL(test_list_management());
 
     tl_summary();
 
