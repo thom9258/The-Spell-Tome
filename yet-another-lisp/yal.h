@@ -53,16 +53,22 @@ http://www.ulisp.com/show?1BLW
 */
 
 /*Major todos*/
-/*TODO: Garbage collection (with info stats)*/
+/*TODO: proper memory management & garbage collection (with info stats)*/
+/*TODO: READ EVAL PRINT functionality so we can go full-circle and load files*/
 /*TODO: Conditionals*/
+/*TODO: Fix the repl*/
+/*TODO: Tail call optimization*/
 
 /*Minor todos*/
+/*TODO: Time library*/
 /*TODO: string library functions*/
 /*TODO: create try, catch and throw functions*/
 /*TODO: Fix binding by adding support for &rest and keyword binds aswell*/
 /*TODO: Make sure all types have type? checkers*/
 /*TODO: Make sure the correct errors are returned*/
 /*TODO: set! function that throws an error if set is used on constant*/
+/*TODO: Errors when creating functions, macros and variables/consts that already exists*/
+/*TODO: Maybe a fn-exists? const-exists? etc. functions that takes a sym and sees if it exists?*/
 /*TODO: print ' and [] instead of quote and array*/
 /*TODO: terminal repl binary*/
 /*TODO: put! and pop! functions*/
@@ -78,7 +84,7 @@ http://www.ulisp.com/show?1BLW
 #include <stdlib.h>
 
 #include "vendor/alloc.h"
-#include "vendor/error.h"
+//#include "vendor/error.h"
 
 #define TSTR_IMPLEMENTATION
 #include "vendor/tstr.h"
@@ -173,12 +179,8 @@ struct VariableScope {
     Variables variables;
 };
 
-#define t_type VariableScope
-#define arr_t_name VariableScopes
-#include "vendor/tsarray.h"
-
 typedef struct {
-    tstr name;
+    const char* name;
     buildin_fn fn;
 }Buildin;
 
@@ -186,13 +188,15 @@ typedef struct {
 #define arr_t_name Buildins
 #include "vendor/tsarray.h"
 
+#define t_type expr*
+#define arr_t_name exprStack
+#include "vendor/tsarray.h"
 
 struct Environment {
+    exprStack in_use;
     Buildins buildins;
-    sbAllocator variable_allocator;
     VariableScope constants;
     VariableScope globals;
-    VariableScopes active_scopes;
 };
 
 /* =========================================================
@@ -293,6 +297,7 @@ expr* real(Environment* _env, int _v);
 expr* decimal(Environment* _env, float _v);
 expr* symbol(Environment* _env, char* _v);
 expr* string(Environment* _env, char* _v);
+expr* put(Environment* _env, expr* _val, expr* _list);
 
 /*Core*/
 expr* read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _program_str);
@@ -341,13 +346,12 @@ _throw_error(Exception* _dst,
              const char* _msg,
              expr* _expr)
 {
-    UNUSED(_fnsym);
     tstr msg;
     if (_dst == NULL)
         return;
 
     WITH_STRINGEXPR(str, _expr,
-                    msg = tstr_fmt("%s, %s\n", _msg, str.c_str);
+                    msg = tstr_fmt("(%s) %s, %s\n", _fnsym, _msg, str.c_str);
                     tstr_destroy(&_dst->msg);
                     _dst->type = _type;
                     _dst->msg = msg;
@@ -406,7 +410,7 @@ Env_new(Environment* _env)
 {
     *_env = (Environment){0};
     /*TODO: 30 is a arbitrary number, change when you know size of buildins*/
-    sbAllocator_init(&_env->variable_allocator, sizeof(expr));
+    exprStack_initn(&_env->in_use, 30);
     Buildins_initn(&_env->buildins, 30);
     VariableScope_destroy(_env, &_env->globals);
     VariableScope_new(_env, &_env->globals, NULL);
@@ -414,19 +418,58 @@ Env_new(Environment* _env)
 }
 
 void
+variable_delete(Environment* _env, expr* _atom)
+{
+    ASSERT_INV_ENV(_env);
+    if (_atom == NULL || _atom == NIL())
+        return;
+    //DBPRINT("variable_deleting: ", _atom);
+    switch (_atom->type) {
+    case TYPE_SYMBOL:
+        tstr_destroy(&_atom->symbol);
+        break;
+    case TYPE_STRING:
+        tstr_destroy(&_atom->string);
+        break;
+    case TYPE_FUNCTION:
+    case TYPE_MACRO:
+    case TYPE_LAMBDA:
+        /*TODO: Need to iterate through and remove binds and body here*/
+        variable_delete(_env, _atom->callable.binds);
+        variable_delete(_env, _atom->callable.body);
+        break;
+
+    default:
+        break;
+    };
+
+    int i;
+    int n = exprStack_len(&_env->in_use);
+    for (i = 0; i < n; i++)
+        if (*exprStack_peek(&_env->in_use, i) == _atom)
+            exprStack_remove(&_env->in_use, i);
+    free(_atom);
+}
+
+void
 Env_destroy(Environment* _env)
 {
+    expr* tmp;
     int i;
     int n;
     if (_env == NULL)
         return;
     Buildins_destroy(&_env->buildins);
     VariableScope_destroy(_env, &_env->globals);
-    n = VariableScopes_len(&_env->active_scopes);
-    for (i = 0; i < n; i++)
-        VariableScope_destroy(_env, VariableScopes_peek(&_env->active_scopes, i));
+    VariableScope_destroy(_env, &_env->constants);
 
-    sbAllocator_destroy(&_env->variable_allocator);
+    n = exprStack_len(&_env->in_use);
+    for (i = 0; i < n; i++) {
+        tmp = exprStack_pop(&_env->in_use);
+        if (tmp != NULL)
+            variable_delete(_env, tmp);
+    }
+    exprStack_destroy(&_env->in_use);
 }
 
 VariableScope*
@@ -443,9 +486,11 @@ VariableScope_destroy(Environment* _env, VariableScope* _scope)
 {
     int i;
     Variable tmp;
-    for (i = 0; i < Variables_len(&_scope->variables); i++) {
-        tmp = Variables_get(&_scope->variables, i);
+    int n = Variables_len(&_scope->variables);
+    for (i = 0; i < n; i++) {
+        tmp = Variables_pop(&_scope->variables);
         variable_delete(_env, tmp.value);
+        tstr_destroy(&tmp.symbol);
     }
     Variables_destroy(&_scope->variables);
     _scope->outer = NULL;
@@ -472,9 +517,9 @@ is_nil(expr* _args)
     //return 1;
     //if (_args->type == TYPE_CONS && is_nil(car(_args)) && is_nil(cdr(_args)))
     //return 1;
-    if (_args->type == TYPE_SYMBOL && tstr_equalc(&_args->symbol, "nil"))
+    if (_args->type == TYPE_SYMBOL && tstr_ok(&_args->symbol) && tstr_equalc(&_args->symbol, "nil"))
         return 1;
-    if (_args->type == TYPE_SYMBOL && tstr_equalc(&_args->symbol, "NIL"))
+    if (_args->type == TYPE_SYMBOL && tstr_ok(&_args->symbol) && tstr_equalc(&_args->symbol, "NIL"))
         return 1;
 
     return 0;
@@ -579,11 +624,16 @@ expr*
 _variable_new(Environment* _env)
 {
     ASSERT_INV_ENV(_env);
-    expr* e = (expr*)sbAllocator_get(&_env->variable_allocator);
+    expr* e = (expr*)malloc(sizeof(*e));
     if (e == NULL)
         ASSERT_NOMOREMEMORY();
+    *e = (expr) {0};
+    exprStack_push(&_env->in_use, e);
     return e;
 }
+
+
+
 
 expr*
 variable_duplicate(Environment* _env, expr* _atom)
@@ -607,26 +657,6 @@ variable_duplicate(Environment* _env, expr* _atom)
     default:
         ASSERT_UNREACHABLE();
     };
-}
-
-void
-variable_delete(Environment* _env, expr* _atom)
-{
-    ASSERT_INV_ENV(_env);
-    if (is_nil(_atom))
-        return;
-
-    switch (_atom->type) {
-    case TYPE_SYMBOL:
-        tstr_destroy(&_atom->symbol);
-        break;
-    case TYPE_STRING:
-        tstr_destroy(&_atom->string);
-        break;
-    default:
-        break;
-    };
-    sbAllocator_return(&_env->variable_allocator, _atom);
 }
 
 const char*
@@ -697,8 +727,13 @@ symbol(Environment* _env, char* _v)
 {
     ASSERT_INV_ENV(_env);
     expr* e = _variable_new(_env);
+    if (e == NULL)
+        return NIL();
     e->type = TYPE_SYMBOL;
-    e->symbol = tstr_(_v);
+    if (_v == NULL)
+        e->symbol = tstr_("NIL");
+    else
+        e->symbol = tstr_(_v);
     return e;
 }
 
@@ -710,6 +745,14 @@ string(Environment* _env, char* _v)
     e->type = TYPE_STRING;
     e->string = tstr_(_v);
     return e;
+}
+
+
+expr*
+put(Environment* _env, expr* _val, expr* _list)
+{
+    ASSERT_INV_ENV(_env);
+    return cons(_env, _val, _list);
 }
 
 void
@@ -724,47 +767,37 @@ printexpr(expr* _arg)
 tstr
 _stringify_value(expr* _arg)
 {
-    tstr dst = {0};
     if (is_nil(_arg))
         return tstr_("NIL");
 
     switch (_arg->type) {
     case TYPE_CONS:
-        dst = stringify(_arg, "(", ")");
-        break;
+        return stringify(_arg, "(", ")");
     case TYPE_VECTOR:
-        dst = stringify(_arg, "{", "}");
-        break;
+        return stringify(_arg, "{", "}");
     case TYPE_DICTIONARY:
-        dst = stringify(_arg, "#[", "]");
-        break;
+        return stringify(_arg, "#[", "]");
     case TYPE_LAMBDA:
-        dst = tstr_("#<lambda>");
-        break;
+        return tstr_("#<lambda>");
     case TYPE_MACRO:
-        dst = tstr_("#<macro>");
-        break;
+        return tstr_("#<macro>");
     case TYPE_FUNCTION:
-        dst = tstr_("#<function>");
-        break;
+        return tstr_("#<function>");
     case TYPE_REAL:
-        dst = tstr_from_int(_arg->real);
-        break;
+        return tstr_from_int(_arg->real);
     case TYPE_DECIMAL:
-        dst = tstr_from_float(_arg->decimal);
-        break;
+        return tstr_from_float(_arg->decimal);
     case TYPE_SYMBOL:
-        dst = tstr_(_arg->symbol.c_str);
-        break;
+        if (tstr_equalc(&_arg->symbol, "t") || tstr_equalc(&_arg->symbol, "T"))
+            return tstr_("T");
+        return tstr_(_arg->symbol.c_str);
     case TYPE_STRING:
         /*NOTE: The quotes are part of the string datatype now*/
-        dst = tstr_(_arg->string.c_str);
-        //dst = tstr_fmt("\"%s\"", _arg->string.c_str);
-        break;
+        return tstr_(_arg->string.c_str);
     default:
         ASSERT_UNREACHABLE();
     };
-    return dst;
+    ASSERT_UNREACHABLE();
 }
 
 tstr
@@ -795,6 +828,7 @@ stringify(expr* _args, const char* _open, const char* _close)
     tstr_add2end(&dst, &open);
     currstr = _stringify_value(car(curr));
     tstr_add2end(&dst, &currstr);
+    tstr_destroy(&currstr);
     curr = cdr(curr);
 
     /*Manage tail values*/
@@ -804,6 +838,7 @@ stringify(expr* _args, const char* _open, const char* _close)
         tstr_add2end(&dst, &space);
         currstr = _stringify_value(car(curr));
         tstr_add2end(&dst, &currstr);
+        tstr_destroy(&currstr);
         curr = cdr(curr);
     }
     tstr_add2end(&dst, &close);
@@ -848,9 +883,7 @@ _get_next_token(char* _source, int* _cursor)
     tstr token = {0};
     tstr maybestoken = {0};
     int len = 0;
-
     maybestoken = _try_get_special_token(&_source[*_cursor]);
-
     if (tstr_ok(&maybestoken)) {
         len = tstr_length(&maybestoken);
     }
@@ -896,9 +929,9 @@ _tokenize(char* _source, int* _cursor)
     assert(_source != NULL && "Invalid program given to tokenizer");
     assert(_cursor != NULL && "Invalid cursor given to tokenizer");
     Tokens tokens;
-    Tokens_initn(&tokens, 1);
     tstr curr;
 
+    Tokens_initn(&tokens, 10);
     *_cursor = 0;
     while (_source[*_cursor] != '\0') {
         _trim_whitespace(_source, _cursor);
@@ -1002,6 +1035,7 @@ _lex(Environment* _env, Tokens* _tokens)
     while (Tokens_len(_tokens) > 0) {
         token = Tokens_pop_front(_tokens);
         if (tstr_equalc(&token, ")") || tstr_equalc(&token, "]")) {
+            tstr_destroy(&token);
             break;
         }
         else if (tstr_equalc(&token, "(")) {
@@ -1024,11 +1058,11 @@ _lex(Environment* _env, Tokens* _tokens)
             } else {
                  curr->car = cons(_env, symbol(_env, "quote"), cons(_env, _lex_value(_env, &resttok), NULL));
             }
+            tstr_destroy(&resttok);
         }
         else {
             curr->car = _lex_value(_env, &token);
         }
-
         /*Insert extracted into lexed program*/
         tstr_destroy(&token);
         curr->cdr = cons(_env, NULL, NULL);
@@ -1041,16 +1075,18 @@ _lex(Environment* _env, Tokens* _tokens)
 expr*
 read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _program_str)
 {
+    /*TODO: Need error checking from _lex()*/
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    assert(_program_str != NULL && "Given program str is NULL");
-    /*TODO: Need error checking from _lex()*/
     UNUSED(_throwdst);
+    assert(_program_str != NULL && "Given program str is NULL");
+
     int cursor = 0;
     Tokens tokens = _tokenize(_program_str, &cursor);
+    printf("(%d) tokens\n", Tokens_len(&tokens));
     _tokens_post_process(&tokens);
     expr* program = _lex(_env, &tokens);
-
+    Tokens_destroy(&tokens);
     /*TODO: This mighr be wrong to do!*/
     //DBPRINT("program in 'read' ", program);
     //printf("Amount of programs in 'read' = %d\n", len(program));
@@ -1071,7 +1107,7 @@ _find_buildin(Environment* _env, expr* _sym)
     //printf("looking for buildin '%s'\n", _sym->symbol.c_str);
     for (i = 0; i < Buildins_len(&_env->buildins); i++) {
         buildin = Buildins_peek(&_env->buildins, i);
-        if (tstr_equal(&buildin->name, &_sym->symbol)) {
+        if (tstr_equalc(&_sym->symbol, buildin->name)) {
             //printf("found '%s'\n", buildin->name.c_str);
             return buildin;
         }
@@ -1111,8 +1147,8 @@ _bind(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _bin
 
     expr* bind = _binds; 
     expr* val = _values; 
-    //DBPRINT("binding ", car(bind));
-    //DBPRINT("to ", car(val));
+    DBPRINT("binding ", car(bind));
+    DBPRINT("to ", car(val));
     while (!is_nil(cdr(bind)) && !is_nil(cdr(val))) {
         Env_add_variable(_env, _scope, car(bind)->symbol.c_str, car(val));
         bind = cdr(bind);
@@ -1896,15 +1932,26 @@ buildin_set(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
 expr*
 buildin_put(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
+    //THROW_NOTIMPLEMENTED(_throwdst, "put!");
+    expr* args;
+    expr* v;
+    expr* lst;
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "put!");
-    return _in;
+    args = list(_env, _scope, _throwdst, _in);
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
+    if (len(args) < 2) {
+        return symbol(_env, "t");
+    }
+    v = first(args);
+    lst = second(args);
+    return put(_env, v, lst);
 }
 
 expr*
 buildin_pop(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
+    /*Takes the symbol to a variable that has a list and then modifies after pop!*/
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
     THROW_NOTIMPLEMENTED(_throwdst, "pop!");
@@ -2054,7 +2101,7 @@ buildin_gc_memused(Environment* _env, VariableScope* _scope, Exception* _throwds
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "gc-mem-used");
+    THROW_NOTIMPLEMENTED(_throwdst, "gc-used");
     return _in;
 }
 
@@ -2097,7 +2144,7 @@ buildin_print_env(Environment* _env, VariableScope* _scope, Exception* _throwdst
 void
 Env_add_buildin(Environment* _env, const char* _name, buildin_fn _fn)
 {
-    Buildins_push(&_env->buildins, (Buildin){tstr_((char*)_name), _fn});
+    Buildins_push(&_env->buildins, (Buildin){_name, _fn});
 }
 
 void
@@ -2139,7 +2186,7 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "list", buildin_list);
     Env_add_buildin(_env, "cons", buildin_cons);
     Env_add_buildin(_env, "len", buildin_len);
-    Env_add_buildin(_env, "put!", buildin_put);
+    Env_add_buildin(_env, "put", buildin_put);
     Env_add_buildin(_env, "pop!", buildin_pop);
     Env_add_buildin(_env, "reverse", buildin_reverse);
 
@@ -2151,7 +2198,7 @@ Env_add_core(Environment* _env)
     /*Garbage Collection*/
     Env_add_buildin(_env, "gc-run", buildin_gc_run);
     Env_add_buildin(_env, "gc-info", buildin_gc_info);
-    Env_add_buildin(_env, "gc-mem-used", buildin_gc_memused);
+    Env_add_buildin(_env, "gc-used", buildin_gc_memused);
 
     /*Error Management*/
     Env_add_buildin(_env, "try", buildin_try);
@@ -2207,9 +2254,10 @@ Env_add_core(Environment* _env)
     Env_add_constant(_env, "nil", symbol(_env, "nil"));
     Env_add_constant(_env, "t", symbol(_env, "t"));
     Env_add_constant(_env, "T", symbol(_env, "T"));
-    Env_add_constant(_env, "PI", decimal(_env, 3.14));
-    Env_add_constant(_env, "PI/2", decimal(_env, 0.5*3.14));
-    Env_add_constant(_env, "2PI", decimal(_env, 2*3.14));
+    const float pi = 3.141592; 
+    Env_add_constant(_env, "PI", decimal(_env, pi));
+    Env_add_constant(_env, "PI/2", decimal(_env, 0.5*pi));
+    Env_add_constant(_env, "2PI", decimal(_env, 2*pi));
     Env_add_constant(_env, "E", decimal(_env, 2.71828));
     Env_add_constant(_env, "E-constant", decimal(_env, 0.57721));
 }

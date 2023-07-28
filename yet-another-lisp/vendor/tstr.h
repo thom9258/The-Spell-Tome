@@ -232,7 +232,7 @@ tstr_fmt(const char* _fmt, ...)
     va_start(va1, _fmt);
     out.maxlen = 1 + vsnprintf(NULL, 0, _fmt, va1);
     va_end(va1);   
-    out.c_str = (TSTR_CHAR*)malloc(sizeof(char) * (out.maxlen));
+    out.c_str = (TSTR_CHAR*)malloc(sizeof(TSTR_CHAR) * (out.maxlen));
     va_start(va2, _fmt);
     //vsnprintf(out.c_str, out.maxlen, _fmt, va2);
     vsprintf(out.c_str, _fmt, va2);
