@@ -322,6 +322,8 @@ expr* buildin_plus(Environment* _env, VariableScope* _scope, Exception* _throwds
 expr* buildin_minus(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_multiply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_divide(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_lessthan(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_greaterthan(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_mathequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_simequal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_defconst(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
@@ -435,8 +437,8 @@ variable_delete(Environment* _env, expr* _atom)
     case TYPE_MACRO:
     case TYPE_LAMBDA:
         /*TODO: Need to iterate through and remove binds and body here*/
-        variable_delete(_env, _atom->callable.binds);
-        variable_delete(_env, _atom->callable.body);
+        //variable_delete(_env, _atom->callable.binds);
+        //variable_delete(_env, _atom->callable.body);
         break;
 
     default:
@@ -484,12 +486,14 @@ VariableScope_new(Environment* _env, VariableScope* _this, VariableScope* _outer
 void
 VariableScope_destroy(Environment* _env, VariableScope* _scope)
 {
+    UNUSED(_env);
     int i;
     Variable tmp;
     int n = Variables_len(&_scope->variables);
     for (i = 0; i < n; i++) {
         tmp = Variables_pop(&_scope->variables);
-        variable_delete(_env, tmp.value);
+        /*NOTE: We cannot destroy the variables created in the scope, as they can be returned*/
+        //variable_delete(_env, tmp.value);
         tstr_destroy(&tmp.symbol);
     }
     Variables_destroy(&_scope->variables);
@@ -510,7 +514,7 @@ NIL(void)
 char
 is_nil(expr* _args)
 {
-    if (_args == NULL || _args == NIL())
+    if (_args == NULL || _args == &_NIL_VALUE)
         return 1;
     /*TODO: Error on empty cons cell being NIL*/
     //if (_args->type == TYPE_CONS && _args->car == NULL && _args->cdr == NULL)
@@ -795,6 +799,7 @@ _stringify_value(expr* _arg)
         /*NOTE: The quotes are part of the string datatype now*/
         return tstr_(_arg->string.c_str);
     default:
+        printf("_stringify_value() Got invalid atom type! got %d\n", _arg->type);
         ASSERT_UNREACHABLE();
     };
     ASSERT_UNREACHABLE();
@@ -810,6 +815,8 @@ stringify(expr* _args, const char* _open, const char* _close)
     tstr close = tstr_view(_close);
     tstr space = tstr_view(" ");
 
+    if (_args == NULL)
+        return tstr_("NIL");
     if (is_nil(_args))
         return tstr_("NIL");
 
@@ -1083,13 +1090,10 @@ read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _prog
 
     int cursor = 0;
     Tokens tokens = _tokenize(_program_str, &cursor);
-    printf("(%d) tokens\n", Tokens_len(&tokens));
     _tokens_post_process(&tokens);
     expr* program = _lex(_env, &tokens);
     Tokens_destroy(&tokens);
     /*TODO: This mighr be wrong to do!*/
-    //DBPRINT("program in 'read' ", program);
-    //printf("Amount of programs in 'read' = %d\n", len(program));
     if (len(program) == 1)
         return car(program);
     return program;
@@ -1104,11 +1108,9 @@ _find_buildin(Environment* _env, expr* _sym)
     int i;
     if (is_nil(_sym) || !is_symbol(_sym))
         return NULL;
-    //printf("looking for buildin '%s'\n", _sym->symbol.c_str);
     for (i = 0; i < Buildins_len(&_env->buildins); i++) {
         buildin = Buildins_peek(&_env->buildins, i);
         if (tstr_equalc(&_sym->symbol, buildin->name)) {
-            //printf("found '%s'\n", buildin->name.c_str);
             return buildin;
         }
     }
@@ -1120,8 +1122,14 @@ _find_variable(VariableScope* _scope, expr* _sym)
 {
     Variable* variable = NULL;
     int i;
-    for (i = 0; i < Variables_len(&_scope->variables); i++) {
+    int n = Variables_len(&_scope->variables);
+    for (i = 0; i < n; i++) {
         variable = Variables_peek(&_scope->variables, i);
+        if (variable == NULL)
+            continue;
+        if (!tstr_ok(&variable->symbol))
+            continue;
+
         if (tstr_equal(&variable->symbol, &_sym->symbol)) {
             return variable;
         }
@@ -1147,8 +1155,8 @@ _bind(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _bin
 
     expr* bind = _binds; 
     expr* val = _values; 
-    DBPRINT("binding ", car(bind));
-    DBPRINT("to ", car(val));
+    //DBPRINT("binding ", car(bind));
+    //DBPRINT("to ", car(val));
     while (!is_nil(cdr(bind)) && !is_nil(cdr(val))) {
         Env_add_variable(_env, _scope, car(bind)->symbol.c_str, car(val));
         bind = cdr(bind);
@@ -1194,7 +1202,6 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
             buildin = _find_buildin(_env, fn);
             if (buildin != NULL) {
                 result = buildin->fn(_env, _scope, _throwdst, args);
-                //printf("buildin [%s]\n", buildin->name.c_str);
                 //DBPRINT("(eval) RESULT: ", result);
                 return result;
             }
@@ -1202,7 +1209,6 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
             variable = _find_variable(&_env->globals, fn);
             if (variable != NULL) {
                 if (variable->value->type == TYPE_FUNCTION) {
-                    //printf("found fn: %s\n", variable->symbol.c_str);
                     //DBPRINT("fn binds: ", variable->value->callable.binds);
                     //DBPRINT("fn body: ", variable->value->callable.body);
                     args = list(_env, _scope, _throwdst, args);
@@ -1216,11 +1222,18 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
                 }
                 else if (variable->value->type == TYPE_MACRO) {
                     /*TODO: verify this is correct, only diff is i dont eval args!*/
+
+                    DBPRINT("macro binds: ", variable->value->callable.binds);
+                    DBPRINT("macro body: ", variable->value->callable.body);
+                    //args = list(_env, _scope, _throwdst, args);
+                    //RETURN_ON_EXCEPTION(_throwdst, NIL());
                     VariableScope_new(_env, &local, _scope);
                     _bind(_env, &local, _throwdst, variable->value->callable.binds, args);
                     result = buildin_do(_env, &local, _throwdst, variable->value->callable.body);
                     RETURN_ON_EXCEPTION(_throwdst, NIL());
                     VariableScope_destroy(_env, &local);
+                    result = buildin_do(_env, _scope, _throwdst, result);
+                    RETURN_ON_EXCEPTION(_throwdst, NIL());
                     return result;
                 }
             }
@@ -1673,6 +1686,7 @@ buildin_divide(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
         return real(_env, 1);
     }
     /*Check for non value inputs*/
+    //DBPRINT("dividing: ", args);
     tmp = args;
     while (!is_nil(cdr(tmp))) {
         if (!is_val(car(tmp))) {
@@ -1923,10 +1937,32 @@ buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
 expr*
 buildin_set(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
+
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "set!");
-    return _in;
+    //THROW_NOTIMPLEMENTED(_throwdst, "set!");
+    Variable* v = NULL;
+    expr* args;
+    args = list(_env, _scope, _throwdst, _in);
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
+    if (len(args) != 2) {
+        THROW_INVALIDINPUT(_throwdst, "set", "expected variable symbol and value", args);
+        return NIL();
+    }
+
+    v = _find_variable(_scope, first(args));
+    if (v != NULL) {
+        v->value = second(args);
+        return v->value;
+    }
+    v = _find_variable(&_env->globals, _in);
+    if (v != NULL) {
+        v->value = second(args);
+        return v->value;
+    }
+    /*TODO: Invalid variable names are sometimes settable!*/
+    THROW_INVALIDINPUT(_throwdst, "set", "variable symbol did not exist!", first(args));
+    return NIL();
 }
 
 expr*
@@ -2000,8 +2036,7 @@ buildin_defmacro(Environment* _env, VariableScope* _scope, Exception* _throwdst,
     var.value->callable.binds = second(_in);
     var.value->callable.body = cdr(cdr(_in));
     Variables_push(&_env->globals.variables, var);
-
-    return _in;
+    return first(_in);
 }
 
 expr*
@@ -2075,6 +2110,105 @@ buildin_not(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
     THROW_NOTIMPLEMENTED(_throwdst, "not");
+    return _in;
+}
+
+expr*
+buildin_lessthan(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "<");
+    return _in;
+}
+
+expr*
+buildin_greaterthan(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, ">");
+    return _in;
+}
+
+expr*
+buildin_unless(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "unless");
+    return _in;
+}
+
+expr*
+buildin_letstar(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "let*");
+    return _in;
+}
+
+expr*
+buildin_nilp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "nil?");
+    return _in;
+}
+
+expr*
+buildin_realp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "real?");
+    return _in;
+}
+
+expr*
+buildin_decimalp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "decimal?");
+    return _in;
+}
+
+expr*
+buildin_varp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "var?");
+    return _in;
+}
+
+expr*
+buildin_constp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "const?");
+    return _in;
+}
+
+expr*
+buildin_consp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "cons?");
+    return _in;
+}
+
+expr*
+buildin_listp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    THROW_NOTIMPLEMENTED(_throwdst, "list?");
     return _in;
 }
 
@@ -2224,30 +2358,39 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "-", buildin_minus);
     Env_add_buildin(_env, "*", buildin_multiply);
     Env_add_buildin(_env, "/", buildin_divide);
-    Env_add_buildin(_env, "=", buildin_mathequal);
-    Env_add_buildin(_env, "eq", buildin_eq);
-    Env_add_buildin(_env, "equal", buildin_simequal);
 
     /*Variable management*/
     Env_add_buildin(_env, "const", buildin_defconst);
     Env_add_buildin(_env, "global", buildin_defglobal);
     Env_add_buildin(_env, "var", buildin_defvar);
-    //Env_add_buildin(_env, "let*", buildin_letstar);
+    Env_add_buildin(_env, "let*", buildin_letstar);
     Env_add_buildin(_env, "set", buildin_set);
     Env_add_buildin(_env, "print-env", buildin_print_env);
 
     /*Condition management*/
+    Env_add_buildin(_env, "<", buildin_lessthan);
+    Env_add_buildin(_env, ">", buildin_greaterthan);
+    Env_add_buildin(_env, "=", buildin_mathequal);
+    Env_add_buildin(_env, "eq", buildin_eq);
+    Env_add_buildin(_env, "equal", buildin_simequal);
     Env_add_buildin(_env, "cond", buildin_cond);
     Env_add_buildin(_env, "if", buildin_if);
-    Env_add_buildin(_env, "?", buildin_if);
+    Env_add_buildin(_env, "unless", buildin_unless);
     Env_add_buildin(_env, "not", buildin_not);
-    Env_add_buildin(_env, "!", buildin_not);
+
+    /*Type management*/
+    Env_add_buildin(_env, "nil?", buildin_nilp);
+    Env_add_buildin(_env, "real?", buildin_realp);
+    Env_add_buildin(_env, "decimal?", buildin_realp);
+    Env_add_buildin(_env, "cons?", buildin_realp);
+    Env_add_buildin(_env, "list?", buildin_realp);
+    Env_add_buildin(_env, "var?", buildin_varp);
+    Env_add_buildin(_env, "const?", buildin_constp);
 
     /*Function management*/
     Env_add_buildin(_env, "fn", buildin_deffn);
     Env_add_buildin(_env, "macro", buildin_defmacro);
     Env_add_buildin(_env, "lambda", buildin_deflambda);
-    Env_add_buildin(_env, "/.", buildin_deflambda);
 
     /*Useful Constants*/
     Env_add_constant(_env, "NIL", symbol(_env, "NIL"));

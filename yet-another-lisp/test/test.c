@@ -83,31 +83,26 @@ repl_test(Environment* _env, VariableScope* _scope, char* _p, char* _gt)
     expr* read_result;
     expr* eval_result;
     Exception msg = {0};
-    //expr* result = read_eval_print(_scope, &msg, _p);
 
     ASSERT_INV_SCOPE(_scope);
     read_result = read(_env, _scope, &msg, _p);
 
     if (Exception_is_error(&msg)) {
         printf("yal> ERROR: %s\n", msg.msg.c_str);
-        //return 0;
     }
     Exception_destroy(&msg);
 
     eval_result = eval_expr(_env, _scope, &msg, read_result);
     if (Exception_is_error(&msg)) {
         printf("yal> ERROR: %s\n", msg.msg.c_str);
-        //return 0;
    }
     Exception_destroy(&msg);
 
     read_str = stringify(read_result, "(", ")");
     eval_str = stringify(eval_result, "(", ")");
-
     printf("GT:   %s\n", _gt);
     printf("READ: %s\n", read_str.c_str);
     printf("EVAL: %s\n", eval_str.c_str);
-
     are_equal = tstr_equal(&eval_str, &gt_str);
     tstr_destroy(&read_str);
     tstr_destroy(&eval_str);
@@ -671,6 +666,26 @@ test_variables(void)
 }
 
 void
+test_set_variables(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(repl_test(&e, &e.globals, "(const max-health 10)", "max-health"));
+    TL_TEST(repl_test(&e, &e.globals, "(var health (+ 2 2))", "health"));
+    TL_TEST(repl_test(&e, &e.globals, "(set 'health (- health 1))", "3"));
+    TL_TEST(repl_test(&e, &e.globals, "health", "3"));
+    TL_TEST(repl_test(&e, &e.globals, "(set 'health max-health)", "10"));
+    TL_TEST(repl_test(&e, &e.globals, "(set 'health (- health 1))", "9"));
+    /*TODO: This one has an error, it is sometimes settable!*/
+    TL_TEST(repl_test(&e, &e.globals, "(set 'invalid-name 7)", "NIL"));
+    TL_TEST(repl_test(&e, &e.globals, "(set 'health)", "NIL"));
+
+    Env_destroy(&e);
+}
+
+void
 test_buildin_do(void)
 {
     Environment e;
@@ -751,6 +766,7 @@ test_lambda(void)
 
     Env_destroy(&e);
 }
+
 void
 test_fn(void)
 {
@@ -786,6 +802,16 @@ test_fn(void)
                        "(move 5 10 3)",
                        "53"));
 
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(fn with-docstring (a b) "
+                      "\"This is my optional string for my function!\""
+                      "(+ a b))",
+                       "with-docstring"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(with-docstring 5 10)",
+                       "15"));
+
     /*
     TL_TEST(repl_test(&e, &e.globals,
                       "(cusum (l h) "
@@ -798,6 +824,56 @@ test_fn(void)
                        "55"));
 
      */
+    Env_destroy(&e);
+}
+
+void
+test_macros(void)
+{
+    Environment e;
+    Env_new(&e);
+    Env_add_core(&e);
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(macro setto10 (var) (set var 10))",
+                       "setto10"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(var myvar 2)",
+                       "myvar"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "myvar",
+                       "2"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(setto10 myvar)",
+                       "10"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "myvar",
+                       "10"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(macro setq (var val) (set 'var val))",
+                      "setq"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(setq myvar 5)",
+                       "5"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "myvar",
+                       "5"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(macro inc! (var) ['set 'var [('+ 1 var)]])",
+                      "inc!"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(inc! myvar)",
+                       "6"));
+
     Env_destroy(&e);
 }
 
@@ -924,9 +1000,6 @@ test_functions_and_recursion(void)
     TL_TEST(repl_test(&e, &e.globals,
                        "(list-len '(1 ((((3))))))",
                        "2"));
-    Env_destroy(&e);
-    Env_new(&e);
-    Env_add_core(&e);
 
     TL_TEST(repl_test(&e, &e.globals,
                       "(fn isin (v l)"
@@ -945,6 +1018,25 @@ test_functions_and_recursion(void)
                        "(isin 5 '(1 2 3 4))",
                        "nil"));
     */
+    /*https://www.omnicalculator.com/math/binomial-coefficient*/
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(fn bin-coeff (n k)"
+                      "(/ (factorial n) (factorial (- n k)) (factorial k)"
+                      ")",
+                      "bin-coeff"));
+
+     TL_TEST(repl_test(&e, &e.globals,
+                       "(bin-coeff 5 2)",
+                       "10"));
+
+     TL_TEST(repl_test(&e, &e.globals,
+                       "(bin-coeff 5 4)",
+                       "5"));
+     /*
+     TL_TEST(repl_test(&e, &e.globals,
+                       "(bin-coeff 22 13)",
+                       "497.4200000"));
+      */
 
     Env_destroy(&e);
 }
@@ -969,11 +1061,13 @@ int main(int argc, char **argv) {
 	TL(test_global());
 	TL(test_errors());
 	TL(test_buildin_do());
+	TL(test_set_variables());
 	TL(test_lambda());
 	TL(test_fn());
 	TL(test_conditionals());
 	TL(test_buildin_equality());
     TL(test_functions_and_recursion());
+	TL(test_macros());
 
     tl_summary();
 
