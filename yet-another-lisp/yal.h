@@ -55,24 +55,26 @@ http://www.ulisp.com/show?1BLW
 /*Major todos*/
 /*TODO: proper memory management & garbage collection (with info stats)*/
 /*TODO: READ EVAL PRINT functionality so we can go full-circle and load files*/
-/*TODO: Conditionals*/
+/*TODO: Conditionals: and or not*/
+/*TODO: scopes with let* */
 /*TODO: Fix the repl*/
 /*TODO: Tail call optimization*/
+/*TODO: do iterator function*/
+/*TODO: Fix macros!*/
 
 /*Minor todos*/
 /*TODO: Time library*/
+/*TODO: make it possible to return from progn by throwing a normal_return flag?*/
 /*TODO: string library functions*/
 /*TODO: create try, catch and throw functions*/
 /*TODO: Fix binding by adding support for &rest and keyword binds aswell*/
-/*TODO: Make sure all types have type? checkers*/
 /*TODO: Make sure the correct errors are returned*/
-/*TODO: set! function that throws an error if set is used on constant*/
 /*TODO: Errors when creating functions, macros and variables/consts that already exists*/
 /*TODO: Maybe a fn-exists? const-exists? etc. functions that takes a sym and sees if it exists?*/
 /*TODO: print ' and [] instead of quote and array*/
-/*TODO: terminal repl binary*/
-/*TODO: put! and pop! functions*/
-/*TODO: reverse and reverse! functions*/
+/*TODO: terminal repl program*/
+/*TODO: put! and pop! functions for variables that acts as stacks*/
+/*TODO: reverse function*/
 /*TODO: Replace raw v->car = val access with setcar(v, val) access for safety*/
 
 #ifndef YAL_H
@@ -330,10 +332,9 @@ expr* buildin_defconst(Environment* _env, VariableScope* _scope, Exception* _thr
 expr* buildin_defglobal(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_defvar(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_set(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
-expr* buildin_pop(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_put(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_reverse(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
-expr* buildin_do(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
+expr* buildin_progn(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 expr* buildin_apply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in);
 
 
@@ -1193,7 +1194,7 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
             RETURN_ON_EXCEPTION(_throwdst, NIL());
             VariableScope_new(_env, &local, _scope);
             _bind(_env, &local, _throwdst, fn->callable.binds, args);
-            result = buildin_do(_env, &local, _throwdst, fn->callable.body);
+            result = buildin_progn(_env, &local, _throwdst, fn->callable.body);
             RETURN_ON_EXCEPTION(_throwdst, NIL());
             VariableScope_destroy(_env, &local);
             return result;
@@ -1215,7 +1216,7 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
                     RETURN_ON_EXCEPTION(_throwdst, NIL());
                     VariableScope_new(_env, &local, _scope);
                     _bind(_env, &local, _throwdst, variable->value->callable.binds, args);
-                    result = buildin_do(_env, &local, _throwdst, variable->value->callable.body);
+                    result = buildin_progn(_env, &local, _throwdst, variable->value->callable.body);
                     RETURN_ON_EXCEPTION(_throwdst, NIL());
                     VariableScope_destroy(_env, &local);
                     return result;
@@ -1229,10 +1230,10 @@ eval_expr(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* 
                     //RETURN_ON_EXCEPTION(_throwdst, NIL());
                     VariableScope_new(_env, &local, _scope);
                     _bind(_env, &local, _throwdst, variable->value->callable.binds, args);
-                    result = buildin_do(_env, &local, _throwdst, variable->value->callable.body);
+                    result = buildin_progn(_env, &local, _throwdst, variable->value->callable.body);
                     RETURN_ON_EXCEPTION(_throwdst, NIL());
                     VariableScope_destroy(_env, &local);
-                    result = buildin_do(_env, _scope, _throwdst, result);
+                    result = buildin_progn(_env, _scope, _throwdst, result);
                     RETURN_ON_EXCEPTION(_throwdst, NIL());
                     return result;
                 }
@@ -1842,7 +1843,7 @@ buildin_eq(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr*
 }
 
 expr*
-buildin_do(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+buildin_progn(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
@@ -1985,16 +1986,6 @@ buildin_put(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
 }
 
 expr*
-buildin_pop(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
-{
-    /*Takes the symbol to a variable that has a list and then modifies after pop!*/
-    ASSERT_INV_ENV(_env);
-    ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "pop!");
-    return _in;
-}
-
-expr*
 buildin_reverse(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     ASSERT_INV_ENV(_env);
@@ -2006,10 +1997,20 @@ buildin_reverse(Environment* _env, VariableScope* _scope, Exception* _throwdst, 
 expr*
 buildin_apply(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
+    expr* fn;
+    expr* args;
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "apply");
-    return _in;
+    if (len(_in) != 2) {
+        THROW_INVALIDINPUT(_throwdst, "apply", "expected function and args", _in);
+        return NIL();
+    }
+    args = list(_env, _scope, _throwdst, _in);
+    RETURN_ON_EXCEPTION(_throwdst, NIL());
+    fn = first(args);
+    args = second(args);
+    args = put(_env, fn, args);
+    return eval_expr(_env, _scope, _throwdst, args);
 }
 
 expr*
@@ -2154,8 +2155,30 @@ buildin_nilp(Environment* _env, VariableScope* _scope, Exception* _throwdst, exp
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "nil?");
-    return _in;
+    UNUSED(_throwdst);
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "nil?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (is_nil(first(_in)))
+        return symbol(_env, "t");
+    return NIL();
+}
+
+expr*
+buildin_valuep(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "value?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type == TYPE_REAL || first(_in)->type == TYPE_DECIMAL)
+        return symbol(_env, "t");
+    return NIL();
+
 }
 
 expr*
@@ -2163,8 +2186,14 @@ buildin_realp(Environment* _env, VariableScope* _scope, Exception* _throwdst, ex
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "real?");
-    return _in;
+    UNUSED(_throwdst);
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "real?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type == TYPE_REAL)
+        return symbol(_env, "t");
+    return NIL();
 }
 
 expr*
@@ -2172,35 +2201,14 @@ buildin_decimalp(Environment* _env, VariableScope* _scope, Exception* _throwdst,
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "decimal?");
-    return _in;
-}
-
-expr*
-buildin_varp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
-{
-    ASSERT_INV_ENV(_env);
-    ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "var?");
-    return _in;
-}
-
-expr*
-buildin_constp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
-{
-    ASSERT_INV_ENV(_env);
-    ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "const?");
-    return _in;
-}
-
-expr*
-buildin_consp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
-{
-    ASSERT_INV_ENV(_env);
-    ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "cons?");
-    return _in;
+    UNUSED(_throwdst);
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "decimal?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type == TYPE_DECIMAL)
+        return symbol(_env, "t");
+    return NIL();
 }
 
 expr*
@@ -2208,8 +2216,82 @@ buildin_listp(Environment* _env, VariableScope* _scope, Exception* _throwdst, ex
 {
     ASSERT_INV_ENV(_env);
     ASSERT_INV_SCOPE(_scope);
-    THROW_NOTIMPLEMENTED(_throwdst, "list?");
-    return _in;
+    UNUSED(_throwdst);
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "list?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type == TYPE_CONS)
+        return symbol(_env, "t");
+    return NIL();
+}
+
+expr*
+buildin_symbolp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "symbol?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type == TYPE_SYMBOL)
+        return symbol(_env, "t");
+    return NIL();
+}
+
+expr*
+buildin_stringp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "string?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type == TYPE_STRING)
+        return symbol(_env, "t");
+    return NIL();
+}
+
+expr*
+buildin_varp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    Variable* v = NULL;
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "var?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type != TYPE_SYMBOL)
+        return NIL();
+    v = _find_variable(_scope, first(_in));
+    if (v != NULL)
+        return symbol(_env, "t");
+    return NIL();
+
+}
+
+expr*
+buildin_constp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+    Variable* v = NULL;
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "const?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type != TYPE_SYMBOL)
+        return NIL();
+    v = _find_variable(&_env->constants, first(_in));
+    if (v != NULL)
+        return symbol(_env, "t");
+    return NIL();
 }
 
 expr*
@@ -2303,10 +2385,6 @@ void
 Env_add_global(Environment* _env, const char* _name, expr* value)
 {
     Env_add_variable(_env, &_env->globals, _name, value);
-    //Variable v = {0};
-    //v.symbol = tstr_((char*)_name);
-    //v.value = variable_duplicate(_env, value);
-    //Variables_push(&_env->globals.variables, v);
 }
 
 void
@@ -2321,12 +2399,11 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "cons", buildin_cons);
     Env_add_buildin(_env, "len", buildin_len);
     Env_add_buildin(_env, "put", buildin_put);
-    Env_add_buildin(_env, "pop!", buildin_pop);
     Env_add_buildin(_env, "reverse", buildin_reverse);
 
     /*Evaluation*/
     Env_add_buildin(_env, "apply", buildin_apply);
-    Env_add_buildin(_env, "do", buildin_do);
+    Env_add_buildin(_env, "progn", buildin_progn);
     Env_add_buildin(_env, "map", buildin_map);
 
     /*Garbage Collection*/
@@ -2380,10 +2457,12 @@ Env_add_core(Environment* _env)
 
     /*Type management*/
     Env_add_buildin(_env, "nil?", buildin_nilp);
+    Env_add_buildin(_env, "value?", buildin_valuep);
     Env_add_buildin(_env, "real?", buildin_realp);
-    Env_add_buildin(_env, "decimal?", buildin_realp);
-    Env_add_buildin(_env, "cons?", buildin_realp);
-    Env_add_buildin(_env, "list?", buildin_realp);
+    Env_add_buildin(_env, "decimal?", buildin_decimalp);
+    Env_add_buildin(_env, "symbol?", buildin_symbolp);
+    Env_add_buildin(_env, "string?", buildin_stringp);
+    Env_add_buildin(_env, "list?", buildin_listp);
     Env_add_buildin(_env, "var?", buildin_varp);
     Env_add_buildin(_env, "const?", buildin_constp);
 
