@@ -1,45 +1,49 @@
+#include <stdlib.h>
+
 #include <readline/readline.h>
 #include <readline/history.h>
-#include <stdlib.h>
 
 #define YAL_IMPLEMENTATION
 #include "../yal.h"
 
-int main(int argc, char **argv) {
+int
+main(int argc, char **argv) {
 	(void)argc;
 	(void)argv;
-    char* input;
-    Environment e;
-    Exception msg = {0};
+    Environment e = {0};
+    Exception exception = {0};
     expr* read_result;
     expr* eval_result;
+    char* input = NULL;
 
     Env_new(&e);
     Env_add_core(&e);
-    ASSERT_INV_ENV(&e);
     while (1) {
         input = readline("yal> ");
-        read_result = read(&e, &e.globals, &msg, input);
-        if (Exception_is_error(&msg)) {
-            printf("yal> ERROR: %s\n", msg.msg.c_str);
+        if (input == NULL)
+            break;
+        printf("you wrote: %s\n", input);
+        read_result = read(&e, &e.globals, &exception, input);
+        if (Exception_is_error(&exception)) {
+        printf("yal> ERROR: %s\n", exception.msg.c_str);
         }
-        Exception_destroy(&msg);
-
-        eval_result = eval_expr(&e, &e.globals, &msg, read_result);
-        if (Exception_is_error(&msg)) {
-            printf("yal> ERROR: %s\n", msg.msg.c_str);
+        Exception_destroy(&exception);
+        
+        eval_result = eval_expr(&e, &e.globals, &exception, read_result);
+        if (Exception_is_error(&exception)) {
+        printf("yal> ERROR: %s\n", exception.msg.c_str);
         }
-        Exception_destroy(&msg);
-
+        Exception_destroy(&exception);
+        
         WITH_STRINGEXPR(res, eval_result,
-                        printf("EVAL: %s\n", res.c_str);
-            );
-
+        printf("EVAL: %s\n", res.c_str);
+        );
+        
         add_history(input);
         free(input);
     }
 
     Env_destroy(&e);
-    Exception_destroy(&msg);
+    Exception_destroy(&exception);
 	return 0;
 }

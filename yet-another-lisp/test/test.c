@@ -404,6 +404,14 @@ test_list_management(void)
                        "(NIL T NIL T)"));
 
 
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(var mylist '(2 3 4))",
+                       "mylist"));
+
+	/*This is what a put! for variables should do via macro!*/
+    TL_TEST(repl_test(&e, &e.globals,
+                       "(set 'mylist (put 1 mylist))",
+                       "(1 2 3 4)"));
 
     Env_destroy(&e);
 }
@@ -1099,6 +1107,32 @@ test_type_check(void)
     TL_TEST(repl_test(&e, &e.globals, "(var? (1 2 3))", "NIL"));
     TL_TEST(repl_test(&e, &e.globals, "(var? myvar)", "T"));
 
+    TL_TEST(repl_test(&e, &e.globals, "(var newvar 23)", "newvar"));
+    TL_TEST(repl_test(&e, &e.globals, "(var? newvar)", "T"));
+
+    TL_TEST(repl_test(&e, &e.globals, "(fn? +)", "T"));
+    TL_TEST(repl_test(&e, &e.globals, "(fn? PI)", "NIL"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(fn factorial (v)"
+                      "  (if (= v 0) "
+                      "    1"
+                      "    (* v (factorial (- v 1)))"
+                      "))",
+                      "factorial"));
+	
+    TL_TEST(repl_test(&e, &e.globals, "(fn? factorial)", "T"));
+
+    TL_TEST(repl_test(&e, &e.globals, "(macro? +)", "NIL"));
+    TL_TEST(repl_test(&e, &e.globals, "(macro? PI)", "NIL"));
+
+    TL_TEST(repl_test(&e, &e.globals,
+                      "(macro same (v)"
+                      "v)",
+                      "same"));
+	
+    TL_TEST(repl_test(&e, &e.globals, "(macro? same)", "T"));
+
     Env_destroy(&e);
 }
 
@@ -1115,7 +1149,6 @@ int main(int argc, char **argv) {
 	TL(test_buildin_accessors());
 	TL(test_buildin_range());
 	TL(test_buildin_apply());
-    TL(test_list_management());
 	TL(test_buildin_cons());
 	TL(test_buildin_math());
     TL(test_variable_duplicate());
@@ -1124,6 +1157,7 @@ int main(int argc, char **argv) {
 	TL(test_errors());
 	TL(test_buildin_progn());
 	TL(test_set_variables());
+    TL(test_list_management());
 	TL(test_lambda());
 	TL(test_fn());
 	TL(test_macros());

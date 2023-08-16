@@ -116,7 +116,7 @@ enum TYPE {
     TYPE_VECTOR,
     TYPE_DICTIONARY,
 
-    TYPE_COUNT
+	TYPE_COUNT
 };
 
 enum EXCEPTION {
@@ -413,8 +413,8 @@ Env_new(Environment* _env)
 {
     *_env = (Environment){0};
     /*TODO: 30 is a arbitrary number, change when you know size of buildins*/
-    exprStack_initn(&_env->in_use, 30);
-    Buildins_initn(&_env->buildins, 30);
+    //exprStack_initn(&_env->in_use, 30);
+    //Buildins_initn(&_env->buildins, 30);
     VariableScope_destroy(_env, &_env->globals);
     VariableScope_new(_env, &_env->globals, NULL);
     return _env;
@@ -633,12 +633,10 @@ _variable_new(Environment* _env)
     if (e == NULL)
         ASSERT_NOMOREMEMORY();
     *e = (expr) {0};
+    printf("exprstack ptr %p\n", &_env->in_use);
     exprStack_push(&_env->in_use, e);
     return e;
 }
-
-
-
 
 expr*
 variable_duplicate(Environment* _env, expr* _atom)
@@ -701,6 +699,8 @@ cons(Environment* _env, expr* _car, expr* _cdr)
 {
     ASSERT_INV_ENV(_env);
     expr* e = _variable_new(_env);
+    if (e == NULL)
+        return NIL();
     e->type = TYPE_CONS;
     e->car = _car;
     e->cdr = _cdr;
@@ -712,6 +712,8 @@ real(Environment* _env, int _v)
 {
     ASSERT_INV_ENV(_env);
     expr* e = _variable_new(_env);
+    if (e == NULL)
+        return NIL();
     e->type = TYPE_REAL;
     e->real = _v;
     return e;
@@ -722,6 +724,8 @@ decimal(Environment* _env, float _v)
 {
     ASSERT_INV_SCOPE(_env);
     expr* e = _variable_new(_env);
+    if (e == NULL)
+        return NIL();
     e->type = TYPE_DECIMAL;
     e->decimal = _v;
     return e;
@@ -747,6 +751,8 @@ string(Environment* _env, char* _v)
 {
     ASSERT_INV_ENV(_env);
     expr* e = _variable_new(_env);
+    if (e == NULL)
+        return NIL();
     e->type = TYPE_STRING;
     e->string = tstr_(_v);
     return e;
@@ -936,8 +942,8 @@ _tokenize(char* _source, int* _cursor)
 {
     assert(_source != NULL && "Invalid program given to tokenizer");
     assert(_cursor != NULL && "Invalid cursor given to tokenizer");
-    Tokens tokens;
-    tstr curr;
+    Tokens tokens = {0};
+    tstr curr = {0};
 
     Tokens_initn(&tokens, 10);
     *_cursor = 0;
@@ -1088,6 +1094,10 @@ read(Environment* _env, VariableScope* _scope, Exception* _throwdst, char* _prog
     ASSERT_INV_SCOPE(_scope);
     UNUSED(_throwdst);
     assert(_program_str != NULL && "Given program str is NULL");
+    if (_program_str == NULL) {
+        printf("ERROR: Given program str is nil!\n");
+        return NIL();
+    }
 
     int cursor = 0;
     Tokens tokens = _tokenize(_program_str, &cursor);
@@ -1950,13 +1960,12 @@ buildin_set(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr
         THROW_INVALIDINPUT(_throwdst, "set", "expected variable symbol and value", args);
         return NIL();
     }
-
     v = _find_variable(_scope, first(args));
     if (v != NULL) {
         v->value = second(args);
         return v->value;
     }
-    v = _find_variable(&_env->globals, _in);
+    v = _find_variable(&_env->globals, first(args));
     if (v != NULL) {
         v->value = second(args);
         return v->value;
@@ -2295,6 +2304,48 @@ buildin_constp(Environment* _env, VariableScope* _scope, Exception* _throwdst, e
 }
 
 expr*
+buildin_fnp(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+    Buildin* vb = NULL;
+    Variable* vv = NULL;
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "fn?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type != TYPE_SYMBOL)
+        return NIL();
+    vb = _find_buildin(_env, first(_in));
+    if (vb != NULL)
+        return symbol(_env, "t");
+    vv = _find_variable(&_env->globals, first(_in));
+    if (vv != NULL && vv->value->type == TYPE_FUNCTION)
+        return symbol(_env, "t");
+    return NIL();
+}
+
+expr*
+buildin_macrop(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
+{
+    ASSERT_INV_ENV(_env);
+    ASSERT_INV_SCOPE(_scope);
+    UNUSED(_throwdst);
+    Variable* vv = NULL;
+    if (len(_in) != 1) {
+        THROW_INVALIDINPUT(_throwdst, "macro?", "expected 1 arg", _in);
+        return NIL();
+    }
+    if (first(_in)->type != TYPE_SYMBOL)
+        return NIL();
+    vv = _find_variable(&_env->globals, first(_in));
+    if (vv != NULL && vv->value->type == TYPE_MACRO)
+        return symbol(_env, "t");
+    return NIL();
+}
+
+expr*
 buildin_gc_run(Environment* _env, VariableScope* _scope, Exception* _throwdst, expr* _in)
 {
     ASSERT_INV_ENV(_env);
@@ -2465,6 +2516,8 @@ Env_add_core(Environment* _env)
     Env_add_buildin(_env, "list?", buildin_listp);
     Env_add_buildin(_env, "var?", buildin_varp);
     Env_add_buildin(_env, "const?", buildin_constp);
+    Env_add_buildin(_env, "fn?", buildin_fnp);
+    Env_add_buildin(_env, "macro?", buildin_macrop);
 
     /*Function management*/
     Env_add_buildin(_env, "fn", buildin_deffn);

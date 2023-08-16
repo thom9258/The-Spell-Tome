@@ -1,0 +1,563 @@
+#pragma once
+
+#include <initializer_list>
+#include <algorithm>
+#include <string>
+#include <cstring>
+#include <vector>
+#include <sstream>
+#include <functional>
+#include <cassert>
+
+#ifndef YALCPP_H
+#define YALCPP_H
+
+
+namespace yal {
+
+#define ASSERT_UNREACHABLE(str) assert(str && "Unmanaged execution path observed!")  
+#define UNUSED(v) (void)v
+
+enum TYPE {
+    TYPE_INVALID = 0,
+    TYPE_CONS,
+    TYPE_REAL,
+    TYPE_DECIMAL,
+    TYPE_SYMBOL,
+    TYPE_STRING,
+
+    TYPE_BUILDIN,
+    TYPE_FUNCTION,
+    TYPE_LAMBDA,
+    TYPE_MACRO,
+
+	TYPE_COUNT
+};
+
+/*Forward Declarations*/
+struct Expr;
+class VariableScope;
+class Environment;
+typedef Expr*(*buildin_fn)(VariableScope*, Expr*);
+
+struct Expr {
+    enum TYPE type;
+    union {
+        int real;
+        float decimal;
+        char* string;
+        char* symbol;
+        buildin_fn buildin;
+        struct {
+            Expr* binds;
+            Expr* body;
+        }callable;
+
+        struct {
+            Expr* car;
+            Expr* cdr;
+        }cons;
+    };
+};
+
+
+bool is_nil(Expr* _e);
+bool is_cons(Expr* _e);
+bool is_dotted(Expr* _e);
+
+int len(Expr* _e);
+Expr* car(Expr* _e);
+Expr* cdr(Expr* _e);
+Expr* first(Expr* _e); 
+Expr* second(Expr* _e);
+Expr* third(Expr* _e);
+Expr* fourth(Expr* _e);
+Expr* nth(int _n, Expr* _e);
+
+Expr* put(Environment* _env, Expr* _val, Expr* _list);
+Expr* assoc(Expr* _key, Expr* _list);
+Expr* ipreverse(Environment* _env, Expr* _list);
+
+char* to_cstr(std::string _s);
+Expr* nil(void);
+/*TODO: Make this one private somehow..*/
+std::stringstream _stream_value(Expr* _e);
+std::stringstream stream(Expr* _e);
+std::string stringify(Expr* _e);
+
+class GarbageCollector {
+    std::vector<Expr*> m_in_use;
+public:
+    Expr *new_variable(void);
+    void destroy_variable(Expr* _e);
+    ~GarbageCollector(void);
+};
+
+class VariableScope {
+public:
+    Environment* m_env;
+    VariableScope* m_outer;
+    Expr* m_variables;
+};
+
+class Environment {
+public:
+    Expr* globals(void);
+    Expr* constants(void);
+
+    Expr* read(const char* _str);
+    Expr* eval(Expr* _e);
+
+    bool add_global(const char* _name, Expr* _v);
+	bool add_constant(const char* _name, Expr* _v);
+	bool add_buildin(const char* _name, buildin_fn _fn);
+
+    bool load_core(void);
+
+	Expr *cons(Expr *_car, Expr *_cdr);
+    Expr *real(int _v);
+    Expr *decimal(float _v);
+    Expr *symbol(std::string _v);
+    Expr *symbol(const char* _v);
+    Expr *string(std::string _v);
+    Expr *string(const char* _v);
+    Expr *buildin(buildin_fn _v);
+    Expr *list(std::initializer_list<Expr *> _lst);
+
+private:
+    GarbageCollector m_gc;
+    VariableScope m_global_scope;
+    Expr* m_constants = nullptr; /*constant values and buildins*/
+
+    bool add_variable(VariableScope* _scope, const char* _name, Expr* _v);
+};
+
+#ifdef YALCPP_IMPLEMENTATION
+
+Expr *
+GarbageCollector::new_variable()
+{
+    //Expr* out = (Expr*)malloc(sizeof(Expr));
+    Expr* out = new Expr;
+    m_in_use.push_back(out);
+    return out;
+}
+
+void
+GarbageCollector::destroy_variable(Expr* _e)
+{
+    if (_e == nullptr)
+        return;
+    switch(_e->type) {
+    case TYPE_STRING:
+        delete[] _e->string;
+        break;
+    case TYPE_SYMBOL:
+        delete[] _e->symbol;
+        break;
+    default:
+        break;
+    };
+    delete _e;
+}
+
+GarbageCollector::~GarbageCollector(void)
+{
+    for (auto v : m_in_use) 
+        destroy_variable(v);
+}
+
+
+Expr*
+Environment::globals(void)
+{
+    return m_global_scope.m_variables; 
+}
+
+Expr*
+Environment::constants(void)
+{
+    return m_constants; 
+}
+
+Expr *
+Environment::read(const char* _str)
+{
+    UNUSED(_str);
+    return nil();
+}
+
+Expr*
+Environment::eval(Expr* _e)
+{
+    if (is_nil(_e))
+        return nil();
+    switch (_e->type) {
+    case TYPE_CONS:
+            return nil();
+    case TYPE_SYMBOL:
+            return nil();
+
+    case TYPE_REAL:
+        /*Fallthrough*/
+    case TYPE_DECIMAL:
+        /*Fallthrough*/
+    case TYPE_STRING:
+        return _e;
+    default:
+        ASSERT_UNREACHABLE("unknown type");
+    };
+    ASSERT_UNREACHABLE("unreachable");
+    return nil();
+
+}
+
+bool
+Environment::add_variable(VariableScope* _scope, const char* _name, Expr* _v)
+{
+    Expr* entry = cons(symbol(_name), _v);
+    _scope->m_variables = put(this, entry, _scope->m_variables);
+    return true;
+}
+
+bool
+Environment::add_global(const char* _name, Expr* _v)
+{
+    return add_variable(&m_global_scope, _name, _v);
+}
+
+bool
+Environment::add_constant(const char* _name, Expr* _v)
+{
+    Expr* entry = cons(symbol(_name), _v);
+    m_constants = put(this, entry, m_constants);
+    return true;
+}
+
+bool
+Environment::add_buildin(const char* _name, buildin_fn _fn)
+{
+    Expr* entry = cons(symbol(_name), buildin(_fn));
+    m_constants = put(this, entry, m_constants);
+    return true;
+}
+
+bool
+Environment::load_core(void)
+{
+    const float pi = 3.141592; 
+
+    add_constant("*Creator*", string("Thomas Alexgaard"));
+    add_constant("*Creator-github*", string("https://github.com/thom9258/"));
+    add_constant("*Host-Languange*", string("C++"));
+    add_constant("*Version*", list({real(0), real(1)}));
+    add_constant("PI", decimal(pi));
+    add_constant("PI/2", decimal(pi/2));
+    add_constant("PI2", decimal(pi*2));
+    return true;
+}
+
+Expr *
+Environment::cons(Expr *_car, Expr *_cdr) {
+	Expr *out = m_gc.new_variable();
+	if (out == nullptr)
+		return nil();
+	out->type = TYPE_CONS;
+	out->cons.car = _car;
+	out->cons.cdr = _cdr;
+	return out;
+}
+
+Expr *
+Environment::real(int _v) {
+     Expr *out = m_gc.new_variable();
+     if (out == nullptr)
+       return nil();
+     out->type = TYPE_REAL;
+     out->real = _v;
+     return out;
+   }
+
+Expr*
+Environment::decimal(float _v) {
+     Expr *out = m_gc.new_variable();
+     if (out == nullptr)
+       return nil();
+     out->type = TYPE_DECIMAL;
+     out->decimal = _v;
+     return out;
+   }
+
+Expr*
+Environment::symbol(std::string _v) {
+     Expr *out = m_gc.new_variable();
+     if (out == nullptr)
+       return nil();
+     out->type = TYPE_SYMBOL;
+     out->symbol = to_cstr(_v);
+     return out;
+}
+
+Expr*
+Environment::symbol(const char* _v) {
+    return symbol(std::string(_v));
+}
+
+Expr *
+Environment::string(std::string _v) {
+  Expr *out = m_gc.new_variable();
+  if (out == nullptr)
+    return nil();
+  out->type = TYPE_STRING;
+  out->string = to_cstr(_v);
+  return out;
+}
+
+Expr *
+Environment::string(const char* _v) {
+    return string(std::string(_v));
+}
+
+Expr *Environment::buildin(buildin_fn _v) {
+  Expr *out = m_gc.new_variable();
+  if (out == nullptr)
+    return nil();
+  out->type = TYPE_BUILDIN;
+  out->buildin = _v;
+  return out;
+}
+
+Expr *Environment::list(std::initializer_list<Expr*> _lst) {
+    Expr* lst = nil();
+    /*Iterating in reverse order*/
+    for (auto it = std::rbegin(_lst); it != std::rend(_lst); ++it)
+        lst = put(this, *it, lst);
+    return lst;
+}
+
+char*
+to_cstr(std::string _s) 
+{
+    char* out = new char[_s.size()+1];
+    out[_s.size()] = '\0';
+    std::memcpy(out, _s.c_str(), _s.size());
+    return out;
+}
+
+Expr*
+nil(void)
+{
+    return nullptr;
+}
+
+bool
+is_nil(Expr* _e)
+{
+    const std::string nil1 = "nil";
+    const std::string nil2 = "NIL";
+    if (_e == nullptr)
+        return true;
+    if (_e->type == TYPE_CONS && _e->cons.car == nullptr && _e->cons.cdr == nullptr)
+        return true;
+    if (_e->type == TYPE_SYMBOL && nil1 == _e->symbol)
+        return true;
+    if (_e->type == TYPE_SYMBOL && nil2 == _e->symbol)
+        return true;
+    return false;
+}
+
+bool
+is_cons(Expr* _e)
+{
+    if (!is_nil(_e) && _e->type == TYPE_CONS)
+        return true;
+    return false;
+}
+
+bool
+is_dotted(Expr* _e)
+{
+    if (!is_nil(_e) && _e->type == TYPE_CONS  &&
+        !is_nil(car(_e)) && !is_cons(car(_e)) &&
+        !is_nil(cdr(_e)) && !is_cons(cdr(_e)))
+        return true;
+    return false;
+}
+
+int
+len(Expr* _e)
+{
+    if (is_nil(_e)) return 0;
+    if (!is_cons(_e)) return 1;
+    int cnt = 0;
+    Expr* tmp = _e;
+    while (!is_nil(tmp)) {
+        //std::cout << "len tmp: " << stringify(car(tmp)) << std::endl;
+        cnt++;
+        tmp = cdr(tmp);
+    }
+    return cnt;
+}
+
+Expr*
+put(Environment* _env, Expr* _val, Expr* _list)
+{
+    return _env->cons(_val, _list);
+}
+
+Expr*
+assoc(Expr* _key, Expr* _list)
+{
+    Expr* tmp;
+    std::string key;
+    if (is_nil(_key) || is_nil(_list)) return nil();
+    if (!is_cons(_list)) return nil();
+
+    key = stringify(_key);
+    //std::cout << "assoc key: " << key << std::endl;
+    tmp = _list;
+    while (!is_nil(tmp)) {
+        //std::cout << "assoc testing: " << stringify(car(tmp)) << std::endl;
+        if (key == stringify(car(car(tmp))))
+            return car(tmp);
+        tmp = cdr(tmp);
+    }
+    return nil();
+}
+
+Expr*
+ipreverse(Environment* _env, Expr* _list)
+{
+    /*TODO: reverse list in place without creating new cons cells*/ 
+    UNUSED(_env);
+    return _list;
+}
+
+Expr*
+car(Expr* _e)
+{
+    if (is_nil(_e) || !is_cons(_e))
+        return nil();
+    return _e->cons.car;
+}
+
+Expr*
+cdr(Expr* _e)
+{
+    if (is_nil(_e) || !is_cons(_e))
+        return nil();
+    return _e->cons.cdr;
+}
+
+Expr* first(Expr* _e)
+{ return car(_e); }
+Expr* second(Expr* _e)
+{ return car(cdr(_e)); }
+Expr* third(Expr* _e)
+{ return car(cdr(cdr(_e))); }
+Expr* fourth(Expr* _e)
+{ return car(cdr(cdr(cdr(_e)))); }
+
+Expr*
+nth(int _n, Expr* _e)
+{
+    int i;
+    Expr* tmp = _e;
+    if (_n < 0)
+        return nil();
+    for (i = 0; i < _n; i++)
+        tmp = cdr(tmp);
+    return car(tmp);
+}
+
+std::stringstream
+_stream_value(Expr* _e)
+{
+    std::stringstream ss;
+    if (is_nil(_e)) {
+        ss << "NIL";
+        return ss;
+    }
+
+    switch (_e->type) {
+    case TYPE_CONS:
+        ss << "(" << stream(_e).str() << ")";
+        break;
+    case TYPE_LAMBDA:
+        ss << "#<lambda";
+        break;
+    case TYPE_MACRO:
+        ss << "#<macro";
+        break;
+    case TYPE_FUNCTION:
+        ss << "#<function";
+        break;
+    case TYPE_BUILDIN:
+        ss << "#<buildin";
+        break;
+    case TYPE_REAL:
+        ss << _e->real;
+        break;
+    case TYPE_DECIMAL:
+        ss << _e->decimal;
+        break;
+    case TYPE_SYMBOL:
+        ss << _e->symbol;
+        break;
+    case TYPE_STRING:
+        ss << "\"" << _e->string << "\"";
+        break;
+    default:
+        ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
+    };
+    return ss;
+}
+
+std::stringstream
+stream(Expr* _e)
+{
+    std::stringstream ss;
+    Expr* curr = _e;
+    if (is_nil(_e) || !is_cons(_e))
+        return _stream_value(_e);
+    if (is_dotted(_e)) {
+        ss << "(" << _stream_value(car(_e)).str() << " . "
+           << _stream_value(cdr(_e)).str() << ")";
+        return ss;
+    }
+    ss << "(";
+    ss << stream(car(curr)).str();
+    curr = cdr(curr);
+    while (!is_nil(curr)) {
+        if (is_nil(car(curr)) && is_nil(cdr(curr)))
+            break;
+        ss << " ";
+        ss << stream(car(curr)).str();
+        curr = cdr(curr);
+    }
+    ss << ")";
+    return ss;
+}
+
+std::string
+stringify(Expr* _e)
+{
+    std::stringstream ss = stream(_e);
+    if (ss.rdbuf()->in_avail() == 0)
+        return "";
+    return ss.str();
+}
+
+
+/* Reverse list without append
+(define (reverse l)
+    (define (aux orig result)
+        (if (null? orig) result
+                (aux (cdr orig) (cons (car orig) result))))
+    (aux l '()))
+*/
+
+#endif /*YALPP_IMPLEMENTATION*/
+#endif /*YALCPP_H*/
+
+}; /*namespace yal*/

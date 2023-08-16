@@ -227,16 +227,12 @@ tstr_fmt(const char* _fmt, ...)
     tstr out = {0};
     va_list va1;
     va_list va2;
-
-    va_copy(va2, va1);
     va_start(va1, _fmt);
+    va_start(va2, _fmt);
     out.maxlen = 1 + vsnprintf(NULL, 0, _fmt, va1);
     va_end(va1);   
     out.c_str = (TSTR_CHAR*)malloc(sizeof(TSTR_CHAR) * (out.maxlen));
-    va_start(va2, _fmt);
-    //vsnprintf(out.c_str, out.maxlen, _fmt, va2);
     vsprintf(out.c_str, _fmt, va2);
-    //printf("FMT: max(%d), str(%d) [%s]\n", out.maxlen, tstr_length(&out), out.c_str);
     va_end(va2);   
     return out;
 }
