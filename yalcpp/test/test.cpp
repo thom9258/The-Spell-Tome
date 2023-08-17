@@ -5,6 +5,17 @@
 
 #include "testlib.h"
 
+void
+test_sizes(void)
+{
+    const size_t exprsz = sizeof(yal::Expr);
+    const size_t conssz = sizeof(yal::Expr*) * 2;
+    const size_t enumtypesz = sizeof(yal::TYPE);
+    std::cout << "sizeof Expr = " << exprsz << std::endl; 
+    std::cout << "sizeof cons = " << conssz << std::endl; 
+    std::cout << "sizeof smallsz = " << yal::smallXsz << std::endl; 
+    std::cout << "sizeof type = " << enumtypesz << std::endl; 
+}
 
 void
 test_types_creation(void)
@@ -182,7 +193,21 @@ eval_test(yal::Environment* _e, yal::Expr* _prg, const char* _gt)
 }
 
 void
-test_eval(void)
+test_ipreverse(void)
+{
+    yal::Environment e;
+    yal::Expr* list;
+    yal::Expr* rev;
+
+    list = e.list({e.real(1), e.real(2), e.real(3), e.real(4)});
+    std::cout << "list:     " << yal::stringify(list) << std::endl;
+    rev = ipreverse(list);
+    std::cout << "reversed: " << yal::stringify(rev) << std::endl;
+    TL_TEST(yal::stringify(rev) == "(4 3 2 1)");
+}
+
+void
+test_simple_eval(void)
 {
     yal::Environment e;
     e.load_core();
@@ -213,10 +238,12 @@ main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
+    TL(test_sizes());
     TL(test_types_creation());
     TL(test_len());
     TL(test_assoc());
     TL(test_globals());
     TL(print_core());
-    TL(test_eval());
+    TL(test_ipreverse());
+    TL(test_simple_eval());
 }

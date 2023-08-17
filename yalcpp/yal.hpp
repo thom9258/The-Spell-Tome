@@ -26,6 +26,8 @@ enum TYPE {
     TYPE_DECIMAL,
     TYPE_SYMBOL,
     TYPE_STRING,
+    TYPE_SMALLSYMBOL,
+    TYPE_SMALLSTRING,
 
     TYPE_BUILDIN,
     TYPE_FUNCTION,
@@ -41,13 +43,19 @@ class VariableScope;
 class Environment;
 typedef Expr*(*buildin_fn)(Environment*, VariableScope*, Expr*);
 
+
+const size_t smallXsz = (sizeof(Expr*) * 2) / sizeof(char);
+
 struct Expr {
-    enum TYPE type;
     union {
         int real;
         float decimal;
         char* string;
         char* symbol;
+        /*small* allows us to store symbols and strings without
+          creating a heap allocation*/
+        char smallstring[smallXsz]; 
+        char smallsymbol[smallXsz];
         buildin_fn buildin;
         struct {
             Expr* binds;
@@ -59,10 +67,12 @@ struct Expr {
             Expr* cdr;
         }cons;
     };
+    char type;
 };
 
 
 bool is_nil(Expr* _e);
+bool is_val(Expr* _e);
 bool is_cons(Expr* _e);
 bool is_dotted(Expr* _e);
 
@@ -88,9 +98,44 @@ std::string stringify(Expr* _e);
 
 
 namespace buildin {
-Expr* plus(Environment* _env, VariableScope* _scope, Expr* _e);
+
+Expr* progn(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* apply(Environment* _env, VariableScope* _scope, Expr* _e);
+
 Expr* quote(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* list(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* len(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* put(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* reverse_ip(Environment* _env, VariableScope* _scope, Expr* _e);
+
+Expr* car(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* cdr(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* cons(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* nth(Environment* _env, VariableScope* _scope, Expr* _e);
+
+Expr* plus(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* minus(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* multiply(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* divide(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* lessthan(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* greaterthan(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* mathequal(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* simequal(Environment* _env, VariableScope* _scope, Expr* _e);
+
+Expr* defconst(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* defglobal(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* defvar(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* deflambda(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* deffunction(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* defmacro(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* setfield(Environment* _env, VariableScope* _scope, Expr* _e);
+
+Expr* _try(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* _throw(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* _if(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* _cond(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* _or(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* _and(Environment* _env, VariableScope* _scope, Expr* _e);
 };
 
 
@@ -312,9 +357,19 @@ Environment::load_core(void)
     add_constant("PI", decimal(pi));
     add_constant("PI/2", decimal(pi/2));
     add_constant("PI2", decimal(pi*2));
+
     add_buildin("quote", buildin::quote);
     add_buildin("list", buildin::list);
+    add_buildin("progn", buildin::progn);
+
     add_buildin("+", buildin::plus);
+    add_buildin("-", buildin::minus);
+    add_buildin("*", buildin::multiply);
+    add_buildin("/", buildin::divide);
+    add_buildin("=", buildin::mathequal);
+    add_buildin("<", buildin::lessthan);
+    add_buildin(">", buildin::greaterthan);
+    add_buildin("equal", buildin::simequal);
     return true;
 }
 
@@ -351,6 +406,7 @@ Environment::decimal(float _v) {
 
 Expr*
 Environment::symbol(std::string _v) {
+    /*Test size of inp and store smallstr if possible*/
      Expr *out = m_gc.new_variable();
      if (out == nullptr)
        return nil();
@@ -366,6 +422,7 @@ Environment::symbol(const char* _v) {
 
 Expr *
 Environment::string(std::string _v) {
+    /*Test size of inp and store smallstr if possible*/
   Expr *out = m_gc.new_variable();
   if (out == nullptr)
     return nil();
@@ -423,6 +480,16 @@ is_nil(Expr* _e)
     if (_e->type == TYPE_SYMBOL && nil1 == _e->symbol)
         return true;
     if (_e->type == TYPE_SYMBOL && nil2 == _e->symbol)
+        return true;
+    return false;
+}
+
+bool
+is_val(Expr* _e)
+{
+    if (_e == nullptr)
+        return false;
+    if (_e->type == TYPE_REAL || _e->type == TYPE_DECIMAL)
         return true;
     return false;
 }
@@ -489,21 +556,16 @@ assoc(Expr* _key, Expr* _list)
 Expr*
 ipreverse(Expr* _list)
 {
-    /*TODO: reverse list in place without creating new cons cells*/ 
     Expr* curr = _list;
-    Expr* reversed = curr;
-    Expr* tmp;
-    std::cout << "ipreverse inp: " << stringify(_list) << std::endl;
-
-    while (!is_nil(cdr(curr))) {
-        tmp = curr->cons.car;
-        curr->cons.car = curr->cons.cdr;
-        curr->cons.cdr = tmp;
-        curr = car(curr);
+    Expr* next = nullptr;
+    Expr* prev = nullptr;
+    while (!is_nil(curr)) {
+        next = cdr(curr);
+        curr->cons.cdr = prev;
+        prev = curr;
+        curr = next;
     }
-
-    std::cout << "ipreverse rev: " << stringify(reversed) << std::endl;
-    return reversed;
+    return prev;
 }
 
 Expr*
@@ -546,6 +608,7 @@ nth(int _n, Expr* _e)
 std::stringstream
 _stream_value(Expr* _e)
 {
+
     std::stringstream ss;
     if (is_nil(_e)) {
         ss << "NIL";
@@ -574,9 +637,13 @@ _stream_value(Expr* _e)
     case TYPE_DECIMAL:
         ss << _e->decimal;
         break;
+    case TYPE_SMALLSYMBOL:
+        /*TODO*/
     case TYPE_SYMBOL:
         ss << _e->symbol;
         break;
+    case TYPE_SMALLSTRING:
+        /*TODO*/
     case TYPE_STRING:
         ss << "\"" << _e->string << "\"";
         break;
@@ -625,29 +692,13 @@ stringify(Expr* _e)
 namespace buildin {
 
 Expr*
-plus(Environment* _env, VariableScope* _scope, Expr* _e)
-{
-    Expr* args = _env->evallist(_scope, _e);
-    Expr* res = _env->real(0);
-    Expr* curr = args;
-
-    auto PLUS2 = [_env] (Expr* a, Expr* b) {
-        return _env->real(a->real + b->real);
-    };
-
-    while (!is_nil(curr)) {
-        res = PLUS2(res, car(curr));
-        curr = cdr(curr);
-    }
-    return res;
-}
-
-Expr*
 quote(Environment* _env, VariableScope* _scope, Expr* _e)
 {
     UNUSED(_env);
     UNUSED(_scope);
     UNUSED(_e);
+    if (len(_e) != 1)
+        return nil();
     return car(_e);
 }
 
@@ -657,7 +708,297 @@ list(Environment* _env, VariableScope* _scope, Expr* _e)
     return _env->evallist(_scope, _e);
 }
 
-};
+Expr*
+cons(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    if (len(args) != 2)
+        return nil();
+    return _env->cons(first(args), second(args));
+}
+
+Expr*
+car(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    if (len(args) != 1)
+        return nil();
+    return car(args);
+}
+
+Expr*
+cdr(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    if (len(args) != 1)
+        return nil();
+    return cdr(args);
+}
+
+
+Expr*
+nth(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    if (len(args) != 2)
+        return nil();
+    if (first(args)->type != TYPE_REAL || second(args)->type != TYPE_CONS)
+        return nil();
+    return nth(first(args)->real, second(args));
+}
+
+Expr*
+len(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    return _env->real(len(args));
+}
+
+Expr*
+plus(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* res = _env->real(0);
+    Expr* curr = args;
+
+    auto PLUS2 = [_env] (Expr* _a, Expr* _b) {
+        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+            return _env->decimal(_a->decimal + _b->decimal);
+        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+            return _env->decimal(_a->real + _b->decimal);
+        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+            return  _env->decimal(_a->decimal + _b->real);
+        return _env->real(_a->real + _b->real);
+    };
+
+    while (!is_nil(curr)) {
+        if (!is_val(car(curr)))
+            break;
+        res = PLUS2(res, car(curr));
+        curr = cdr(curr);
+    }
+    return res;
+}
+
+Expr*
+minus(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* res = _env->real(0);
+    Expr* curr = args;
+
+    auto MINUS2 = [_env] (Expr* _a, Expr* _b) {
+        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+            return _env->decimal(_a->decimal - _b->decimal);
+        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+            return _env->decimal(_a->real - _b->decimal);
+        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+            return  _env->decimal(_a->decimal - _b->real);
+        return _env->real(_a->real - _b->real);
+    };
+
+    if (len(args) == 0) {
+        return _env->real(0);
+    }
+    while (!is_nil(curr)) {
+        if (!is_val(car(curr)))
+            break;
+        res = MINUS2(res, car(curr));
+        curr = cdr(curr);
+    }
+    return res;
+}
+
+Expr*
+multiply(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* res = _env->real(1);
+    Expr* curr = args;
+
+    auto MULT2 = [_env] (Expr* _a, Expr* _b) {
+        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+            return _env->decimal(_a->decimal * _b->decimal);
+        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+            return _env->decimal(_a->real * _b->decimal);
+        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+            return  _env->decimal(_a->decimal * _b->real);
+        return _env->real(_a->real * _b->real);
+    };
+
+    if (len(args) == 0)
+        return _env->real(1);
+    if (len(args) == 1)
+        return first(args);
+    while (!is_nil(curr)) {
+        if (!is_val(car(curr)))
+            break;
+        res = MULT2(res, car(curr));
+        curr = cdr(curr);
+    }
+    return res;
+}
+
+Expr*
+divide(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* res = _env->real(1);
+    Expr* curr = args;
+
+    auto DIV2 = [_env] (Expr* _a, Expr* _b) {
+        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+            return _env->decimal(_a->decimal / _b->decimal);
+        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+            return _env->decimal(_a->real / _b->decimal);
+        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+            return  _env->decimal(_a->decimal / _b->real);
+        return _env->real(_a->real / _b->real);
+    };
+
+    if (len(args) == 0)
+        return _env->real(1);
+    if (len(args) == 1)
+        return first(args);
+    while (!is_nil(curr)) {
+        if (!is_val(car(curr)))
+            break;
+        res = DIV2(res, car(curr));
+        curr = cdr(curr);
+    }
+    return res;
+}
+
+Expr*
+mathequal(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* curr = cdr(args);
+    Expr* prev = args;
+
+    auto EQ2 = [_env] (Expr* _a, Expr* _b) {
+        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+            return _a->decimal == _b->decimal;
+        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+            return _a->real == _b->decimal;
+        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+            return  _a->decimal == _b->real;
+        else if (_a->type == TYPE_REAL && _b->type == TYPE_REAL)
+            return _a->real == _b->real;
+        else if (_a->type == TYPE_SYMBOL && _b->type == TYPE_SYMBOL)
+            return _a->symbol ==_b->symbol;
+        else if (_a->type == TYPE_STRING && _b->type == TYPE_STRING)
+            return _a->string == _b->string;
+        return false;
+    };
+
+    if (len(args) < 2)
+        return _env->symbol("t");
+    while (!is_nil(curr)) {
+        if (!EQ2(car(prev), car(curr)))
+            return nil();
+        prev = curr;
+        curr = cdr(curr);
+    }
+    return _env->symbol("t");
+}
+
+Expr*
+lessthan(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* curr = cdr(args);
+    Expr* prev = args;
+
+    auto LT2 = [_env] (Expr* _a, Expr* _b) {
+        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+            return _a->decimal < _b->decimal;
+        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+            return _a->real < _b->decimal;
+        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+            return  _a->decimal < _b->real;
+        return _a->real < _b->real;
+    };
+
+    if (len(args) < 2)
+        return _env->symbol("t");
+    while (!is_nil(curr)) {
+        if (!LT2(car(prev), car(curr)))
+            return nil();
+        prev = curr;
+        curr = cdr(curr);
+    }
+    return _env->symbol("t");
+}
+
+Expr*
+greaterthan(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* curr = cdr(args);
+    Expr* prev = args;
+
+    auto GT2 = [_env] (Expr* _a, Expr* _b) {
+        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
+            return _a->decimal > _b->decimal;
+        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
+            return _a->real > _b->decimal;
+        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
+            return  _a->decimal > _b->real;
+        return _a->real > _b->real;
+    };
+
+    if (len(args) < 2)
+        return _env->symbol("t");
+    while (!is_nil(curr)) {
+        if (!GT2(car(prev), car(curr)))
+            return nil();
+        prev = curr;
+        curr = cdr(curr);
+    }
+    return _env->symbol("t");
+}
+
+Expr*
+simequal(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* curr = cdr(args);
+    Expr* prev = args;
+
+    auto EQ2 = [_env] (Expr* _a, Expr* _b) {
+        return stringify(_a) == stringify(_b);
+    };
+
+    if (len(args) < 2) {
+        return _env->symbol("t");
+    }
+    while (!is_nil(curr)) {
+        if (!EQ2(car(prev), car(curr)))
+            return nil();
+        prev = curr;
+        curr = cdr(curr);
+    }
+    return _env->symbol("t");
+}
+
+Expr*
+apply(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* call;
+    Expr* args = _env->evallist(_scope, _e);
+    if (len(args) != 2)
+        return nil();
+    call = put(_env, first(args), second(args));
+    return _env->eval(_scope, call);
+}
+
+
+
+
+}; /*namespace buildin*/
+
+
 
 /* Reverse list without append
 (define (reverse l)
