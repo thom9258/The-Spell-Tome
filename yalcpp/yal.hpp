@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <initializer_list>
 #include <algorithm>
 #include <string>
@@ -38,7 +39,7 @@ enum TYPE {
 struct Expr;
 class VariableScope;
 class Environment;
-typedef Expr*(*buildin_fn)(VariableScope*, Expr*);
+typedef Expr*(*buildin_fn)(Environment*, VariableScope*, Expr*);
 
 struct Expr {
     enum TYPE type;
@@ -76,7 +77,7 @@ Expr* nth(int _n, Expr* _e);
 
 Expr* put(Environment* _env, Expr* _val, Expr* _list);
 Expr* assoc(Expr* _key, Expr* _list);
-Expr* ipreverse(Environment* _env, Expr* _list);
+Expr* ipreverse(Expr* _list);
 
 char* to_cstr(std::string _s);
 Expr* nil(void);
@@ -85,8 +86,17 @@ std::stringstream _stream_value(Expr* _e);
 std::stringstream stream(Expr* _e);
 std::string stringify(Expr* _e);
 
+
+namespace buildin {
+Expr* plus(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* quote(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* list(Environment* _env, VariableScope* _scope, Expr* _e);
+};
+
+
+
 class GarbageCollector {
-    std::vector<Expr*> m_in_use;
+    std::vector<Expr*> m_in_use = {};
 public:
     Expr *new_variable(void);
     void destroy_variable(Expr* _e);
@@ -95,9 +105,8 @@ public:
 
 class VariableScope {
 public:
-    Environment* m_env;
-    VariableScope* m_outer;
-    Expr* m_variables;
+    VariableScope* m_outer = nullptr;
+    Expr* m_variables = nullptr;
 };
 
 class Environment {
@@ -107,6 +116,8 @@ public:
 
     Expr* read(const char* _str);
     Expr* eval(Expr* _e);
+    Expr* eval(VariableScope* _scope, Expr* _e);
+    Expr* evallist(VariableScope* _scope, Expr* _list);
 
     bool add_global(const char* _name, Expr* _v);
 	bool add_constant(const char* _name, Expr* _v);
@@ -128,10 +139,10 @@ private:
     GarbageCollector m_gc;
     VariableScope m_global_scope;
     Expr* m_constants = nullptr; /*constant values and buildins*/
-
     bool add_variable(VariableScope* _scope, const char* _name, Expr* _v);
 };
 
+#define YALCPP_IMPLEMENTATION
 #ifdef YALCPP_IMPLEMENTATION
 
 Expr *
@@ -187,29 +198,76 @@ Environment::read(const char* _str)
     return nil();
 }
 
+
 Expr*
 Environment::eval(Expr* _e)
 {
-    if (is_nil(_e))
-        return nil();
-    switch (_e->type) {
-    case TYPE_CONS:
-            return nil();
-    case TYPE_SYMBOL:
-            return nil();
+    return eval(&m_global_scope, _e);
+}
 
+Expr*
+Environment::eval(VariableScope* _scope, Expr* _e)
+{
+    Expr* var = nullptr;
+    Expr* fn = nullptr;
+    Expr* callable = nullptr;
+    Expr* args = nullptr;
+    VariableScope* sc = _scope;
+    if (is_nil(_e)) return nil();
+
+    switch (_e->type) {
     case TYPE_REAL:
         /*Fallthrough*/
     case TYPE_DECIMAL:
         /*Fallthrough*/
     case TYPE_STRING:
         return _e;
+
+    case TYPE_CONS:
+        fn = car(_e);
+        args = cdr(_e);
+        //std::cout << "fn: " << stringify(fn) << " args: " << stringify(args) << std::endl;
+        callable = cdr(assoc(fn, m_constants));
+        if (!is_nil(callable)) {
+            //std::cout << "found fn: " << stringify(callable) << std::endl;
+            if (callable->type == TYPE_BUILDIN)
+                return callable->buildin(this, _scope, args);
+        }
+        return nil();
+
+    case TYPE_SYMBOL:
+        var = assoc(_e, m_constants);
+        if (!is_nil(var))
+            return cdr(var);
+        while (sc != nullptr) {
+            var = assoc(_e, _scope->m_variables);
+            if (!is_nil(var))
+                return cdr(var);
+            sc = sc->m_outer;
+        }
+        return nil();
+
     default:
         ASSERT_UNREACHABLE("unknown type");
     };
     ASSERT_UNREACHABLE("unreachable");
     return nil();
 
+}
+
+Expr*
+Environment::evallist(VariableScope* _scope, Expr* _list)
+{
+    Expr* root = nullptr;
+    Expr* curr = _list;
+    if (!is_cons(_list)) {
+        return nil();
+    }
+    while (!is_nil(curr)) {
+        root = put(this, eval(_scope, car(curr)), root);
+        curr = cdr(curr);
+    }
+    return ipreverse(root);
 }
 
 bool
@@ -254,6 +312,9 @@ Environment::load_core(void)
     add_constant("PI", decimal(pi));
     add_constant("PI/2", decimal(pi/2));
     add_constant("PI2", decimal(pi*2));
+    add_buildin("quote", buildin::quote);
+    add_buildin("list", buildin::list);
+    add_buildin("+", buildin::plus);
     return true;
 }
 
@@ -426,11 +487,23 @@ assoc(Expr* _key, Expr* _list)
 }
 
 Expr*
-ipreverse(Environment* _env, Expr* _list)
+ipreverse(Expr* _list)
 {
     /*TODO: reverse list in place without creating new cons cells*/ 
-    UNUSED(_env);
-    return _list;
+    Expr* curr = _list;
+    Expr* reversed = curr;
+    Expr* tmp;
+    std::cout << "ipreverse inp: " << stringify(_list) << std::endl;
+
+    while (!is_nil(cdr(curr))) {
+        tmp = curr->cons.car;
+        curr->cons.car = curr->cons.cdr;
+        curr->cons.cdr = tmp;
+        curr = car(curr);
+    }
+
+    std::cout << "ipreverse rev: " << stringify(reversed) << std::endl;
+    return reversed;
 }
 
 Expr*
@@ -548,6 +621,43 @@ stringify(Expr* _e)
     return ss.str();
 }
 
+
+namespace buildin {
+
+Expr*
+plus(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* res = _env->real(0);
+    Expr* curr = args;
+
+    auto PLUS2 = [_env] (Expr* a, Expr* b) {
+        return _env->real(a->real + b->real);
+    };
+
+    while (!is_nil(curr)) {
+        res = PLUS2(res, car(curr));
+        curr = cdr(curr);
+    }
+    return res;
+}
+
+Expr*
+quote(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    UNUSED(_env);
+    UNUSED(_scope);
+    UNUSED(_e);
+    return car(_e);
+}
+
+Expr*
+list(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    return _env->evallist(_scope, _e);
+}
+
+};
 
 /* Reverse list without append
 (define (reverse l)

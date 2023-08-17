@@ -165,6 +165,46 @@ print_core(void)
     yal::Environment e;
     e.load_core();
     std::cout << yal::stringify(e.constants()) << std::endl;
+
+    yal::Expr* sym = yal::cdr(yal::assoc(e.symbol("*Host-Languange*"), e.constants()));
+    std::cout << "symbol-value: " << yal::stringify(sym) << std::endl;
+    TL_TEST(yal::stringify(sym) == "\"C++\"");
+}
+
+bool
+eval_test(yal::Environment* _e, yal::Expr* _prg, const char* _gt)    
+{
+    yal::Expr* res;
+    std::cout << "program: " << yal::stringify(_prg) << std::endl;
+    res = _e->eval(_prg);
+    std::cout << "res: " << yal::stringify(res) << std::endl;
+    return yal::stringify(res) == _gt;
+}
+
+void
+test_eval(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    yal::Expr* program;
+
+    program = e.symbol("PI2");
+    TL_TEST(eval_test(&e, program, "6.28318"));
+    program = e.symbol("PI/2");
+    TL_TEST(eval_test(&e, program, "1.5708"));
+
+    program = e.list({e.symbol("quote"), e.list({e.real(2), e.real(5)})});
+    TL_TEST(eval_test(&e, program, "(2 5)"));
+
+    program = e.list({e.symbol("+"), e.real(2), e.real(5)});
+    TL_TEST(eval_test(&e, program, "7"));
+
+    program = e.list({
+            e.symbol("list"),
+            e.list({e.symbol("+"), e.real(2), e.real(2)}),
+            e.symbol("PI/2")});
+    TL_TEST(eval_test(&e, program, "(4 1.5708)"));
 }
 
 int
@@ -178,4 +218,5 @@ main(int argc, char **argv)
     TL(test_assoc());
     TL(test_globals());
     TL(print_core());
+    TL(test_eval());
 }
