@@ -6,6 +6,7 @@
 #include <string>
 #include <cstring>
 #include <vector>
+#include <list>
 #include <sstream>
 #include <functional>
 #include <cassert>
@@ -159,7 +160,7 @@ public:
     Expr* globals(void);
     Expr* constants(void);
 
-    Expr* read(const char* _str);
+    Expr* eval(const char* _program);
     Expr* eval(Expr* _e);
     Expr* eval(VariableScope* _scope, Expr* _e);
     Expr* evallist(VariableScope* _scope, Expr* _list);
@@ -185,6 +186,8 @@ private:
     VariableScope m_global_scope;
     Expr* m_constants = nullptr; /*constant values and buildins*/
     bool add_variable(VariableScope* _scope, const char* _name, Expr* _v);
+    Expr* lex_value(std::string& _token);
+    Expr* lex(std::list<std::string>& _tokens);
 };
 
 #define YALCPP_IMPLEMENTATION
@@ -236,11 +239,171 @@ Environment::constants(void)
     return m_constants; 
 }
 
-Expr *
-Environment::read(const char* _str)
+        /*TODO:  Do error checking like matching+even parens*/
+        /*TODO:  Remove garbage tokens*/
+/*TODO:  if you want a tokenizer impl that is isolated, take this
+        and add a tokenization recipe struct with:
+        - garbate token list
+        - literal token list
+        - extra stuff like use newline tokens
+        - etc..
+*/
+
+std::string
+_try_get_special_token(const char* _start)    
 {
-    UNUSED(_str);
-    return nil();
+
+    const std::string stokens[] = {
+        "(", ")", "'(",
+        "#(", /*hash-map*/
+        "{", "}", "'{",
+        "#{", /*vector*/
+        "[", "]","'[",
+        "'", "`", ",", ",@", /*quoting*/
+        };
+    const size_t stokens_len = sizeof(stokens) / sizeof(stokens[0]);
+    /*TODO: not a cpp'y solution..*/
+    auto begins_with = [_start] (std::string stok) {
+        for (size_t i = 0; i < stok.size(); i++) {
+            if (*(_start+i) != stok[i])
+                return false;
+        }
+        return true;
+
+    };
+    for (size_t i = 0; i < stokens_len; i++) {
+        if (begins_with(stokens[i]))
+            return stokens[i];
+    }
+    return "";
+}
+
+
+std::string
+_get_next_token(const char* _source, int& _cursor)
+{
+    std::string token;
+    int len = 0;
+    auto is_whitespace = [] (char c) {
+        return (c == ' ' || c == '\t' || c == '\n');
+    };
+
+    /*Handle special tokens*/
+    token = _try_get_special_token(&_source[_cursor]);
+    if (token != "") {
+        _cursor += token.size();
+        return token;
+    }
+
+    /*Handle strings*/
+    if (_source[_cursor + len] == '\"') {
+        len++;
+        while (_source[_cursor + len] != '\"' && _source[_cursor + len] != '\0') 
+            len++;
+        len++;
+        token = std::string(&_source[_cursor], len);
+        _cursor += len;
+        return token;
+    }
+
+    /*Handle normal tokens*/
+    while (!is_whitespace(_source[_cursor + len]) &&
+           _source[_cursor + len] != '\0') {
+        len++;
+        token = _try_get_special_token(&_source[_cursor + len]);
+        if (token != "")
+            break;
+    }
+    token = std::string(&_source[_cursor], len);
+    _cursor += len;
+    return token;
+}
+
+std::list<std::string>
+tokenize(const char* _str) {
+    int cursor = 0;
+    std::list<std::string> tokens = {};
+    std::string curr;
+
+    auto is_whitespace = [] (char c) {
+        return (c == ' ' || c == '\t' || c == '\n');
+    };
+    auto trim_whitespace = [is_whitespace, &cursor, _str] () {
+        while (is_whitespace(_str[cursor]) && _str[cursor] != '\0')
+            cursor++;
+    };
+    while (_str[cursor] != '\0') {
+        trim_whitespace();
+        curr = _get_next_token(_str, cursor);
+        tokens.push_back(curr);
+    }
+    std::reverse(tokens.front(), tokens.back());
+    return tokens;
+};
+
+Expr*
+Environment::lex_value(std::string& _token)
+{
+}
+
+Expr*
+Environment::lex(std::list<std::string>& _tokens)
+{
+    /*TODO: Does not support special syntax for:
+    dotted lists (a . 34)
+    */
+    std::string token;
+    Expr* program = cons(nullptr, nullptr);
+    Expr* curr = program;
+    auto tokens_pop = [&token] (std::list<std::string> v) {
+        token = v.front();
+        v.pop_front();
+    };
+
+    while (_tokens.size() > 0) {
+        tokens_pop(_tokens);
+        if (token == ")" || token == "]" || token == "}")
+            break;
+
+        if (token == "(") {
+            curr->cons.car = lex(_tokens);
+        }
+        else if (token == "[") {
+            curr->cons.car = cons(symbol("list"), lex(_tokens));
+        }
+        else if (token == "{") {
+            curr->cons.car = cons(symbol("vector"), lex(_tokens));
+        }
+        else if (token.size() > 0 && token[0] == '\'') {
+            token = token.substr(1);
+            if (token == "(" || token == "[" || token == "{") {
+                curr->cons.car = cons(symbol("quote"), cons(lex(_tokens), NULL));
+            } else {
+                curr->cons.car = cons(symbol("quote"), cons(lex_value(token), NULL));
+            }
+        }
+        else {
+            curr->cons.car = lex_value(token);
+        }
+        /*Insert extracted into lexed program*/
+        curr->cons.cdr = cons(nullptr, nullptr);
+        curr = curr->cons.cdr;
+    }
+    //DBPRINT("lexed program: ", program);
+    return program;
+}
+
+Expr *
+Environment::eval(const char* _program)
+{
+
+    std::list<std::string> tokens = {};
+    Expr* lexed = nullptr;
+    tokens = tokenize(_program);
+    for (auto tok : tokens)
+        std::cout << tok << std::endl;
+    
+    return eval(lexed);
 }
 
 
@@ -993,8 +1156,16 @@ apply(Environment* _env, VariableScope* _scope, Expr* _e)
     return _env->eval(_scope, call);
 }
 
-
-
+Expr*
+progn(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* last = nullptr;
+    while (!is_nil(_e)) {
+        last = _env->eval(_scope, _e);
+        _e = cdr(_e);
+    }
+    return last;
+}
 
 }; /*namespace buildin*/
 

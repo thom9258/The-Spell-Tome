@@ -890,7 +890,6 @@ _try_get_special_token(char* _t)
 #define _IS_WHITESPACE(C) \
     (((C) == ' ' || (C) == '\t' || (C) == '\n') ? 1 : 0)
 
-
 tstr
 _get_next_token(char* _source, int* _cursor)
 {

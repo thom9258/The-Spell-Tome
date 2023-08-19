@@ -5,6 +5,32 @@
 
 #include "testlib.h"
 
+bool
+eval_test(yal::Environment* _e, yal::Expr* _prg, const char* _gt)    
+{
+    yal::Expr* res;
+    std::cout << "program: " << yal::stringify(_prg) << std::endl;
+    res = _e->eval(_prg);
+    std::cout << "res: " << yal::stringify(res) << std::endl;
+    return yal::stringify(res) == _gt;
+}
+
+bool
+lex_type_test(yal::Environment* _e, const char* _prg, yal::TYPE _type)
+{
+    yal::Expr* res;
+    std::cout << "program: " << _prg << std::endl;
+    res = _e->eval(_prg);
+    std::cout << "res: " << yal::stringify(res) << std::endl;
+    if (is_nil(res))
+        return false;
+    return _type == res->type;
+}
+
+/*======================================================================*/
+/*======================================================================*/
+/*======================================================================*/
+
 void
 test_sizes(void)
 {
@@ -182,16 +208,6 @@ print_core(void)
     TL_TEST(yal::stringify(sym) == "\"C++\"");
 }
 
-bool
-eval_test(yal::Environment* _e, yal::Expr* _prg, const char* _gt)    
-{
-    yal::Expr* res;
-    std::cout << "program: " << yal::stringify(_prg) << std::endl;
-    res = _e->eval(_prg);
-    std::cout << "res: " << yal::stringify(res) << std::endl;
-    return yal::stringify(res) == _gt;
-}
-
 void
 test_ipreverse(void)
 {
@@ -232,6 +248,25 @@ test_simple_eval(void)
     TL_TEST(eval_test(&e, program, "(4 1.5708)"));
 }
 
+void
+test_lex_types(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(lex_type_test(&e, "myvar", yal::TYPE_SYMBOL));
+    TL_TEST(lex_type_test(&e, "my/other-var_", yal::TYPE_SYMBOL));
+    TL_TEST(lex_type_test(&e, "2", yal::TYPE_REAL));
+    TL_TEST(lex_type_test(&e, "-2", yal::TYPE_REAL));
+    TL_TEST(lex_type_test(&e, "3.14", yal::TYPE_DECIMAL));
+    TL_TEST(lex_type_test(&e, "-3.14", yal::TYPE_DECIMAL));
+    TL_TEST(lex_type_test(&e, "9.56700", yal::TYPE_DECIMAL));
+    TL_TEST(lex_type_test(&e, "\"MY STRING!\"", yal::TYPE_STRING));
+    TL_TEST(lex_type_test(&e, "(1 2 3)", yal::TYPE_CONS));
+}
+
+
+
 int
 main(int argc, char **argv)
 {
@@ -246,4 +281,5 @@ main(int argc, char **argv)
     TL(print_core());
     TL(test_ipreverse());
     TL(test_simple_eval());
+    TL(test_lex_types());
 }
