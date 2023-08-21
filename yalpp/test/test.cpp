@@ -20,13 +20,36 @@ lex_type_test(yal::Environment* _e, const char* _prg, yal::TYPE _type)
 {
     yal::Expr* res;
     std::cout << "program: " << _prg << std::endl;
-    res = _e->eval(_prg);
+    res = _e->read(_prg);
     std::cout << "res: " << yal::stringify(res) << std::endl;
     if (is_nil(res))
         return false;
     return _type == res->type;
 }
 
+bool
+read_test(yal::Environment* _e, const char* _prg)
+{
+    yal::Expr* res;
+    std::string resstr;
+    std::cout << "program: " << _prg << std::endl;
+    res = _e->read(_prg);
+    resstr = yal::stringify(res);
+    std::cout << "res: " << resstr << std::endl;
+    return resstr == _prg;
+}
+
+bool
+read_test(yal::Environment* _e, const char* _prg, const char* _gt)
+{
+    yal::Expr* res;
+    std::string resstr;
+    std::cout << "program: " << _prg << std::endl;
+    res = _e->read(_prg);
+    resstr = yal::stringify(res);
+    std::cout << "res: " << resstr << std::endl;
+    return resstr == _gt;
+}
 /*======================================================================*/
 /*======================================================================*/
 /*======================================================================*/
@@ -260,12 +283,39 @@ test_lex_types(void)
     TL_TEST(lex_type_test(&e, "-2", yal::TYPE_REAL));
     TL_TEST(lex_type_test(&e, "3.14", yal::TYPE_DECIMAL));
     TL_TEST(lex_type_test(&e, "-3.14", yal::TYPE_DECIMAL));
+    TL_TEST(lex_type_test(&e, ".14", yal::TYPE_DECIMAL));
     TL_TEST(lex_type_test(&e, "9.56700", yal::TYPE_DECIMAL));
     TL_TEST(lex_type_test(&e, "\"MY STRING!\"", yal::TYPE_STRING));
     TL_TEST(lex_type_test(&e, "(1 2 3)", yal::TYPE_CONS));
 }
 
+void
+test_read(void)
+{
+    yal::Environment e;
+    e.load_core();
+    TL_TEST(read_test(&e, "myvar"));
+    TL_TEST(read_test(&e, "my/other-var_"));
+    TL_TEST(read_test(&e, "2"));
+    TL_TEST(read_test(&e, "-2"));
+    TL_TEST(read_test(&e, "3.14"));
+    TL_TEST(read_test(&e, "-3.14"));
+    TL_TEST(read_test(&e, ".14", "0.14"));
+    TL_TEST(read_test(&e, "9.56723"));
+    TL_TEST(read_test(&e, "\"MY STRING!\""));
+    TL_TEST(read_test(&e, "(1 2 3)"));
 
+    TL_TEST(read_test(&e, "(mysym 2.34 3 \"mystr\")"));
+
+    TL_TEST(read_test(&e, "'(1 2 3)", "(quote (1 2 3))"));
+    TL_TEST(read_test(&e, "[1 2 3]", "(list 1 2 3)"));
+    TL_TEST(read_test(&e, "{1 2 3}", "(vector 1 2 3)"));
+
+    TL_TEST(read_test(&e, "'(1 (+ 3 2) (/ 2 4))", "(quote (1 (+ 3 2) (/ 2 4)))"));
+
+    TL_TEST(read_test(&e, "(fn pow2 (x) (* x x))", "(fn pow2 (x) (* x x))"));
+
+}
 
 int
 main(int argc, char **argv)
@@ -282,4 +332,5 @@ main(int argc, char **argv)
     TL(test_ipreverse());
     TL(test_simple_eval());
     TL(test_lex_types());
+    TL(test_read());
 }

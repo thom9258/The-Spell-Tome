@@ -160,7 +160,7 @@ public:
     Expr* globals(void);
     Expr* constants(void);
 
-    Expr* eval(const char* _program);
+    Expr* read(const char* _program);
     Expr* eval(Expr* _e);
     Expr* eval(VariableScope* _scope, Expr* _e);
     Expr* evallist(VariableScope* _scope, Expr* _list);
@@ -254,11 +254,11 @@ _try_get_special_token(const char* _start)
 {
 
     const std::string stokens[] = {
-        "(", ")", "'(",
+        "(", ")",
         "#(", /*hash-map*/
-        "{", "}", "'{",
+        "{", "}",
         "#{", /*vector*/
-        "[", "]","'[",
+        "[", "]",
         "'", "`", ",", ",@", /*quoting*/
         };
     const size_t stokens_len = sizeof(stokens) / sizeof(stokens[0]);
@@ -337,13 +337,43 @@ tokenize(const char* _str) {
         curr = _get_next_token(_str, cursor);
         tokens.push_back(curr);
     }
-    std::reverse(tokens.front(), tokens.back());
     return tokens;
 };
 
 Expr*
 Environment::lex_value(std::string& _token)
 {
+
+    /*TODO: We should do cool stuff like allowing _ in numbers and remove them before
+            lexing so that 100_000_000 is a valid number. */
+    auto looks_like_number = [] (std::string& _token) {
+        if (_token.size() > 1 && (_token[0] == '-' || _token[0] == '+'))
+            return (_token[1] >= '0' && _token[1] <= '9');
+        return (_token[0] >= '0' && _token[0] <= '9');
+    };
+    auto looks_like_string = [] (std::string& _token) {
+        if (_token.size() < 2)
+            return false;
+        return (_token[0] == '\"');
+    };
+    auto token_value_type = [] (std::string& _token) {
+        if (_token.find(".") == std::string::npos)
+            return TYPE_REAL;
+        return TYPE_DECIMAL;
+    };
+
+    if (looks_like_string(_token)) {
+        return string(_token.substr(1, _token.size()-2));
+    }
+    if (looks_like_number(_token)) {
+        if (token_value_type(_token) == TYPE_REAL) {
+            return real(std::stoi(_token));
+        }
+        else {
+            return decimal(std::stof(_token));
+        }
+    }
+    return symbol(_token);
 }
 
 Expr*
@@ -353,57 +383,49 @@ Environment::lex(std::list<std::string>& _tokens)
     dotted lists (a . 34)
     */
     std::string token;
-    Expr* program = cons(nullptr, nullptr);
-    Expr* curr = program;
-    auto tokens_pop = [&token] (std::list<std::string> v) {
-        token = v.front();
-        v.pop_front();
-    };
+    Expr* program = nullptr;
+    Expr* curr = nullptr;
 
     while (_tokens.size() > 0) {
-        tokens_pop(_tokens);
-        if (token == ")" || token == "]" || token == "}")
+        token = _tokens.front();
+        if (token == ")" || token == "]" || token == "}") {
             break;
+        }
 
         if (token == "(") {
-            curr->cons.car = lex(_tokens);
+            _tokens.pop_front();
+            curr = lex(_tokens);
         }
         else if (token == "[") {
-            curr->cons.car = cons(symbol("list"), lex(_tokens));
+            _tokens.pop_front();
+            curr = cons(symbol("list"), lex(_tokens));
         }
         else if (token == "{") {
-            curr->cons.car = cons(symbol("vector"), lex(_tokens));
+            _tokens.pop_front();
+            curr = cons(symbol("vector"), lex(_tokens));
         }
-        else if (token.size() > 0 && token[0] == '\'') {
+        else if (token == "'") {
             token = token.substr(1);
-            if (token == "(" || token == "[" || token == "{") {
-                curr->cons.car = cons(symbol("quote"), cons(lex(_tokens), NULL));
-            } else {
-                curr->cons.car = cons(symbol("quote"), cons(lex_value(token), NULL));
-            }
+            _tokens.pop_front();
+            curr = cons(symbol("quote"), cons(lex(_tokens), NULL));
         }
         else {
-            curr->cons.car = lex_value(token);
+            curr = lex_value(token);
+            _tokens.pop_front();
         }
-        /*Insert extracted into lexed program*/
-        curr->cons.cdr = cons(nullptr, nullptr);
-        curr = curr->cons.cdr;
+        program = put(this, curr, program);
     }
-    //DBPRINT("lexed program: ", program);
-    return program;
+    return ipreverse(program);
 }
 
 Expr *
-Environment::eval(const char* _program)
+Environment::read(const char* _program)
 {
-
-    std::list<std::string> tokens = {};
+    std::list<std::string> tokens;
     Expr* lexed = nullptr;
     tokens = tokenize(_program);
-    for (auto tok : tokens)
-        std::cout << tok << std::endl;
-    
-    return eval(lexed);
+    lexed = car(lex(tokens));
+    return lexed;
 }
 
 
@@ -434,10 +456,8 @@ Environment::eval(VariableScope* _scope, Expr* _e)
     case TYPE_CONS:
         fn = car(_e);
         args = cdr(_e);
-        //std::cout << "fn: " << stringify(fn) << " args: " << stringify(args) << std::endl;
         callable = cdr(assoc(fn, m_constants));
         if (!is_nil(callable)) {
-            //std::cout << "found fn: " << stringify(callable) << std::endl;
             if (callable->type == TYPE_BUILDIN)
                 return callable->buildin(this, _scope, args);
         }
@@ -523,6 +543,7 @@ Environment::load_core(void)
 
     add_buildin("quote", buildin::quote);
     add_buildin("list", buildin::list);
+    add_buildin("reverse!", buildin::reverse_ip);
     add_buildin("progn", buildin::progn);
 
     add_buildin("+", buildin::plus);
@@ -683,7 +704,6 @@ len(Expr* _e)
     int cnt = 0;
     Expr* tmp = _e;
     while (!is_nil(tmp)) {
-        //std::cout << "len tmp: " << stringify(car(tmp)) << std::endl;
         cnt++;
         tmp = cdr(tmp);
     }
@@ -705,10 +725,8 @@ assoc(Expr* _key, Expr* _list)
     if (!is_cons(_list)) return nil();
 
     key = stringify(_key);
-    //std::cout << "assoc key: " << key << std::endl;
     tmp = _list;
     while (!is_nil(tmp)) {
-        //std::cout << "assoc testing: " << stringify(car(tmp)) << std::endl;
         if (key == stringify(car(car(tmp))))
             return car(tmp);
         tmp = cdr(tmp);
@@ -783,16 +801,16 @@ _stream_value(Expr* _e)
         ss << "(" << stream(_e).str() << ")";
         break;
     case TYPE_LAMBDA:
-        ss << "#<lambda";
+        ss << "#<lambda>";
         break;
     case TYPE_MACRO:
-        ss << "#<macro";
+        ss << "#<macro>";
         break;
     case TYPE_FUNCTION:
-        ss << "#<function";
+        ss << "#<function>";
         break;
     case TYPE_BUILDIN:
-        ss << "#<buildin";
+        ss << "#<buildin>";
         break;
     case TYPE_REAL:
         ss << _e->real;
@@ -817,15 +835,63 @@ _stream_value(Expr* _e)
 }
 
 std::stringstream
+_stream_tvalue(Expr* _e)
+{
+
+    std::stringstream ss;
+    if (is_nil(_e)) {
+        ss << "NIL";
+        return ss;
+    }
+
+    switch (_e->type) {
+    case TYPE_CONS:
+        ss << stream(_e).str();
+        break;
+    case TYPE_LAMBDA:
+        ss << "#<lambda>";
+        break;
+    case TYPE_MACRO:
+        ss << "#<macro>";
+        break;
+    case TYPE_FUNCTION:
+        ss << "#<function>";
+        break;
+    case TYPE_BUILDIN:
+        ss << "#<buildin>";
+        break;
+    case TYPE_REAL:
+        ss << "R" << _e->real;
+        break;
+    case TYPE_DECIMAL:
+        ss << "D" << _e->decimal;
+        break;
+    case TYPE_SMALLSYMBOL:
+        /*TODO*/
+    case TYPE_SYMBOL:
+        ss << "Sy" << _e->symbol;
+        break;
+    case TYPE_SMALLSTRING:
+        /*TODO*/
+    case TYPE_STRING:
+        ss << "St" << "\"" << _e->string << "\"";
+        break;
+    default:
+        ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
+    };
+    return ss;
+}
+
+std::stringstream
 stream(Expr* _e)
 {
     std::stringstream ss;
     Expr* curr = _e;
-    if (is_nil(_e) || !is_cons(_e))
+    if (!is_cons(_e))
         return _stream_value(_e);
     if (is_dotted(_e)) {
-        ss << "(" << _stream_value(car(_e)).str() << " . "
-           << _stream_value(cdr(_e)).str() << ")";
+        ss << "(" << stream(car(_e)).str() << " . "
+           << stream(cdr(_e)).str() << ")";
         return ss;
     }
     ss << "(";
@@ -898,6 +964,14 @@ cdr(Environment* _env, VariableScope* _scope, Expr* _e)
     return cdr(args);
 }
 
+Expr*
+reverse_ip(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->evallist(_scope, _e);
+    if (len(args) != 1)
+        return nil();
+    return ipreverse(first(args));
+}
 
 Expr*
 nth(Environment* _env, VariableScope* _scope, Expr* _e)
