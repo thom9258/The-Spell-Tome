@@ -108,6 +108,7 @@ Expr* list(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* len(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* put(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* reverse_ip(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* range(Environment* _env, VariableScope* _scope, Expr* _e);
 
 Expr* car(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* cdr(Environment* _env, VariableScope* _scope, Expr* _e);
@@ -546,6 +547,7 @@ Environment::load_core(void)
 
     add_buildin("quote", buildin::quote);
     add_buildin("list", buildin::list);
+    add_buildin("range", buildin::range);
     add_buildin("reverse!", buildin::reverse_ip);
     add_buildin("progn", buildin::progn);
 
@@ -1197,6 +1199,30 @@ progn(Environment* _env, VariableScope* _scope, Expr* _e)
         _e = cdr(_e);
     }
     return last;
+}
+
+Expr*
+range(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    bool reverse = false;
+    int low;
+    int high;
+    Expr* args = _env->evallist(_scope, _e);
+    Expr* out = nullptr;
+
+    if (first(args)->real < second(args)->real) {
+        low = first(args)->real;
+        high = second(args)->real;
+    } else {
+        low = second(args)->real;
+        high = first(args)->real;
+        reverse = true;
+    }
+    for (int i = low; i <= high; i++)
+        out = put(_env, _env->real(i), out);
+    if (reverse)
+        return out;
+    return ipreverse(out);
 }
 
 }; /*namespace buildin*/

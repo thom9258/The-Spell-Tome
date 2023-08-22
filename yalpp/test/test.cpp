@@ -381,15 +381,17 @@ test_buildin_range(void)
     e.load_core();
     TL_TEST(repl_test(&e,
                        "(range 2 5)",
-                       "(2 3 4)"));
+                       "(2 3 4 5)"));
 
     TL_TEST(repl_test(&e,
                        "(range (+ -1 2) 4)",
-                       "(1 2 3)"));
+                       "(1 2 3 4)"));
 
     TL_TEST(repl_test(&e,
-                       "(range 0 11)",
+                       "(range 0 10)",
                        "(0 1 2 3 4 5 6 7 8 9 10)"));
+
+    TL_TEST(repl_test(&e, "(range 5 1)", "(5 4 3 2 1)"));
 }
 
 void
@@ -435,6 +437,133 @@ test_buildin_accessors(void)
                        "NIL"));
 }
 
+void
+test_buildin_math(void)
+{
+
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(+)", "0"));
+    TL_TEST(repl_test(&e, "(-)", "0"));
+    TL_TEST(repl_test(&e, "(*)", "1"));
+    TL_TEST(repl_test(&e, "(/)", "1"));
+    TL_TEST(repl_test(&e, "(+ 1 2)", "3"));
+    TL_TEST(repl_test(&e, "(- 7 3)", "4"));
+    TL_TEST(repl_test(&e, "(* 4 3)", "12"));
+    TL_TEST(repl_test(&e, "(/ 8 2)", "4"));
+    TL_TEST(repl_test(&e, "(/ 0 2)", "0"));
+    TL_TEST(repl_test(&e, "(+ 2 (- 5 6) 1)", "2"));
+    TL_TEST(repl_test(&e, "(+ 4 (* 2 6) (- 10 5))", "21"));
+    TL_TEST(repl_test(&e, "(- 5 2)", "3"));
+    TL_TEST(repl_test(&e, "(/ (- (+ 515 (* -87 311)) 296) 27)", "-994"));
+}
+
+void
+test_buildin_equality(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(= 1 2)", "NIL"));
+    TL_TEST(repl_test(&e, "(= 'somesym 'somesym)", "T"));
+    TL_TEST(repl_test(&e, "(= \"Hello!\" \"Hello!\")", "T"));
+    TL_TEST(repl_test(&e, "(= \"1\" 1)", "NIL"));
+    TL_TEST(repl_test(&e, "(= 7 3.431)", "NIL"));
+    TL_TEST(repl_test(&e, "(= 2 2)", "T"));
+    TL_TEST(repl_test(&e, "(= 2.34 2.34)", "T"));
+    TL_TEST(repl_test(&e, "(= 7)", "T"));
+    TL_TEST(repl_test(&e, "(=)", "T"));
+    TL_TEST(repl_test(&e, "(= (+ 2 2) 4 (- 10 6) (* 2 2))", "T"));
+    TL_TEST(repl_test(&e, "(= (1 2 3) (1 2 3))", "NIL"));
+
+    TL_TEST(repl_test(&e, "(eq '(1 2 3) [1 2 3] (range 1 4))", "T"));
+    TL_TEST(repl_test(&e, "(eq 4 (+ 2 2))", "T"));
+
+    TL_TEST(repl_test(&e, "(equal 4 (+ 2 2))", "NIL"));
+    TL_TEST(repl_test(&e, "(equal (1 2 3) (1 2 3) (1 2 3))", "T"));
+}
+
+void
+test_conditionals(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, 
+                       "(if (= 2 2) 4)",
+                       "4"));
+
+    TL_TEST(repl_test(&e, 
+                       "(if (= 2 2) 4 0)",
+                       "4"));
+
+    TL_TEST(repl_test(&e, 
+                       "(if t 2)",
+                       "2"));
+
+    TL_TEST(repl_test(&e, 
+                       "(if '(1 2 3) t)",
+                       "T"));
+
+
+    TL_TEST(repl_test(&e, 
+                       "(if nil 2 3)",
+                       "3"));
+
+    TL_TEST(repl_test(&e, 
+                       "(if () t nil)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, 
+                       "(if (NIL) t nil)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, 
+                       "(if (= 2 3) t nil)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, 
+                       "(if (= 2 3) 1 0)",
+                       "0"));
+
+    TL_TEST(repl_test(&e, 
+                      "(fn is10 (v) "
+                      "  (if (= v 10) t nil))",
+                      "is10"));
+
+    TL_TEST(repl_test(&e, 
+                       "(is10 7)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, 
+                       "(is10 10)",
+                       "T"));
+}
+
+void
+test_buildin_progn(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, 
+                       "(progn)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, 
+                       "(progn (+ 2 3) (- 5 2))",
+                       "3"));
+
+    TL_TEST(repl_test(&e, 
+                       "(progn (+ 30 51) (* 10 3 2) (range 0 5) [1 2 3])",
+                       "(1 2 3)"));
+
+    TL_TEST(repl_test(&e, 
+                       "(progn 5)",
+                       "5"));
+}
+
 int
 main(int argc, char **argv)
 {
@@ -452,6 +581,12 @@ main(int argc, char **argv)
     TL(test_lex_types());
     TL(test_read());
     TL(test_buildin_list_creation());
+    TL(test_buildin_range());
+    TL(test_buildin_accessors());
+    //TL(test_buildin_math());
+    TL(test_buildin_equality());
+    TL(test_conditionals());
+    TL(test_buildin_progn());
 
     tl_summary();
 }
