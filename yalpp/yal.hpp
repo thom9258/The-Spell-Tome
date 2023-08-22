@@ -389,6 +389,7 @@ Environment::lex(std::list<std::string>& _tokens)
     while (_tokens.size() > 0) {
         token = _tokens.front();
         if (token == ")" || token == "]" || token == "}") {
+            _tokens.pop_front();
             break;
         }
 
@@ -407,7 +408,7 @@ Environment::lex(std::list<std::string>& _tokens)
         else if (token == "'") {
             token = token.substr(1);
             _tokens.pop_front();
-            curr = cons(symbol("quote"), cons(lex(_tokens), NULL));
+            curr = cons(symbol("quote"), lex(_tokens));
         }
         else {
             curr = lex_value(token);
@@ -424,10 +425,12 @@ Environment::read(const char* _program)
     std::list<std::string> tokens;
     Expr* lexed = nullptr;
     tokens = tokenize(_program);
-    lexed = car(lex(tokens));
+    lexed = lex(tokens);
+    /*TODO: this might be wrong*/
+    if (len(lexed) == 1)
+        return car(lexed);
     return lexed;
 }
-
 
 Expr*
 Environment::eval(Expr* _e)
@@ -831,54 +834,7 @@ _stream_value(Expr* _e)
     default:
         ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
     };
-    return ss;
-}
-
-std::stringstream
-_stream_tvalue(Expr* _e)
-{
-
-    std::stringstream ss;
-    if (is_nil(_e)) {
-        ss << "NIL";
-        return ss;
-    }
-
-    switch (_e->type) {
-    case TYPE_CONS:
-        ss << stream(_e).str();
-        break;
-    case TYPE_LAMBDA:
-        ss << "#<lambda>";
-        break;
-    case TYPE_MACRO:
-        ss << "#<macro>";
-        break;
-    case TYPE_FUNCTION:
-        ss << "#<function>";
-        break;
-    case TYPE_BUILDIN:
-        ss << "#<buildin>";
-        break;
-    case TYPE_REAL:
-        ss << "R" << _e->real;
-        break;
-    case TYPE_DECIMAL:
-        ss << "D" << _e->decimal;
-        break;
-    case TYPE_SMALLSYMBOL:
-        /*TODO*/
-    case TYPE_SYMBOL:
-        ss << "Sy" << _e->symbol;
-        break;
-    case TYPE_SMALLSTRING:
-        /*TODO*/
-    case TYPE_STRING:
-        ss << "St" << "\"" << _e->string << "\"";
-        break;
-    default:
-        ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
-    };
+    //std::cout << "returning " << ss.str() << std::endl;
     return ss;
 }
 
@@ -887,8 +843,13 @@ stream(Expr* _e)
 {
     std::stringstream ss;
     Expr* curr = _e;
+    if (is_nil(_e)) {
+        ss << "NIL";
+        return ss;
+    }
     if (!is_cons(_e))
         return _stream_value(_e);
+
     if (is_dotted(_e)) {
         ss << "(" << stream(car(_e)).str() << " . "
            << stream(cdr(_e)).str() << ")";
@@ -898,10 +859,7 @@ stream(Expr* _e)
     ss << stream(car(curr)).str();
     curr = cdr(curr);
     while (!is_nil(curr)) {
-        if (is_nil(car(curr)) && is_nil(cdr(curr)))
-            break;
-        ss << " ";
-        ss << stream(car(curr)).str();
+        ss << " " << stream(car(curr)).str();
         curr = cdr(curr);
     }
     ss << ")";

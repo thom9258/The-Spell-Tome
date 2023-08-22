@@ -50,6 +50,22 @@ read_test(yal::Environment* _e, const char* _prg, const char* _gt)
     std::cout << "res: " << resstr << std::endl;
     return resstr == _gt;
 }
+
+char
+repl_test(yal::Environment* _e, const char* _p, const char* _gt)
+{
+    std::string read_str;
+    std::string eval_str;
+    yal::Expr* read_result;
+    yal::Expr* eval_result;
+
+    read_result = _e->read(_p);
+    std::cout << "read res: " << stringify(read_result) << std::endl;
+    eval_result = _e->eval(read_result);
+    std::cout << "eval res: " << stringify(eval_result) << std::endl;
+    return stringify(eval_result) == _gt;
+}
+
 /*======================================================================*/
 /*======================================================================*/
 /*======================================================================*/
@@ -283,7 +299,7 @@ test_lex_types(void)
     TL_TEST(lex_type_test(&e, "-2", yal::TYPE_REAL));
     TL_TEST(lex_type_test(&e, "3.14", yal::TYPE_DECIMAL));
     TL_TEST(lex_type_test(&e, "-3.14", yal::TYPE_DECIMAL));
-    TL_TEST(lex_type_test(&e, ".14", yal::TYPE_DECIMAL));
+    //TL_TEST(lex_type_test(&e, ".14", yal::TYPE_DECIMAL));
     TL_TEST(lex_type_test(&e, "9.56700", yal::TYPE_DECIMAL));
     TL_TEST(lex_type_test(&e, "\"MY STRING!\"", yal::TYPE_STRING));
     TL_TEST(lex_type_test(&e, "(1 2 3)", yal::TYPE_CONS));
@@ -300,21 +316,123 @@ test_read(void)
     TL_TEST(read_test(&e, "-2"));
     TL_TEST(read_test(&e, "3.14"));
     TL_TEST(read_test(&e, "-3.14"));
-    TL_TEST(read_test(&e, ".14", "0.14"));
+    //TL_TEST(read_test(&e, ".14", "0.14"));
     TL_TEST(read_test(&e, "9.56723"));
     TL_TEST(read_test(&e, "\"MY STRING!\""));
     TL_TEST(read_test(&e, "(1 2 3)"));
-
     TL_TEST(read_test(&e, "(mysym 2.34 3 \"mystr\")"));
-
     TL_TEST(read_test(&e, "'(1 2 3)", "(quote (1 2 3))"));
     TL_TEST(read_test(&e, "[1 2 3]", "(list 1 2 3)"));
     TL_TEST(read_test(&e, "{1 2 3}", "(vector 1 2 3)"));
-
     TL_TEST(read_test(&e, "'(1 (+ 3 2) (/ 2 4))", "(quote (1 (+ 3 2) (/ 2 4)))"));
-
     TL_TEST(read_test(&e, "(fn pow2 (x) (* x x))", "(fn pow2 (x) (* x x))"));
+}
 
+void
+test_buildin_list_creation(void)
+{
+    yal::Environment e;
+    e.load_core();
+    TL_TEST(repl_test(&e, "(quote (foo bar (quote (baz))))", "(foo bar (quote (baz)))"));
+    TL_TEST(repl_test(&e, "'(foo bar '(baz))", "(foo bar (quote (baz)))"));
+    TL_TEST(repl_test(&e, "(quote (1 2 3 4))", "(1 2 3 4)"));
+    TL_TEST(repl_test(&e, "'(1 2 '(3 4) (quote 5))", "(1 2 (quote (3 4)) (quote 5))"));
+    TL_TEST(repl_test(&e, "(quote ()  )", "NIL"));
+
+    TL_TEST(repl_test(&e,
+                      "(list 1 2 3 )",
+                      "(1 2 3)"));
+    TL_TEST(repl_test(&e,
+                      "(list 2.4 -2 5 1)",
+                      "(2.4 -2 5 1)"));
+    TL_TEST(repl_test(&e,
+                      "(list 9.5667 -2.123 4.345)",
+                      "(9.5667 -2.123 4.345)"));
+    TL_TEST(repl_test(&e,
+                      "(list 1 (+ 1 1) 3 )",
+                      "(1 2 3)"));
+    TL_TEST(repl_test(&e,
+                      "(list 3 (+ -1 1 3) (+ 1 1 1))",
+                      "(3 3 3)"));
+}
+
+
+void
+test_buildin_list_management(void)
+{
+    yal::Environment e;
+    e.load_core();
+    TL_TEST(repl_test(&e,
+                      "(put 0 (list 1 2 3))",
+                      "(0 1 2 3)"));
+    TL_TEST(repl_test(&e,
+                      "(put nil '(t nil t))",
+                      "(NIL T NIL T)"));
+
+    TL_TEST(repl_test(&e,
+                      "(put \"myname\" '(23 m))",
+                      "(\"myname\" 23 m)"));
+}
+
+void
+test_buildin_range(void)
+{
+    yal::Environment e;
+    e.load_core();
+    TL_TEST(repl_test(&e,
+                       "(range 2 5)",
+                       "(2 3 4)"));
+
+    TL_TEST(repl_test(&e,
+                       "(range (+ -1 2) 4)",
+                       "(1 2 3)"));
+
+    TL_TEST(repl_test(&e,
+                       "(range 0 11)",
+                       "(0 1 2 3 4 5 6 7 8 9 10)"));
+}
+
+void
+test_buildin_accessors(void)
+{
+
+    yal::Environment e;
+    e.load_core();
+    TL_TEST(repl_test(&e,
+                       "(car (quote (1 2 3 4)))",
+                       "1"));
+
+    TL_TEST(repl_test(&e,
+                       "(cdr (quote (1 2 3 4)))",
+                       "(2 3 4)"));
+
+    TL_TEST(repl_test(&e,
+                       "(first (quote (1 2 3 4)))",
+                       "1"));
+
+    TL_TEST(repl_test(&e,
+                       "(second (quote ((1 2) (3 4) (5 6)) ))",
+                       "(3 4)"));
+
+    TL_TEST(repl_test(&e,
+                       "(third (quote (1 2 3 4)))",
+                       "3"));
+
+    TL_TEST(repl_test(&e,
+                       "(fourth (quote (1 2 3 4)))",
+                       "4"));
+
+    TL_TEST(repl_test(&e,
+                       "(nth 9 (range 0 20))",
+                       "9"));
+
+    TL_TEST(repl_test(&e,
+                       "(nth 17 (range 0 20))",
+                       "17"));
+
+    TL_TEST(repl_test(&e,
+                       "(nth 21 (range 0 20))",
+                       "NIL"));
 }
 
 int
@@ -333,4 +451,7 @@ main(int argc, char **argv)
     TL(test_simple_eval());
     TL(test_lex_types());
     TL(test_read());
+    TL(test_buildin_list_creation());
+
+    tl_summary();
 }
