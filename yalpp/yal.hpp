@@ -98,7 +98,7 @@ std::stringstream stream(Expr* _e);
 std::string stringify(Expr* _e);
 
 
-namespace buildin {
+namespace core {
 
 Expr* progn(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* apply(Environment* _env, VariableScope* _scope, Expr* _e);
@@ -122,7 +122,8 @@ Expr* divide(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* lessthan(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* greaterthan(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* mathequal(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* simequal(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* eq(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* equal(Environment* _env, VariableScope* _scope, Expr* _e);
 
 Expr* defconst(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* defglobal(Environment* _env, VariableScope* _scope, Expr* _e);
@@ -163,8 +164,8 @@ public:
 
     Expr* read(const char* _program);
     Expr* eval(Expr* _e);
-    Expr* eval(VariableScope* _scope, Expr* _e);
-    Expr* evallist(VariableScope* _scope, Expr* _list);
+    Expr* scoped_eval(VariableScope* _scope, Expr* _e);
+    Expr* list_eval(VariableScope* _scope, Expr* _list);
 
     bool add_global(const char* _name, Expr* _v);
 	bool add_constant(const char* _name, Expr* _v);
@@ -253,13 +254,11 @@ Environment::constants(void)
 std::string
 _try_get_special_token(const char* _start)    
 {
-
     const std::string stokens[] = {
-        "(", ")",
-        "#(", /*hash-map*/
-        "{", "}",
-        "#{", /*vector*/
-        "[", "]",
+        //"'(",
+        "(", ")", /*Lists*/
+        //"'[",
+        "[", "]", /*array*/
         "'", "`", ",", ",@", /*quoting*/
         };
     const size_t stokens_len = sizeof(stokens) / sizeof(stokens[0]);
@@ -386,10 +385,11 @@ Environment::lex(std::list<std::string>& _tokens)
     std::string token;
     Expr* program = nullptr;
     Expr* curr = nullptr;
+    Expr* quoted = nullptr;
 
     while (_tokens.size() > 0) {
         token = _tokens.front();
-        if (token == ")" || token == "]" || token == "}") {
+        if (token == ")" || token == "]") {
             _tokens.pop_front();
             break;
         }
@@ -402,14 +402,17 @@ Environment::lex(std::list<std::string>& _tokens)
             _tokens.pop_front();
             curr = cons(symbol("list"), lex(_tokens));
         }
-        else if (token == "{") {
-            _tokens.pop_front();
-            curr = cons(symbol("vector"), lex(_tokens));
-        }
         else if (token == "'") {
-            token = token.substr(1);
             _tokens.pop_front();
-            curr = cons(symbol("quote"), lex(_tokens));
+            if (_tokens.front() != "(" &&  _tokens.front() != "[") {
+                quoted = lex_value(_tokens.front());
+                _tokens.pop_front();
+            }
+            else {
+                quoted = car(lex(_tokens));
+            }
+            //std::cout << "quoted: " << stringify(quoted) << std::endl;
+            curr = list({symbol("quote"), quoted});
         }
         else {
             curr = lex_value(token);
@@ -436,11 +439,11 @@ Environment::read(const char* _program)
 Expr*
 Environment::eval(Expr* _e)
 {
-    return eval(&m_global_scope, _e);
+    return scoped_eval(&m_global_scope, _e);
 }
 
 Expr*
-Environment::eval(VariableScope* _scope, Expr* _e)
+Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
     Expr* var = nullptr;
     Expr* fn = nullptr;
@@ -488,7 +491,7 @@ Environment::eval(VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-Environment::evallist(VariableScope* _scope, Expr* _list)
+Environment::list_eval(VariableScope* _scope, Expr* _list)
 {
     Expr* root = nullptr;
     Expr* curr = _list;
@@ -496,7 +499,7 @@ Environment::evallist(VariableScope* _scope, Expr* _list)
         return nil();
     }
     while (!is_nil(curr)) {
-        root = put(this, eval(_scope, car(curr)), root);
+        root = put(this, scoped_eval(_scope, car(curr)), root);
         curr = cdr(curr);
     }
     return ipreverse(root);
@@ -545,20 +548,26 @@ Environment::load_core(void)
     add_constant("PI/2", decimal(pi/2));
     add_constant("PI2", decimal(pi*2));
 
-    add_buildin("quote", buildin::quote);
-    add_buildin("list", buildin::list);
-    add_buildin("range", buildin::range);
-    add_buildin("reverse!", buildin::reverse_ip);
-    add_buildin("progn", buildin::progn);
+    add_buildin("quote", core::quote);
+    add_buildin("list", core::list);
+    add_buildin("cons", core::cons);
+    add_buildin("range", core::range);
+    add_buildin("reverse!", core::reverse_ip);
+    add_buildin("progn", core::progn);
 
-    add_buildin("+", buildin::plus);
-    add_buildin("-", buildin::minus);
-    add_buildin("*", buildin::multiply);
-    add_buildin("/", buildin::divide);
-    add_buildin("=", buildin::mathequal);
-    add_buildin("<", buildin::lessthan);
-    add_buildin(">", buildin::greaterthan);
-    add_buildin("equal", buildin::simequal);
+    add_buildin("car", core::car);
+    add_buildin("cdr", core::cdr);
+    add_buildin("nth", core::nth);
+
+    add_buildin("+", core::plus);
+    add_buildin("-", core::minus);
+    add_buildin("*", core::multiply);
+    add_buildin("/", core::divide);
+    add_buildin("=", core::mathequal);
+    add_buildin("<", core::lessthan);
+    add_buildin(">", core::greaterthan);
+    add_buildin("eq", core::eq);
+    add_buildin("equal", core::equal);
     return true;
 }
 
@@ -878,65 +887,61 @@ stringify(Expr* _e)
 }
 
 
-namespace buildin {
-
 Expr*
-quote(Environment* _env, VariableScope* _scope, Expr* _e)
+core::quote(Environment* _env, VariableScope* _scope, Expr* _e)
 {
     UNUSED(_env);
     UNUSED(_scope);
-    UNUSED(_e);
-    if (len(_e) != 1)
-        return nil();
+    //std::cout << "quote input: " << stringify(_e) << std::endl;
+    //std::cout << "quote res: " << stringify(car(_e)) << std::endl;
     return car(_e);
 }
 
 Expr*
-list(Environment* _env, VariableScope* _scope, Expr* _e)
+core::list(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    return _env->evallist(_scope, _e);
+    return _env->list_eval(_scope, _e);
 }
 
 Expr*
-cons(Environment* _env, VariableScope* _scope, Expr* _e)
+core::cons(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
-    if (len(args) != 2)
-        return nil();
+    Expr* args = _env->list_eval(_scope, _e);
+    std::cout << "cons input: " << stringify(_e) << std::endl;
+    std::cout << "cons eval: " << stringify(args) << std::endl;
+    //std::cout << "cons result: " << stringify(_env->cons(first(args), second(args))) << std::endl;
     return _env->cons(first(args), second(args));
 }
 
 Expr*
-car(Environment* _env, VariableScope* _scope, Expr* _e)
+core::car(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
-    if (len(args) != 1)
+    Expr* args = _env->list_eval(_scope, _e);
+    if (len(args) < 1)
         return nil();
-    return car(args);
+    return car(first(args));
 }
 
 Expr*
-cdr(Environment* _env, VariableScope* _scope, Expr* _e)
+core::cdr(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
-    if (len(args) != 1)
-        return nil();
-    return cdr(args);
+    Expr* args = _env->list_eval(_scope, _e);
+    return cdr(first(args));
 }
 
 Expr*
-reverse_ip(Environment* _env, VariableScope* _scope, Expr* _e)
+core::reverse_ip(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     if (len(args) != 1)
         return nil();
     return ipreverse(first(args));
 }
 
 Expr*
-nth(Environment* _env, VariableScope* _scope, Expr* _e)
+core::nth(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     if (len(args) != 2)
         return nil();
     if (first(args)->type != TYPE_REAL || second(args)->type != TYPE_CONS)
@@ -945,16 +950,16 @@ nth(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-len(Environment* _env, VariableScope* _scope, Expr* _e)
+core::len(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     return _env->real(len(args));
 }
 
 Expr*
-plus(Environment* _env, VariableScope* _scope, Expr* _e)
+core::plus(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     Expr* res = _env->real(0);
     Expr* curr = args;
 
@@ -978,9 +983,9 @@ plus(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-minus(Environment* _env, VariableScope* _scope, Expr* _e)
+core::minus(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     Expr* res = _env->real(0);
     Expr* curr = args;
 
@@ -997,6 +1002,9 @@ minus(Environment* _env, VariableScope* _scope, Expr* _e)
     if (len(args) == 0) {
         return _env->real(0);
     }
+
+    res = car(curr);
+    curr = cdr(curr);
     while (!is_nil(curr)) {
         if (!is_val(car(curr)))
             break;
@@ -1007,9 +1015,9 @@ minus(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-multiply(Environment* _env, VariableScope* _scope, Expr* _e)
+core::multiply(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     Expr* res = _env->real(1);
     Expr* curr = args;
 
@@ -1037,9 +1045,9 @@ multiply(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-divide(Environment* _env, VariableScope* _scope, Expr* _e)
+core::divide(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     Expr* res = _env->real(1);
     Expr* curr = args;
 
@@ -1067,43 +1075,46 @@ divide(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-mathequal(Environment* _env, VariableScope* _scope, Expr* _e)
+core::mathequal(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     Expr* curr = cdr(args);
     Expr* prev = args;
 
-    auto EQ2 = [_env] (Expr* _a, Expr* _b) {
-        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _a->decimal == _b->decimal;
-        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _a->real == _b->decimal;
-        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _a->decimal == _b->real;
-        else if (_a->type == TYPE_REAL && _b->type == TYPE_REAL)
-            return _a->real == _b->real;
-        else if (_a->type == TYPE_SYMBOL && _b->type == TYPE_SYMBOL)
-            return _a->symbol ==_b->symbol;
-        else if (_a->type == TYPE_STRING && _b->type == TYPE_STRING)
-            return _a->string == _b->string;
+    auto EQ2 = [] (Expr* a, Expr* b) {
+        if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
+            return a->decimal == b->decimal;
+        else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
+            return a->real == b->decimal;
+        else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
+            return  a->decimal == b->real;
+        else if (a->type == TYPE_REAL && b->type == TYPE_REAL)
+            return a->real == b->real;
+        else if (a->type == TYPE_SYMBOL && b->type == TYPE_SYMBOL)
+            return std::string(a->symbol) ==b->symbol;
+        else if (a->type == TYPE_STRING && b->type == TYPE_STRING)
+            return std::string(a->string) == b->string;
+        else if (a->type == TYPE_CONS && b->type == TYPE_CONS)
+            return stringify(a) == stringify(b);
         return false;
     };
-
     if (len(args) < 2)
-        return _env->symbol("t");
+        return _env->symbol("T");
     while (!is_nil(curr)) {
+        if(car(prev)->type != car(curr)->type)
+            return nil();
         if (!EQ2(car(prev), car(curr)))
             return nil();
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("t");
+    return _env->symbol("T");
 }
 
 Expr*
-lessthan(Environment* _env, VariableScope* _scope, Expr* _e)
+core::lessthan(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     Expr* curr = cdr(args);
     Expr* prev = args;
 
@@ -1129,9 +1140,9 @@ lessthan(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-greaterthan(Environment* _env, VariableScope* _scope, Expr* _e)
+core::greaterthan(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     Expr* curr = cdr(args);
     Expr* prev = args;
 
@@ -1157,9 +1168,10 @@ greaterthan(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-simequal(Environment* _env, VariableScope* _scope, Expr* _e)
+core::equal(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* args = _env->evallist(_scope, _e);
+    UNUSED(_scope);
+    Expr* args = _e;
     Expr* curr = cdr(args);
     Expr* prev = args;
 
@@ -1168,7 +1180,7 @@ simequal(Environment* _env, VariableScope* _scope, Expr* _e)
     };
 
     if (len(args) < 2) {
-        return _env->symbol("t");
+        return _env->symbol("T");
     }
     while (!is_nil(curr)) {
         if (!EQ2(car(prev), car(curr)))
@@ -1176,38 +1188,61 @@ simequal(Environment* _env, VariableScope* _scope, Expr* _e)
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("t");
+    return _env->symbol("T");
 }
 
 Expr*
-apply(Environment* _env, VariableScope* _scope, Expr* _e)
+core::eq(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->list_eval(_scope, _e);
+    Expr* curr = cdr(args);
+    Expr* prev = args;
+
+    auto EQ2 = [_env] (Expr* _a, Expr* _b) {
+        return stringify(_a) == stringify(_b);
+    };
+
+    if (len(args) < 2) {
+        return _env->symbol("T");
+    }
+    while (!is_nil(curr)) {
+        if (!EQ2(car(prev), car(curr)))
+            return nil();
+        prev = curr;
+        curr = cdr(curr);
+    }
+    return _env->symbol("T");
+}
+
+Expr*
+core::apply(Environment* _env, VariableScope* _scope, Expr* _e)
 {
     Expr* call;
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     if (len(args) != 2)
         return nil();
     call = put(_env, first(args), second(args));
-    return _env->eval(_scope, call);
+    return _env->scoped_eval(_scope, call);
 }
 
 Expr*
-progn(Environment* _env, VariableScope* _scope, Expr* _e)
+core::progn(Environment* _env, VariableScope* _scope, Expr* _e)
 {
     Expr* last = nullptr;
     while (!is_nil(_e)) {
-        last = _env->eval(_scope, _e);
+        last = _env->scoped_eval(_scope, _e);
         _e = cdr(_e);
     }
     return last;
 }
 
 Expr*
-range(Environment* _env, VariableScope* _scope, Expr* _e)
+core::range(Environment* _env, VariableScope* _scope, Expr* _e)
 {
     bool reverse = false;
     int low;
     int high;
-    Expr* args = _env->evallist(_scope, _e);
+    Expr* args = _env->list_eval(_scope, _e);
     Expr* out = nullptr;
 
     if (first(args)->real < second(args)->real) {
@@ -1224,10 +1259,6 @@ range(Environment* _env, VariableScope* _scope, Expr* _e)
         return out;
     return ipreverse(out);
 }
-
-}; /*namespace buildin*/
-
-
 
 /* Reverse list without append
 (define (reverse l)

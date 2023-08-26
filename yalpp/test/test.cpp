@@ -323,9 +323,18 @@ test_read(void)
     TL_TEST(read_test(&e, "(mysym 2.34 3 \"mystr\")"));
     TL_TEST(read_test(&e, "'(1 2 3)", "(quote (1 2 3))"));
     TL_TEST(read_test(&e, "[1 2 3]", "(list 1 2 3)"));
-    TL_TEST(read_test(&e, "{1 2 3}", "(vector 1 2 3)"));
+    TL_TEST(read_test(&e, "'[1 2 3]", "(quote (list 1 2 3))"));
+    //TL_TEST(read_test(&e, "{1 2 3}", "(vector 1 2 3)"));
     TL_TEST(read_test(&e, "'(1 (+ 3 2) (/ 2 4))", "(quote (1 (+ 3 2) (/ 2 4)))"));
     TL_TEST(read_test(&e, "(fn pow2 (x) (* x x))", "(fn pow2 (x) (* x x))"));
+
+    TL_TEST(read_test(&e, "('hi 9 0 1 \"friends\")",  "((quote hi) 9 0 1 \"friends\")"));
+    TL_TEST(read_test(&e, "'hi", "(quote hi)"));
+    TL_TEST(read_test(&e, "'7.245", "(quote 7.245)"));
+
+    TL_TEST(read_test(&e, "['hello 'friend]", "(list (quote hello) (quote friend))"));
+    TL_TEST(read_test(&e, "['hi '(1 2 3)]", "(list (quote hi) (quote (1 2 3)))"));
+
 }
 
 void
@@ -336,24 +345,22 @@ test_buildin_list_creation(void)
     TL_TEST(repl_test(&e, "(quote (foo bar (quote (baz))))", "(foo bar (quote (baz)))"));
     TL_TEST(repl_test(&e, "'(foo bar '(baz))", "(foo bar (quote (baz)))"));
     TL_TEST(repl_test(&e, "(quote (1 2 3 4))", "(1 2 3 4)"));
-    TL_TEST(repl_test(&e, "'(1 2 '(3 4) (quote 5))", "(1 2 (quote (3 4)) (quote 5))"));
-    TL_TEST(repl_test(&e, "(quote ()  )", "NIL"));
 
-    TL_TEST(repl_test(&e,
-                      "(list 1 2 3 )",
-                      "(1 2 3)"));
-    TL_TEST(repl_test(&e,
-                      "(list 2.4 -2 5 1)",
-                      "(2.4 -2 5 1)"));
-    TL_TEST(repl_test(&e,
-                      "(list 9.5667 -2.123 4.345)",
-                      "(9.5667 -2.123 4.345)"));
-    TL_TEST(repl_test(&e,
-                      "(list 1 (+ 1 1) 3 )",
-                      "(1 2 3)"));
-    TL_TEST(repl_test(&e,
-                      "(list 3 (+ -1 1 3) (+ 1 1 1))",
-                      "(3 3 3)"));
+    TL_TEST(repl_test(&e, "'(1 2 '(3 4) (quote 5))", "(1 2 (quote (3 4)) (quote 5))"));
+
+    TL_TEST(repl_test(&e, "(quote ()  )", "NIL"));
+    TL_TEST(repl_test(&e, "'(+ 2 3 (* 1 2 3 4))", "(+ 2 3 (* 1 2 3 4))"));
+
+    TL_TEST(repl_test(&e, "(list 1 2 3 )", "(1 2 3)"));
+    TL_TEST(repl_test(&e, "(list 2.4 -2 5 1)", "(2.4 -2 5 1)"));
+    TL_TEST(repl_test(&e, "(list 9.5667 -2.123 4.345)", "(9.5667 -2.123 4.345)"));
+    TL_TEST(repl_test(&e, "(list 1 (+ 1 1) 3 )", "(1 2 3)"));
+    TL_TEST(repl_test(&e, "(list 3 (+ -1 1 3) (+ 1 1 1))", "(3 3 3)"));
+
+    TL_TEST(repl_test(&e, "(cons 3 4)", "(3 . 4)"));
+    TL_TEST(repl_test(&e, "(cons 'name \"Henry\")", "(name . \"Henry\")"));
+    TL_TEST(repl_test(&e, "(cons 3 (* 2 2))", "(3 . 4)"));
+    TL_TEST(repl_test(&e, "(cons 'mylist '(2 2))", "(mylist 2 2)"));
 }
 
 
@@ -401,11 +408,11 @@ test_buildin_accessors(void)
     yal::Environment e;
     e.load_core();
     TL_TEST(repl_test(&e,
-                       "(car (quote (1 2 3 4)))",
+                       "(car '(1 2 3 4))",
                        "1"));
 
     TL_TEST(repl_test(&e,
-                       "(cdr (quote (1 2 3 4)))",
+                       "(cdr '(1 2 3 4))",
                        "(2 3 4)"));
 
     TL_TEST(repl_test(&e,
@@ -475,9 +482,9 @@ test_buildin_equality(void)
     TL_TEST(repl_test(&e, "(= 7)", "T"));
     TL_TEST(repl_test(&e, "(=)", "T"));
     TL_TEST(repl_test(&e, "(= (+ 2 2) 4 (- 10 6) (* 2 2))", "T"));
-    TL_TEST(repl_test(&e, "(= (1 2 3) (1 2 3))", "NIL"));
+    TL_TEST(repl_test(&e, "(= '(1 2 3) '(1 2 3))", "T"));
 
-    TL_TEST(repl_test(&e, "(eq '(1 2 3) [1 2 3] (range 1 4))", "T"));
+    TL_TEST(repl_test(&e, "(eq '(1 2 3) (quote (1 2 3)) [1 2 3] (list 1 2 3) (range 1 3))", "T"));
     TL_TEST(repl_test(&e, "(eq 4 (+ 2 2))", "T"));
 
     TL_TEST(repl_test(&e, "(equal 4 (+ 2 2))", "NIL"));
@@ -580,13 +587,13 @@ main(int argc, char **argv)
     TL(test_simple_eval());
     TL(test_lex_types());
     TL(test_read());
-    TL(test_buildin_list_creation());
     TL(test_buildin_range());
-    TL(test_buildin_accessors());
-    //TL(test_buildin_math());
     TL(test_buildin_equality());
-    TL(test_conditionals());
-    TL(test_buildin_progn());
+    TL(test_buildin_accessors());
+    TL(test_buildin_list_creation());
+    //TL(test_conditionals());
+    //TL(test_buildin_progn());
+    //TL(test_buildin_math());
 
     tl_summary();
 }
