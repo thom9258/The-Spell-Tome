@@ -10,6 +10,7 @@
 #include <sstream>
 #include <functional>
 #include <cassert>
+#include <stdexcept>
 
 #ifndef YALCPP_H
 #define YALCPP_H
@@ -135,6 +136,7 @@ Expr* setfield(Environment* _env, VariableScope* _scope, Expr* _e);
 
 Expr* _try(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* _throw(Environment* _env, VariableScope* _scope, Expr* _e);
+
 Expr* _if(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* _cond(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* _or(Environment* _env, VariableScope* _scope, Expr* _e);
@@ -385,42 +387,50 @@ Environment::lex(std::list<std::string>& _tokens)
     std::string token;
     Expr* program = nullptr;
     Expr* curr = nullptr;
-    Expr* quoted = nullptr;
 
-    while (_tokens.size() > 0) {
-        token = _tokens.front();
-        if (token == ")" || token == "]") {
-            _tokens.pop_front();
-            break;
-        }
+    if (_tokens.empty())
+        return nil();
 
-        if (token == "(") {
-            _tokens.pop_front();
+    token = _tokens.front();
+    //std::cout << "lexing token: " << token << std::endl;
+
+    if (token == "(") {
+        //std::cout << "found ("  << std::endl;
+        _tokens.pop_front();
+        while (token != ")") {
+            if (_tokens.empty())
+                return ipreverse(program);
             curr = lex(_tokens);
+            program = put(this, curr, program);
+            token = _tokens.front();
         }
-        else if (token == "[") {
-            _tokens.pop_front();
-            curr = cons(symbol("list"), lex(_tokens));
-        }
-        else if (token == "'") {
-            _tokens.pop_front();
-            if (_tokens.front() != "(" &&  _tokens.front() != "[") {
-                quoted = lex_value(_tokens.front());
-                _tokens.pop_front();
-            }
-            else {
-                quoted = car(lex(_tokens));
-            }
-            //std::cout << "quoted: " << stringify(quoted) << std::endl;
-            curr = list({symbol("quote"), quoted});
-        }
-        else {
-            curr = lex_value(token);
-            _tokens.pop_front();
-        }
-        program = put(this, curr, program);
+        _tokens.pop_front();
+        return ipreverse(program);
     }
-    return ipreverse(program);
+    if (token == "[") {
+        //std::cout << "found ["  << std::endl;
+        _tokens.pop_front();
+        program = put(this, symbol("list"), program);
+        while (token != "]" ) {
+            if (_tokens.empty())
+                return ipreverse(program);
+            curr = lex(_tokens);
+            program = put(this, curr, program);
+            token = _tokens.front();
+        }
+        _tokens.pop_front();
+        return ipreverse(program);
+    }
+    if (token == "'") {
+        //std::cout << "found '"  << std::endl;
+        _tokens.pop_front();
+        program = list({symbol("quote"), lex(_tokens)});
+        return program;
+    }
+    //std::cout << "found value"  << std::endl;
+    program = lex_value(token);
+    _tokens.pop_front();
+    return program;
 }
 
 Expr *
@@ -429,17 +439,25 @@ Environment::read(const char* _program)
     std::list<std::string> tokens;
     Expr* lexed = nullptr;
     tokens = tokenize(_program);
+    if (tokens.empty())
+        return nil();
     lexed = lex(tokens);
-    /*TODO: this might be wrong*/
-    if (len(lexed) == 1)
-        return car(lexed);
+    std::cout << "lexed:   " << stringify(lexed) << std::endl;
     return lexed;
 }
 
 Expr*
 Environment::eval(Expr* _e)
 {
-    return scoped_eval(&m_global_scope, _e);
+    Expr* res = nullptr;
+    try {
+        res = scoped_eval(&m_global_scope, _e);
+    }
+    catch (std::exception& e) {
+        //std::cout << "ERROR CAUGHT: " << e.what() << std::endl;
+        return list({symbol("error"), string(e.what())});
+    }
+    return res;
 }
 
 Expr*
@@ -471,6 +489,11 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         return nil();
 
     case TYPE_SYMBOL:
+        if (is_nil(_e))
+            return symbol("NIL");
+        if (_e->symbol == std::string("t") || _e->symbol == std::string("T"))
+            return symbol("T");
+
         var = assoc(_e, m_constants);
         if (!is_nil(var))
             return cdr(var);
@@ -552,6 +575,7 @@ Environment::load_core(void)
     add_buildin("list", core::list);
     add_buildin("cons", core::cons);
     add_buildin("range", core::range);
+    add_buildin("apply", core::apply);
     add_buildin("reverse!", core::reverse_ip);
     add_buildin("progn", core::progn);
 
@@ -568,6 +592,10 @@ Environment::load_core(void)
     add_buildin(">", core::greaterthan);
     add_buildin("eq", core::eq);
     add_buildin("equal", core::equal);
+
+    add_buildin("if", core::_if);
+    add_buildin("try", core::_try);
+    add_buildin("throw", core::_throw);
     return true;
 }
 
@@ -671,9 +699,9 @@ is_nil(Expr* _e)
 {
     const std::string nil1 = "nil";
     const std::string nil2 = "NIL";
-    if (_e == nullptr)
+    if (_e == nullptr || _e->type == TYPE_INVALID)
         return true;
-    if (_e->type == TYPE_CONS && _e->cons.car == nullptr && _e->cons.cdr == nullptr)
+    if (_e->type == TYPE_CONS && is_nil(_e->cons.car) && is_nil(_e->cons.cdr))
         return true;
     if (_e->type == TYPE_SYMBOL && nil1 == _e->symbol)
         return true;
@@ -892,9 +920,10 @@ core::quote(Environment* _env, VariableScope* _scope, Expr* _e)
 {
     UNUSED(_env);
     UNUSED(_scope);
-    //std::cout << "quote input: " << stringify(_e) << std::endl;
-    //std::cout << "quote res: " << stringify(car(_e)) << std::endl;
-    return car(_e);
+    if (len(_e) > 1)
+        throw std::runtime_error("quote can only have 1 input argument.");
+    //std::cout << "quote " << stringify(first(_e)) << std::endl;
+    return first(_e);
 }
 
 Expr*
@@ -1048,23 +1077,36 @@ Expr*
 core::divide(Environment* _env, VariableScope* _scope, Expr* _e)
 {
     Expr* args = _env->list_eval(_scope, _e);
-    Expr* res = _env->real(1);
+    Expr* res = nullptr;
     Expr* curr = args;
 
     auto DIV2 = [_env] (Expr* _a, Expr* _b) {
+        std::cout << "a = " << stringify(_a) << " , "
+                  << "b = " << stringify(_b) << std::endl;
+        if ((_a->type == TYPE_DECIMAL && _a->decimal == 0) ||
+            (_a->type == TYPE_REAL && _a->real == 0)        )
+            return _env->decimal(0);
+
+        if ((_b->type == TYPE_DECIMAL && _b->decimal == 0) ||
+            (_b->type == TYPE_REAL && _b->real == 0)        )
+            throw std::runtime_error("[/] divide by zero error");
+
         if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
             return _env->decimal(_a->decimal / _b->decimal);
         else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
             return _env->decimal(_a->real / _b->decimal);
         else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
             return  _env->decimal(_a->decimal / _b->real);
-        return _env->real(_a->real / _b->real);
+        return _env->decimal(_a->real / _b->real);
     };
 
     if (len(args) == 0)
         return _env->real(1);
     if (len(args) == 1)
         return first(args);
+
+    res = car(curr);
+    curr = cdr(curr);
     while (!is_nil(curr)) {
         if (!is_val(car(curr)))
             break;
@@ -1101,7 +1143,7 @@ core::mathequal(Environment* _env, VariableScope* _scope, Expr* _e)
     if (len(args) < 2)
         return _env->symbol("T");
     while (!is_nil(curr)) {
-        if(car(prev)->type != car(curr)->type)
+        if (!is_val(prev) || !is_val(curr))
             return nil();
         if (!EQ2(car(prev), car(curr)))
             return nil();
@@ -1129,14 +1171,16 @@ core::lessthan(Environment* _env, VariableScope* _scope, Expr* _e)
     };
 
     if (len(args) < 2)
-        return _env->symbol("t");
+        return _env->symbol("T");
     while (!is_nil(curr)) {
+        if (!is_val(prev) || !is_val(curr))
+            return nil();
         if (!LT2(car(prev), car(curr)))
             return nil();
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("t");
+    return _env->symbol("T");
 }
 
 Expr*
@@ -1157,14 +1201,16 @@ core::greaterthan(Environment* _env, VariableScope* _scope, Expr* _e)
     };
 
     if (len(args) < 2)
-        return _env->symbol("t");
+        return _env->symbol("T");
     while (!is_nil(curr)) {
+        if (!is_val(prev) || !is_val(curr))
+            return nil();
         if (!GT2(car(prev), car(curr)))
             return nil();
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("t");
+    return _env->symbol("T");
 }
 
 Expr*
@@ -1217,20 +1263,23 @@ core::eq(Environment* _env, VariableScope* _scope, Expr* _e)
 Expr*
 core::apply(Environment* _env, VariableScope* _scope, Expr* _e)
 {
+    /*TODO: fix apply*/
     Expr* call;
+    std::cout << "apply inp " << stringify(_e) << std::endl;
     Expr* args = _env->list_eval(_scope, _e);
+    std::cout << "apply args " << stringify(args) << std::endl;
     if (len(args) != 2)
-        return nil();
-    call = put(_env, first(args), second(args));
+        throw std::runtime_error("[apply] Expected 2 arguments");
+    call = _env->cons(first(args), second(args));
     return _env->scoped_eval(_scope, call);
 }
 
 Expr*
 core::progn(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    Expr* last = nullptr;
+    Expr* last = nil();
     while (!is_nil(_e)) {
-        last = _env->scoped_eval(_scope, _e);
+        last = _env->scoped_eval(_scope, car(_e));
         _e = cdr(_e);
     }
     return last;
@@ -1258,6 +1307,51 @@ core::range(Environment* _env, VariableScope* _scope, Expr* _e)
     if (reverse)
         return out;
     return ipreverse(out);
+}
+
+Expr*
+core::_if(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* cond = nullptr;    
+    //std::cout << "if input " << stringify(_e) << std::endl; 
+    if (is_nil(_e))
+        throw std::runtime_error("[if] expected required condition and true body");
+    if (!(len(_e) == 2 || len(_e) == 3))
+        throw std::runtime_error("[if] expected required condition and true body");
+    cond = _env->scoped_eval(_scope, first(_e));
+    std::cout << "condition res " << stringify(cond) << std::endl; 
+    if (!is_nil(cond))
+        return _env->scoped_eval(_scope, second(_e));
+    return _env->scoped_eval(_scope, third(_e));
+}
+
+Expr*
+core::_try(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    UNUSED(_env);
+    UNUSED(_scope);
+    UNUSED(_e);
+    throw std::runtime_error("[try] not implemented!");
+#if 0
+    Expr* res;
+    try {
+        res = scoped_eval(&m_global_scope, _e);
+    }
+    catch (std::exception& e) {
+        return list({symbol("error"), string(e.what())});
+    }
+#endif
+}
+
+
+Expr*
+core::_throw(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* args = _env->list_eval(_scope, _e);
+    if (first(args)->type != TYPE_STRING)
+        throw std::runtime_error("[throw] expects string input");
+    throw std::runtime_error(first(args)->string);
+    return nil();
 }
 
 /* Reverse list without append
