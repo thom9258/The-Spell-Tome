@@ -603,6 +603,47 @@ test_buildin_progn(void)
                        "5"));
 }
 
+void
+test_variables(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(local! player-name \"player1\")", "player-name"));
+    TL_TEST(repl_test(&e, "(local! health (+ 2 2))", "health"));
+    TL_TEST(repl_test(&e, "(local! weapons '(pistol lazergun shotgun))", "weapons"));
+
+    TL_TEST(repl_test(&e, "player-name", "\"player1\""));
+    TL_TEST(repl_test(&e, "health", "4"));
+    TL_TEST(repl_test(&e, "weapons", "(pistol lazergun shotgun)"));
+
+    TL_TEST(repl_test(&e, "(local! thislist [1 2 3])", "thislist"));
+    TL_TEST(repl_test(&e, "(local! my/list [2 (+ 3 3)])", "my/list"));
+
+    TL_TEST(repl_test(&e, "thislist", "(1 2 3)"));
+    TL_TEST(repl_test(&e, "my/list", "(2 6)"));
+
+    TL_TEST(repl_test(&e, "(local! my/var 10)", "my/var"));
+    TL_TEST(repl_test(&e, "(* my/var 2)", "20"));
+}
+
+void
+test_set_variables(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(const! max-health 10)", "max-health"));
+    TL_TEST(repl_test(&e, "(local! health (+ 2 2))", "health"));
+    TL_TEST(repl_test(&e, "(set! health (- health 1))", "3"));
+    TL_TEST(repl_test(&e, "health", "3"));
+    TL_TEST(repl_test(&e, "(set! health max-health)", "10"));
+    TL_TEST(repl_test(&e, "(set! health (- health 1))", "9"));
+    TL_TEST(repl_test(&e, "(set! invalid-name 7)",
+                          "(error \"[setvar!] variable to set does not exist\")"));
+    TL_TEST(repl_test(&e, "(set! health)", "NIL"));
+}
+
 int
 main(int argc, char **argv)
 {
@@ -627,6 +668,8 @@ main(int argc, char **argv)
     TL(test_buildin_progn());
     TL(test_conditionals());
     TL(test_buildin_equality());
+    TL(test_variables());
+    TL(test_set_variables());
 
     tl_summary();
 }

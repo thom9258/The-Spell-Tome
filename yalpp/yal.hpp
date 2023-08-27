@@ -1,5 +1,3 @@
-#pragma once
-
 #include <iostream>
 #include <initializer_list>
 #include <algorithm>
@@ -128,11 +126,11 @@ Expr* equal(Environment* _env, VariableScope* _scope, Expr* _e);
 
 Expr* defconst(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* defglobal(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* defvar(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* deflocal(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* deflambda(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* deffunction(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* defmacro(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* setfield(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* setvar(Environment* _env, VariableScope* _scope, Expr* _e);
 
 Expr* _try(Environment* _env, VariableScope* _scope, Expr* _e);
 Expr* _throw(Environment* _env, VariableScope* _scope, Expr* _e);
@@ -169,9 +167,10 @@ public:
     Expr* scoped_eval(VariableScope* _scope, Expr* _e);
     Expr* list_eval(VariableScope* _scope, Expr* _list);
 
-    bool add_global(const char* _name, Expr* _v);
 	bool add_constant(const char* _name, Expr* _v);
+    bool add_global(const char* _name, Expr* _v);
 	bool add_buildin(const char* _name, buildin_fn _fn);
+    bool add_variable(VariableScope* _scope, const char* _name, Expr* _v);
 
     bool load_core(void);
 
@@ -189,7 +188,6 @@ private:
     GarbageCollector m_gc;
     VariableScope m_global_scope;
     Expr* m_constants = nullptr; /*constant values and buildins*/
-    bool add_variable(VariableScope* _scope, const char* _name, Expr* _v);
     Expr* lex_value(std::string& _token);
     Expr* lex(std::list<std::string>& _tokens);
 };
@@ -570,6 +568,15 @@ Environment::load_core(void)
     add_constant("PI", decimal(pi));
     add_constant("PI/2", decimal(pi/2));
     add_constant("PI2", decimal(pi*2));
+
+    add_buildin("const!", core::defconst);
+    add_buildin("global!", core::defglobal);
+    add_buildin("local!", core::deflocal);
+    add_buildin("set!", core::setvar);
+
+    //add_buildin("fn!", core::deffunction);
+    //add_buildin("macro!", core::defmacro);
+    //add_buildin("lambda", core::deflambda);
 
     add_buildin("quote", core::quote);
     add_buildin("list", core::list);
@@ -1352,6 +1359,63 @@ core::_throw(Environment* _env, VariableScope* _scope, Expr* _e)
         throw std::runtime_error("[throw] expects string input");
     throw std::runtime_error(first(args)->string);
     return nil();
+}
+
+Expr*
+core::defconst(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* val = _env->scoped_eval(_scope, second(_e));
+    if (len(_e) != 2)
+        throw std::runtime_error("[const!] expects symbol and value.");
+    if (first(_e)->type != TYPE_SYMBOL)
+        throw std::runtime_error("[const!] expects name to be type symbol");
+    _env->add_constant(first(_e)->symbol, val);
+    return first(_e);
+}
+
+Expr*
+core::defglobal(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* val = _env->scoped_eval(_scope, second(_e));
+    if (len(_e) != 2)
+        throw std::runtime_error("[global!] expects symbol and value.");
+    if (first(_e)->type != TYPE_SYMBOL)
+        throw std::runtime_error("[global!] expects name to be type symbol");
+    _env->add_global(first(_e)->symbol, val);
+    return first(_e);
+}
+
+Expr*
+core::deflocal(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* val = _env->scoped_eval(_scope, second(_e));
+    if (len(_e) != 2)
+        throw std::runtime_error("[local!] expects symbol and value.");
+    if (first(_e)->type != TYPE_SYMBOL)
+        throw std::runtime_error("[local!] expects name to be type symbol");
+    _env->add_variable(_scope, first(_e)->symbol, val);
+    return first(_e);
+}
+
+Expr*
+core::setvar(Environment* _env, VariableScope* _scope, Expr* _e)
+{
+    Expr* var = nullptr;
+    VariableScope* s = _scope;
+    while (s != nullptr) {
+        var = assoc(first(_e), s->m_variables);
+        if (!is_nil(var)) {
+            var->cons.cdr = _env->scoped_eval(_scope, second(_e));
+            return cdr(var);
+        }
+        s = s->m_outer;
+    }
+    var = assoc(first(_e), _env->globals());
+    if (!is_nil(var)) {
+        var->cons.cdr = _env->scoped_eval(_scope, second(_e));
+        return cdr(var);
+    }
+    throw std::runtime_error("[setvar!] variable to set does not exist");
 }
 
 /* Reverse list without append
