@@ -509,6 +509,7 @@ test_buildin_math(void)
     TL_TEST(repl_test(&e, "(* 4 3)", "12"));
     TL_TEST(repl_test(&e, "(/ 8 2)", "4"));
     TL_TEST(repl_test(&e, "(/ 0 2)", "0"));
+    TL_TEST(repl_test(&e, "(/ 2 0)", "(error \"[/] divide by zero error\")"));
     TL_TEST(repl_test(&e, "(+ 2 (- 5 6) 1)", "2"));
     TL_TEST(repl_test(&e, "(+ 4 (* 2 6) (- 10 5))", "21"));
     TL_TEST(repl_test(&e, "(- 5 2)", "3"));
@@ -644,6 +645,39 @@ test_set_variables(void)
     TL_TEST(repl_test(&e, "(set! health)", "NIL"));
 }
 
+void
+test_try_catch_throw(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(throw \"some error!\")", "(error \"some error!\")"));
+
+    TL_TEST(repl_test(&e, "(try (throw \"myerr!\") "
+                          "    )",
+                          "(error \"myerr!\")"));
+
+    TL_TEST(repl_test(&e, "(try (throw \"myerr!\") "
+                          "    err err)",
+                          "(error \"myerr!\")"));
+
+    TL_TEST(repl_test(&e, "(try (throw \"shit-hit-the-fan\") "
+                          "    err ['caught-error err])",
+                          "(caught-error (error \"shit-hit-the-fan\"))"));
+
+    TL_TEST(repl_test(&e, "(try (set! myvar 10) "
+                          "    err err)",
+                          "(error \"[setvar!] variable to set does not exist\")"));
+
+    TL_TEST(repl_test(&e, "(try (/ 2 0) "
+                          "    err err)",
+                          "(error \"[/] divide by zero error\")"));
+
+    TL_TEST(repl_test(&e, "(try (/ 2 0) "
+                          "    err (/ 0 2)",
+                          "0"));
+}
+
 int
 main(int argc, char **argv)
 {
@@ -670,6 +704,7 @@ main(int argc, char **argv)
     TL(test_buildin_equality());
     TL(test_variables());
     TL(test_set_variables());
+    TL(test_try_catch_throw());
 
     tl_summary();
 }

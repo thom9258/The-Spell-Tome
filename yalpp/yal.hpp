@@ -153,12 +153,15 @@ public:
 
 class VariableScope {
 public:
-    VariableScope* m_outer = nullptr;
+    VariableScope(VariableScope* _outer);
+    VariableScope* m_outer;
     Expr* m_variables = nullptr;
 };
 
 class Environment {
 public:
+    Environment(void);
+
     Expr* globals(void);
     Expr* constants(void);
 
@@ -228,6 +231,9 @@ GarbageCollector::~GarbageCollector(void)
         destroy_variable(v);
 }
 
+VariableScope::VariableScope(VariableScope* _outer) : m_outer(_outer) {}
+
+Environment::Environment(void) : m_global_scope(nullptr) {}
 
 Expr*
 Environment::globals(void)
@@ -1088,8 +1094,8 @@ core::divide(Environment* _env, VariableScope* _scope, Expr* _e)
     Expr* curr = args;
 
     auto DIV2 = [_env] (Expr* _a, Expr* _b) {
-        std::cout << "a = " << stringify(_a) << " , "
-                  << "b = " << stringify(_b) << std::endl;
+        //std::cout << "a = " << stringify(_a) << " , "
+        //          << "b = " << stringify(_b) << std::endl;
         if ((_a->type == TYPE_DECIMAL && _a->decimal == 0) ||
             (_a->type == TYPE_REAL && _a->real == 0)        )
             return _env->decimal(0);
@@ -1335,19 +1341,30 @@ core::_if(Environment* _env, VariableScope* _scope, Expr* _e)
 Expr*
 core::_try(Environment* _env, VariableScope* _scope, Expr* _e)
 {
-    UNUSED(_env);
-    UNUSED(_scope);
-    UNUSED(_e);
-    throw std::runtime_error("[try] not implemented!");
-#if 0
-    Expr* res;
+    Expr* res = nullptr;
+    Expr* err = nullptr;
     try {
-        res = scoped_eval(&m_global_scope, _e);
+        //std::cout << "trying " << stringify(first(_e)) << std::endl; 
+        res = _env->scoped_eval(_scope, first(_e));
     }
     catch (std::exception& e) {
-        return list({symbol("error"), string(e.what())});
+        err = _env->list({_env->symbol("error"), _env->string(e.what())});
+        //std::cout << "caught err " << stringify(err) << std::endl; 
     }
-#endif
+    if (is_nil(err))
+        return res;
+    /*Check all requirements for catching is in place*/
+    if (len(_e) < 2)
+        return err;
+    if (is_nil(second(_e)) || second(_e)->type != TYPE_SYMBOL)
+        throw std::runtime_error("[try] arg 2 expected symbol for error");
+    if (is_nil(third(_e)) || !is_cons(_e))
+        throw std::runtime_error("[try] arg 3 expected expression for error evaluation");
+
+    VariableScope internal(_scope);
+    _env->add_variable(&internal, second(_e)->symbol, err);
+    res = _env->scoped_eval(&internal, third(_e));
+    return res;
 }
 
 
