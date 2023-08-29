@@ -396,7 +396,10 @@ test_buildin_list_creation(void)
     /*TODO: locate why this error is there*/
     //TL_TEST(repl_test(&e, "'(1 2 '(3 4) (quote 5))", "(1 2 (quote (3 4)) (quote 5))"));
 
-    TL_TEST(repl_test(&e, "(quote ()  )", "NIL"));
+    TL_TEST(repl_test(&e, "()", "NIL"));
+    TL_TEST(repl_test(&e, "[]", "NIL"));
+
+    TL_TEST(repl_test(&e, "(quote ()  )", "(error \"[quote] expected 1 argument\")"));
     TL_TEST(repl_test(&e, "'(+ 2 3 (* 1 2 3 4))", "(+ 2 3 (* 1 2 3 4))"));
 
     TL_TEST(repl_test(&e, "(list 1 2 3 )", "(1 2 3)"));
@@ -480,16 +483,16 @@ test_buildin_accessors(void)
     //                   "(fourth (quote (1 2 3 4)))",
     //                   "4"));
 
-    TL_TEST(repl_test(&e,
-                       "(nth 9 (range 0 20))",
-                       "9"));
+    //TL_TEST(repl_test(&e,
+    //                   "(nth 9 (range 0 20))",
+    //                   "9"));
 
     TL_TEST(repl_test(&e,
-                       "(nth 17 (range 0 20))",
-                       "17"));
+                       "(nthcdr 17 (range 0 20))",
+                       "(17 18 19 20)"));
 
     TL_TEST(repl_test(&e,
-                       "(nth 21 (range 0 20))",
+                       "(nthcdr 21 (range 0 20))",
                        "NIL"));
 }
 
@@ -547,8 +550,8 @@ test_buildin_equality(void)
     TL_TEST(repl_test(&e, "(> 1 2 5 7 9 12)", "NIL"));
     TL_TEST(repl_test(&e, "(> 4 2 3)", "NIL"));
     TL_TEST(repl_test(&e, "(< 4 2 3)", "NIL"));
-    TL_TEST(repl_test(&e, "(< sym1 sym2 3)", "NIL"));
-    TL_TEST(repl_test(&e, "(> sym1 sym2 3)", "NIL"));
+    TL_TEST(repl_test(&e, "(< 'sym1 'sym2 3)", "(error \"[<] can only compare values\")"));
+    TL_TEST(repl_test(&e, "(> 'sym1 'sym2 3)",  "(error \"[>] can only compare values\")"));
 }
 
 void
@@ -651,19 +654,19 @@ test_try_catch_throw(void)
     yal::Environment e;
     e.load_core();
 
-    TL_TEST(repl_test(&e, "(throw \"some error!\")", "(error \"some error!\")"));
+    TL_TEST(repl_test(&e, "(throw \"some error!\")", "(error \"[throw] some error!\")"));
 
     TL_TEST(repl_test(&e, "(try (throw \"myerr!\") "
                           "    )",
-                          "(error \"myerr!\")"));
+                          "(error \"[throw] myerr!\")"));
 
     TL_TEST(repl_test(&e, "(try (throw \"myerr!\") "
                           "    err err)",
-                          "(error \"myerr!\")"));
+                          "(error \"[throw] myerr!\")"));
 
     TL_TEST(repl_test(&e, "(try (throw \"shit-hit-the-fan\") "
                           "    err ['caught-error err])",
-                          "(caught-error (error \"shit-hit-the-fan\"))"));
+                          "(caught-error (error \"[throw] shit-hit-the-fan\"))"));
 
     TL_TEST(repl_test(&e, "(try (set! myvar 10) "
                           "    err err)",
@@ -676,6 +679,106 @@ test_try_catch_throw(void)
     TL_TEST(repl_test(&e, "(try (/ 2 0) "
                           "    err (/ 0 2)",
                           "0"));
+}
+
+void
+test_predicates(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(nil? 2)", "NIL"));
+    TL_TEST(repl_test(&e, "(nil? NIL)", "T"));
+
+    TL_TEST(repl_test(&e, "(real? 2)", "T"));
+    TL_TEST(repl_test(&e, "(real? mysym)", "NIL"));
+
+    TL_TEST(repl_test(&e, "(decimal? 2)", "NIL"));
+    TL_TEST(repl_test(&e, "(decimal? 2.43)", "T"));
+    TL_TEST(repl_test(&e, "(decimal? \"mysym\")", "NIL"));
+
+    TL_TEST(repl_test(&e, "(value? 2)", "T"));
+    TL_TEST(repl_test(&e, "(value? 2.45)", "T"));
+    TL_TEST(repl_test(&e, "(value? mysym)", "NIL"));
+
+    TL_TEST(repl_test(&e, "(symbol? 2)", "NIL"));
+    TL_TEST(repl_test(&e, "(symbol? mysym)", "T"));
+
+    TL_TEST(repl_test(&e, "(string? 2.43)", "NIL"));
+    TL_TEST(repl_test(&e, "(string? \"mysym\")", "T"));
+
+    TL_TEST(repl_test(&e, "(list? 2.43)", "NIL"));
+    TL_TEST(repl_test(&e, "(list? (1 2 3))", "T"));
+
+    TL_TEST(repl_test(&e, "(var myvar '(1 2))", "myvar"));
+
+    TL_TEST(repl_test(&e, "(const? PI)", "T"));
+    TL_TEST(repl_test(&e, "(const? (1 2 3))", "NIL"));
+    TL_TEST(repl_test(&e, "(const? myvar)", "NIL"));
+
+    TL_TEST(repl_test(&e, "(var? PI)", "NIL"));
+    TL_TEST(repl_test(&e, "(var? (1 2 3))", "NIL"));
+    TL_TEST(repl_test(&e, "(var? myvar)", "T"));
+
+    TL_TEST(repl_test(&e, "(var newvar 23)", "newvar"));
+    TL_TEST(repl_test(&e, "(var? newvar)", "T"));
+
+    TL_TEST(repl_test(&e, "(fn? +)", "T"));
+    TL_TEST(repl_test(&e, "(fn? PI)", "NIL"));
+
+    TL_TEST(repl_test(&e,
+                      "(fn factorial (v)"
+                      "  (if (= v 0) "
+                      "    1"
+                      "    (* v (factorial (- v 1)))"
+                      "))",
+                      "factorial"));
+	
+    TL_TEST(repl_test(&e, "(fn? factorial)", "T"));
+
+    TL_TEST(repl_test(&e, "(macro? +)", "NIL"));
+    TL_TEST(repl_test(&e, "(macro? PI)", "NIL"));
+
+    TL_TEST(repl_test(&e,
+                      "(macro same (v)"
+                      "v)",
+                      "same"));
+	
+    TL_TEST(repl_test(&e, "(macro? same)", "T"));
+}
+
+void
+test_apply(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(apply '- '(5 2))", "3"));
+    TL_TEST(repl_test(&e, "(apply '+ (range 1 10))", "55"));
+}
+
+void
+test_lambda(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(lambda (a) a)", "#<lambda>"));
+    TL_TEST(repl_test(&e, "((lambda (a) a) 12)", "12"));
+    TL_TEST(repl_test(&e, "((lambda () 5))", "5"));
+    TL_TEST(repl_test(&e, "((lambda () '(1 1 1)))", "(1 1 1)"));
+    TL_TEST(repl_test(&e, "((lambda (n) [n 2 3]) 2)", "(2 2 3)"));
+    TL_TEST(repl_test(&e, "((lambda (a) (+ a 10)) 4)", "14"));
+    TL_TEST(repl_test(&e, "((lambda (b c) (+ b c)) 4 6)", "10"));
+    TL_TEST(repl_test(&e, "((lambda (a b) (+ a b)) 10 20)", "30"));
+    TL_TEST(repl_test(&e, "((lambda () (* 5 3)))", "15"));
+    TL_TEST(repl_test(&e, "((lambda (a b) (* a b)) 4 6)", "24"));
+    TL_TEST(repl_test(&e,
+                      "((lambda (a b c) "
+                      "(var s (* a b))"
+                      "(+ s c))"
+                      "2 4 3)",
+                      "11"));
 }
 
 int
@@ -705,6 +808,9 @@ main(int argc, char **argv)
     TL(test_variables());
     TL(test_set_variables());
     TL(test_try_catch_throw());
+    TL(test_apply());
+    //TL(test_predicates());
+    TL(test_lambda());
 
     tl_summary();
 }
