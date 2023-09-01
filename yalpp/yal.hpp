@@ -109,7 +109,6 @@ Expr* apply(VariableScope* _scope, Expr* _e);
 Expr* quote(VariableScope* _scope, Expr* _e);
 Expr* list(VariableScope* _scope, Expr* _e);
 Expr* len(VariableScope* _scope, Expr* _e);
-Expr* put(VariableScope* _scope, Expr* _e);
 Expr* reverse_ip(VariableScope* _scope, Expr* _e);
 Expr* range(VariableScope* _scope, Expr* _e);
 
@@ -135,6 +134,7 @@ Expr* deflambda(VariableScope* _scope, Expr* _e);
 Expr* deffunction(VariableScope* _scope, Expr* _e);
 Expr* defmacro(VariableScope* _scope, Expr* _e);
 Expr* setvar(VariableScope* _scope, Expr* _e);
+Expr* symbol_variable(VariableScope* _scope, Expr* _e);
 
 Expr* _try(VariableScope* _scope, Expr* _e);
 Expr* _throw(VariableScope* _scope, Expr* _e);
@@ -372,19 +372,25 @@ VariableScope::bind(Expr* _binds, Expr* _values)
   /*TODO: We just blindly pair binds and values,
           In the future, add support for &rest and keyword binds aswell*/
     std::string bindstr;
+    Expr* rest = nullptr;
     Expr* bind = _binds; 
     Expr* val = _values; 
     while (!is_nil(bind) && !is_nil(val)) {
         if (car(bind)->type != TYPE_SYMBOL)
             throw UserError("internal bind", "expected binds to be symbols");
-        //bindstr = bind->symbol;
-        //if (bindstr.size() > 1 && bindstr.find_first_of('&') == 0) {
-        //    bind = env()->symbol(bindstr.c_str()+1);
-        //    add_variable(car(bind)->symbol, car(val));
-        //    
-        //}
-        std::cout << "binding " << stringify(car(bind)) << " to "
-                  << stringify(car(val)) << std::endl;
+        bindstr = std::string(car(bind)->symbol);
+        if (bindstr.size() > 1 && bindstr.find_first_of('&') == 0) {
+            while (!is_nil(val)) {
+                rest = env()->put_in_list(car(val), rest);
+                val = cdr(val);
+            }
+            rest = ipreverse(rest);
+            std::cout << bindstr.c_str()+1 << " " << stringify(rest) << std::endl;
+            add_variable(bindstr.c_str()+1, rest);
+            return;
+        }
+        //std::cout << "binding " << stringify(car(bind)) << " to "
+        //<< stringify(car(val)) << std::endl;
         add_variable(car(bind)->symbol, car(val));
         bind = cdr(bind);
         val = cdr(val);
@@ -429,7 +435,7 @@ Environment::add_constant(const char* _name, Expr* _v)
 bool
 Environment::add_buildin(const char* _name, const BuildinFn _fn)
 {
-    return m_global_scope.add_global(_name, buildin(_fn));
+    return add_constant(_name, buildin(_fn));
 }
 
 Environment::Environment(void) : m_global_scope(this, nullptr) {}
@@ -594,7 +600,8 @@ Environment::lex(std::list<std::string>& _tokens)
                 return ipreverse(program);
             curr = lex(_tokens);
             program = put_in_list(curr, program);
-            token = _tokens.front();
+            if (!_tokens.empty())
+                token = _tokens.front();
         }
         _tokens.pop_front();
         return ipreverse(program);
@@ -611,7 +618,8 @@ Environment::lex(std::list<std::string>& _tokens)
                 return ipreverse(program);
             curr = lex(_tokens);
             program = put_in_list(curr, program);
-            token = _tokens.front();
+            if (!_tokens.empty())
+                token = _tokens.front();
         }
         _tokens.pop_front();
         return ipreverse(program);
@@ -637,7 +645,7 @@ Environment::read(const char* _program)
     if (tokens.empty())
         return nil();
     lexed = lex(tokens);
-    std::cout << "lexed:   " << stringify(lexed) << std::endl;
+    //std::cout << "lexed:   " << stringify(lexed) << std::endl;
     return lexed;
 }
 
@@ -660,6 +668,14 @@ Environment::eval(Expr* _e)
 Expr*
 Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
+
+    auto eval_fn = [this, _scope] (Expr* fn, Expr* args) {
+        VariableScope internal = _scope->create_internal();
+        args = list_eval(_scope, args);
+        internal.bind(fn->callable.binds, args);
+        return core::progn(&internal, fn->callable.body);
+    };
+    
     if (is_nil(_e)) return nil();
 
     if (_e->type == TYPE_REAL       ||
@@ -680,22 +696,19 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 
         /*Evaluate as lambda*/
         if (fn->type == TYPE_LAMBDA) {
-            VariableScope internal = _scope->create_internal();
-            std::cout << "evaluating lambda " << stringify(fn->callable.binds)
-                      << " " << stringify(fn->callable.body) << std::endl;
-            args = list_eval(_scope, args);
-            internal.bind(fn->callable.binds, args);
-            return core::progn(&internal, fn->callable.body);
+            return eval_fn(fn, args);
         }
 
         /*Evaluate as buildin*/
         Expr* callable = nullptr;
-        callable = _scope->variable_get(fn->symbol);
-        callable = second(callable);
-
+        callable = second(_scope->variable_get(fn->symbol));
         if (!is_nil(callable)) {
-            if (callable->type == TYPE_BUILDIN)
+            if (callable->type == TYPE_BUILDIN) {
                 return callable->buildin(_scope, args);
+            }
+            if (callable->type == TYPE_FUNCTION) {
+                return eval_fn(callable, args);
+            }
         }
         throw UserError("eval", "could not find function called ", fn);
     }
@@ -750,6 +763,7 @@ Environment::load_core(void)
     add_buildin("const!", core::defconst);
     add_buildin("global!", core::defglobal);
     add_buildin("local!", core::deflocal);
+    add_buildin("symbol-variable", core::symbol_variable);
     add_buildin("set!", core::setvar);
 
     add_buildin("fn!", core::deffunction);
@@ -1425,9 +1439,7 @@ core::apply(VariableScope* _s, Expr* _e)
 {
     /*TODO: fix apply*/
     Expr* call;
-    std::cout << "apply inp " << stringify(_e) << std::endl;
     Expr* args = _s->env()->list_eval(_s, _e);
-    std::cout << "apply args " << stringify(args) << std::endl;
     if (len(args) != 2)
       throw UserError("apply", "Expected 2 arguments");
     call = _s->env()->cons(first(args), second(args));
@@ -1527,7 +1539,6 @@ core::_throw(VariableScope* _s, Expr* _e)
     return nil();
 }
 
-
 Expr*
 core::_return(VariableScope* _s, Expr* _e)
 {
@@ -1575,6 +1586,18 @@ core::deflocal(VariableScope* _s, Expr* _e)
 }
 
 Expr*
+core::symbol_variable(VariableScope* _s, Expr* _e)
+{
+    Expr* var;
+    if (len(_e) != 1)
+      throw UserError("symbol-variable", "expects symbol");
+    if (first(_e)->type != TYPE_SYMBOL)
+      throw UserError("symbol!", "expects symbol");
+    var = _s->variable_get(first(_e)->symbol);
+    return second(var);
+}
+
+Expr*
 core::setvar(VariableScope* _s, Expr* _e)
 {
     std::cout << "setting " << stringify(first(_e)) << " to "
@@ -1598,7 +1621,7 @@ core::deflambda(VariableScope* _s, Expr* _e)
 {
     UNUSED(_s);
     Expr* l = _s->env()->blank();
-    if (len(_e) < 2)
+    if (len(_e) < 1)
         throw UserError("lambda", "expected arguments to be binds and body");
     l->type = TYPE_LAMBDA;
     l->callable.binds = car(_e);
@@ -1609,10 +1632,14 @@ core::deflambda(VariableScope* _s, Expr* _e)
 Expr*
 core::deffunction(VariableScope* _s, Expr* _e)
 {
-    UNUSED(_s);
-    UNUSED(_e);
-    throw NotImplemented("fn!");
-    return nil();
+    Expr* fn = _s->env()->blank();
+    if (len(_e) < 2)
+        throw UserError("fn!", "expected arguments to be name, binds and body");
+    fn->type = TYPE_FUNCTION;
+    fn->callable.binds = second(_e);
+    fn->callable.body = cdr(cdr(_e));
+    _s->add_constant(first(_e)->symbol, fn);
+    return first(_e);
 }
 
 Expr*

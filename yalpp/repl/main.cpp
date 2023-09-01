@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <string>
 
 #include <readline/readline.h>
@@ -13,20 +14,25 @@ main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-    std::cout << "yal - Yet Another LISP" << std::endl
-              << "Created by Thomas Alexgaard." << std::endl << std::endl;
-
     char* input;
     yal::Environment e;
+    int i = 0;
+
     e.load_core();
+    std::cout << "yal - Yet Another LISP" << std::endl
+              << "Created by Thomas Alexgaard." << std::endl << std::endl;
     while (1) {
-        input = readline("yal> ");
+        std::stringstream greet;
+        yal::Expr* p = nullptr;
+        yal::Expr* res = nullptr;
+        greet << "yal [" << i++ << "] -> ";
+        input = readline(greet.str().c_str());
         if (input == std::string("(quit)"))
             break;
         add_history(input);
-        yal::Expr* p = e.read(input);
+        p = e.read(input);
         free(input);
-        yal::Expr* res = e.eval(p);
+        res = e.eval(p);
         std::cout << yal::stringify(res) << std::endl;
    }
 }

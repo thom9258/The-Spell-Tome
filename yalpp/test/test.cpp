@@ -819,12 +819,12 @@ test_fn(void)
                        "12"));
 
     TL_TEST(repl_test(&e, 
-                       "(fn! ignore (&all) NIL)",
-                       "NIL"));
+                       "(fn! same2 (&all) all)",
+                       "same2"));
 
     TL_TEST(repl_test(&e, 
-                       "(ignore 'a 'b 'c 'd)",
-                       "NIL"));
+                       "(same2 'a 'b 'c 'd)",
+                       "(a b c d)"));
 
     TL_TEST(repl_test(&e, 
                        "(fn! add2 (a b) (+ a b))",
@@ -855,6 +855,16 @@ test_fn(void)
     TL_TEST(repl_test(&e, 
                        "(with-docstring 5 10)",
                        "15"));
+
+
+    TL_TEST(repl_test(&e, 
+                       "(fn! do-transform (a &transforms) (apply '+ (cons a transforms)))",
+                       "do-transform"));
+
+    TL_TEST(repl_test(&e, 
+                       "(do-transform 2 5 3)",
+                       "10"));
+
 
     /*
     TL_TEST(repl_test(&e, 
