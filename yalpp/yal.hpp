@@ -96,7 +96,6 @@ Expr* ipreverse(Expr* _list);
 
 char* to_cstr(const std::string& _s);
 Expr* nil(void);
-/*TODO: Make this one private somehow..*/
 std::stringstream stream(Expr* _e);
 std::string stringify(Expr* _e);
 
@@ -169,6 +168,7 @@ public:
     VariableScope create_internal(void);
     bool is_var_const(Expr* _var);
     Expr* variable_get(const std::string& _name);
+    Expr* variable_get_this_scope(const std::string& _name);
     int variables_len(void);
 	bool add_constant(const char* _name, Expr* _v);
     bool add_global(const char* _name, Expr* _v);
@@ -332,12 +332,17 @@ VariableScope::variable_get(const std::string& _s)
     return nullptr;
 }
 
+Expr*
+VariableScope::variable_get_this_scope(const std::string& _s)
+{
+    return assoc(env()->symbol(_s), m_variables);
+}
+
 bool
 VariableScope::add_variable(const char* _name, Expr* _v)
 {
     Expr* entry = env()->list({env()->symbol(_name), _v});
-    /*TODO: this checks all scopes, not just the current one*/
-    if (!is_nil(variable_get(_name)))
+    if (!is_nil(variable_get_this_scope(_name)))
         throw UserError("INTERNAL add_variable", "could not add variable, because it already exists");
     m_variables = env()->put_in_list(entry, m_variables);
     return true;
@@ -369,8 +374,7 @@ VariableScope::add_buildin(const char* _name, const BuildinFn _fn)
 void
 VariableScope::bind(Expr* _binds, Expr* _values)
 {
-  /*TODO: We just blindly pair binds and values,
-          In the future, add support for &rest and keyword binds aswell*/
+  /*TODO: add support for keyword binds aswell*/
     std::string bindstr;
     Expr* rest = nullptr;
     Expr* bind = _binds; 
@@ -389,8 +393,6 @@ VariableScope::bind(Expr* _binds, Expr* _values)
             add_variable(bindstr.c_str()+1, rest);
             return;
         }
-        //std::cout << "binding " << stringify(car(bind)) << " to "
-        //<< stringify(car(val)) << std::endl;
         add_variable(car(bind)->symbol, car(val));
         bind = cdr(bind);
         val = cdr(val);
@@ -1492,7 +1494,6 @@ core::_if(VariableScope* _s, Expr* _e)
     if (!(len(_e) == 2 || len(_e) == 3))
       throw UserError("if", "expected required condition and true body");
     cond = _s->env()->scoped_eval(_s, first(_e));
-    std::cout << "condition res " << stringify(cond) << std::endl; 
     if (!is_nil(cond))
         return _s->env()->scoped_eval(_s, second(_e));
     return _s->env()->scoped_eval(_s, third(_e));

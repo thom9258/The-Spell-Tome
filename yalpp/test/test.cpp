@@ -864,20 +864,6 @@ test_fn(void)
     TL_TEST(repl_test(&e, 
                        "(do-transform 2 5 3)",
                        "10"));
-
-
-    /*
-    TL_TEST(repl_test(&e, 
-                      "(cusum (l h) "
-                      "(var s (range l h))"
-                      "(apply '+ s)",
-                      "cusum"));
-
-    TL_TEST(repl_test(&e, 
-                       "(cusum 1 10)",
-                       "55"));
-
-     */
 }
 
 void
@@ -893,7 +879,7 @@ test_functions_and_recursion(void)
     */
 
     TL_TEST(repl_test(&e, 
-                      "(fn factorial (v)"
+                      "(fn! factorial (v)"
                       "  (if (= v 0) "
                       "    1"
                       "    (* v (factorial (- v 1)))"
@@ -911,13 +897,13 @@ test_functions_and_recursion(void)
                        "3628800"));
 
 
-    TL_TEST(repl_test(&e, 
-                      "(fn list-len (list)"
-                      "  (if list "
-                      "    (+ 1 (list-len (cdr list)))"
-                      "    -1"
-                      "))",
-                      "list-len"));
+    //TL_TEST(repl_test(&e, 
+    //                  "(fn! list-len (list)"
+    //                  "  (if list "
+    //                  "    (+ 1 (list-len (cdr list)))"
+    //                  "    -1"
+    //                  "))",
+    //                  "list-len"));
 
     TL_TEST(repl_test(&e, 
                        "(list-len '(1 2 3))",
@@ -930,7 +916,7 @@ test_functions_and_recursion(void)
                        "2"));
 
     TL_TEST(repl_test(&e, 
-                      "(fn isin (v l)"
+                      "(fn! isin (v l)"
                       "  (if l"
                       "     (if (eq (car l) v)"
                       "      t (isin (cdr v) l))"
@@ -948,7 +934,7 @@ test_functions_and_recursion(void)
     */
     /*https://www.omnicalculator.com/math/binomial-coefficient*/
     TL_TEST(repl_test(&e, 
-                      "(fn bin-coeff (n k)"
+                      "(fn! bin-coeff (n k)"
                       "(/ (factorial n) (factorial (- n k)) (factorial k)"
                       ")",
                       "bin-coeff"));
@@ -997,7 +983,7 @@ main(int argc, char **argv)
     TL(test_predicates());
     TL(test_lambda());
     TL(test_fn());
-    //TL(test_functions_and_recursion());
+    TL(test_functions_and_recursion());
 
     tl_summary();
 }
