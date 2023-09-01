@@ -97,7 +97,6 @@ Expr* ipreverse(Expr* _list);
 char* to_cstr(const std::string& _s);
 Expr* nil(void);
 /*TODO: Make this one private somehow..*/
-std::stringstream _stream_value(Expr* _e);
 std::stringstream stream(Expr* _e);
 std::string stringify(Expr* _e);
 
@@ -139,6 +138,7 @@ Expr* setvar(VariableScope* _scope, Expr* _e);
 
 Expr* _try(VariableScope* _scope, Expr* _e);
 Expr* _throw(VariableScope* _scope, Expr* _e);
+Expr* _return(VariableScope* _s, Expr* _e);
 
 Expr* _if(VariableScope* _scope, Expr* _e);
 Expr* _cond(VariableScope* _scope, Expr* _e);
@@ -215,10 +215,10 @@ private:
     Expr* lex(std::list<std::string>& _tokens);
 };
 
-class NormalReturn {
+class EarlyReturn {
     Expr* m_r;
 public:
-    NormalReturn(Expr* _r) : m_r(_r) {};
+    EarlyReturn(Expr* _r) : m_r(_r) {};
     Expr* expr(void);
 };
 
@@ -248,7 +248,7 @@ NotImplemented(const char *_fn)
 
 
 Expr*
-NormalReturn::expr(void)
+EarlyReturn::expr(void)
 {
     return m_r;
 }
@@ -324,13 +324,11 @@ VariableScope::variable_get(const std::string& _s)
     Expr* v = nullptr;
     VariableScope* scope = this;
     while (scope != nullptr) {
-        std::cout << "looking for " << _s << " in scope " << scope << std::endl;
-        v = assoc(env()->symbol(_s), m_variables);
+        v = assoc(env()->symbol(_s), scope->m_variables);
         if (!is_nil(v))
             return v;
         scope = scope->m_outer;
     }
-    std::cout << "could not find " << _s << std::endl;
     return nullptr;
 }
 
@@ -338,6 +336,7 @@ bool
 VariableScope::add_variable(const char* _name, Expr* _v)
 {
     Expr* entry = env()->list({env()->symbol(_name), _v});
+    /*TODO: this checks all scopes, not just the current one*/
     if (!is_nil(variable_get(_name)))
         throw UserError("INTERNAL add_variable", "could not add variable, because it already exists");
     m_variables = env()->put_in_list(entry, m_variables);
@@ -375,9 +374,8 @@ VariableScope::bind(Expr* _binds, Expr* _values)
     std::string bindstr;
     Expr* bind = _binds; 
     Expr* val = _values; 
-    std::cout << "binding " << stringify(_binds) << " to " << stringify(_values) << std::endl;
     while (!is_nil(bind) && !is_nil(val)) {
-        if (bind->type != TYPE_SYMBOL)
+        if (car(bind)->type != TYPE_SYMBOL)
             throw UserError("internal bind", "expected binds to be symbols");
         //bindstr = bind->symbol;
         //if (bindstr.size() > 1 && bindstr.find_first_of('&') == 0) {
@@ -385,6 +383,8 @@ VariableScope::bind(Expr* _binds, Expr* _values)
         //    add_variable(car(bind)->symbol, car(val));
         //    
         //}
+        std::cout << "binding " << stringify(car(bind)) << " to "
+                  << stringify(car(val)) << std::endl;
         add_variable(car(bind)->symbol, car(val));
         bind = cdr(bind);
         val = cdr(val);
@@ -585,8 +585,10 @@ Environment::lex(std::list<std::string>& _tokens)
 
     if (token == "(") {
         _tokens.pop_front();
-        if (_tokens.front() == ")")
+        if (_tokens.front() == ")") {
+            _tokens.pop_front();
             return nil();
+        }
         while (token != ")") {
             if (_tokens.empty())
                 return ipreverse(program);
@@ -599,8 +601,10 @@ Environment::lex(std::list<std::string>& _tokens)
     }
     if (token == "[") {
         _tokens.pop_front();
-        if (_tokens.front() == "]")
+        if (_tokens.front() == "]") {
+            _tokens.pop_front();
             return nil();
+        }
         program = put_in_list(symbol("list"), program);
         while (token != "]" ) {
             if (_tokens.empty())
@@ -647,7 +651,7 @@ Environment::eval(Expr* _e)
     catch (std::exception& e) {
         return list({symbol("error"), string(e.what())});
     }
-    catch (NormalReturn& e) {
+    catch (EarlyReturn& e) {
         return e.expr();
     }
     return res;
@@ -658,24 +662,21 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
     if (is_nil(_e)) return nil();
 
-    if (_e->type == TYPE_REAL    ||
-        _e->type == TYPE_DECIMAL ||
-        _e->type == TYPE_STRING  )
+    if (_e->type == TYPE_REAL       ||
+        _e->type == TYPE_DECIMAL    ||
+        _e->type == TYPE_STRING     ||
+        _e->type == TYPE_SMALLSTRING)
         return _e;
 
     if (_e->type ==  TYPE_CONS) {
         Expr* fn = nullptr;
         Expr* args = nullptr;
-        std::cout << "got cons " << std::endl;
         fn = car(_e);
         args = cdr(_e);
 
         /*Pre-evaluation if function is represented as a list*/
         if (fn->type == TYPE_CONS)
             fn = scoped_eval(_scope, fn);
-
-        std::cout << "got cons with fn   " << stringify(fn) << std::endl;
-        std::cout << "got cons with args " << stringify(args) << std::endl;
 
         /*Evaluate as lambda*/
         if (fn->type == TYPE_LAMBDA) {
@@ -689,9 +690,7 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 
         /*Evaluate as buildin*/
         Expr* callable = nullptr;
-        std::cout << "finding callable " << stringify(fn) << std::endl;
         callable = _scope->variable_get(fn->symbol);
-        std::cout << "got fn " << stringify(callable) << std::endl;
         callable = second(callable);
 
         if (!is_nil(callable)) {
@@ -703,7 +702,6 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 
     if (_e->type == TYPE_SYMBOL) {
         Expr* var = nullptr;
-        std::cout << "got symbol " << std::endl;
         if (is_nil(_e))
             return symbol("NIL");
         if (_e->symbol == std::string("t") || _e->symbol == std::string("T"))
@@ -783,6 +781,7 @@ Environment::load_core(void)
     add_buildin("if", core::_if);
     add_buildin("try", core::_try);
     add_buildin("throw", core::_throw);
+    add_buildin("return", core::_return);
     return true;
 }
 
@@ -1017,57 +1016,31 @@ nthcdr(int _n, Expr* _e)
 }
 
 std::stringstream
-_stream_value(Expr* _e)
-{
-
-    std::stringstream ss;
-    if (is_nil(_e)) {
-        ss << "NIL";
-        return ss;
-    }
-
-    switch (_e->type) {
-    case TYPE_CONS:
-        ss << "(" << stream(_e).str() << ")";
-        break;
-    case TYPE_LAMBDA:
-        ss << "#<lambda>";
-        break;
-    case TYPE_MACRO:
-        ss << "#<macro>";
-        break;
-    case TYPE_FUNCTION:
-        ss << "#<function>";
-        break;
-    case TYPE_BUILDIN:
-        ss << "#<buildin>";
-        break;
-    case TYPE_REAL:
-        ss << _e->real;
-        break;
-    case TYPE_DECIMAL:
-        ss << _e->decimal;
-        break;
-    case TYPE_SMALLSYMBOL:
-        /*TODO*/
-    case TYPE_SYMBOL:
-        ss << _e->symbol;
-        break;
-    case TYPE_SMALLSTRING:
-        /*TODO*/
-    case TYPE_STRING:
-        ss << "\"" << _e->string << "\"";
-        break;
-    default:
-        ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
-    };
-    //std::cout << "returning " << ss.str() << std::endl;
-    return ss;
-}
-
-std::stringstream
 stream(Expr* _e)
 {
+    auto stream_value = [] (Expr* e) {
+        std::stringstream ss;
+        if (is_nil(e)) {
+            ss << "NIL";
+            return ss;
+        }
+        switch (e->type) {
+        case TYPE_CONS:        ss << "(" << stream(e).str() << ")"; break;
+        case TYPE_LAMBDA:      ss << "#<lambda>";                   break;
+        case TYPE_MACRO:       ss << "#<macro>";                    break;
+        case TYPE_FUNCTION:    ss << "#<function>";                 break;
+        case TYPE_BUILDIN:     ss << "#<buildin>";                  break;
+        case TYPE_REAL:        ss << e->real;                       break;
+        case TYPE_DECIMAL:     ss << e->decimal;                    break;
+        case TYPE_SMALLSYMBOL: ss << e->smallsymbol;                break;
+        case TYPE_SYMBOL:      ss << e->symbol;                     break;
+        case TYPE_SMALLSTRING: ss << e->smallstring;                break;
+        case TYPE_STRING:      ss << "\"" << e->string << "\"";     break;
+        default:
+            ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
+        };
+        return ss;
+    };
     std::stringstream ss;
     Expr* curr = _e;
     if (is_nil(_e)) {
@@ -1075,7 +1048,7 @@ stream(Expr* _e)
         return ss;
     }
     if (!is_cons(_e))
-        return _stream_value(_e);
+        return stream_value(_e);
 
     if (is_dotted(_e)) {
         ss << "(" << stream(car(_e)).str() << " . "
@@ -1554,6 +1527,17 @@ core::_throw(VariableScope* _s, Expr* _e)
     return nil();
 }
 
+
+Expr*
+core::_return(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) <= 1)
+        throw EarlyReturn(first(args));
+    throw UserError("return", "Return can only have 0-1 argument");
+    return nil();
+}
+
 Expr*
 core::defconst(VariableScope* _s, Expr* _e)
 {
@@ -1614,7 +1598,7 @@ core::deflambda(VariableScope* _s, Expr* _e)
 {
     UNUSED(_s);
     Expr* l = _s->env()->blank();
-    if (len(_e) != 2)
+    if (len(_e) < 2)
         throw UserError("lambda", "expected arguments to be binds and body");
     l->type = TYPE_LAMBDA;
     l->callable.binds = car(_e);

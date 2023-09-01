@@ -371,6 +371,9 @@ test_read(void)
     TL_TEST(read_test(&e, "''7", "(quote (quote 7))"));
     TL_TEST(read_test(&e, "''(1 2)", "(quote (quote (1 2)))"));
 
+    TL_TEST(read_test(&e, "(1 NIL 3)", "(1 NIL 3)"));
+    TL_TEST(read_test(&e, "(1 () 3)", "(1 NIL 3)"));
+    TL_TEST(read_test(&e, "(1 [] 3)", "(1 NIL 3)"));
 }
 
 void
@@ -713,14 +716,21 @@ test_predicates(void)
     TL_TEST(repl_test(&e, "(var? (1 2 3))", "NIL"));
     TL_TEST(repl_test(&e, "(var? myvar)", "T"));
 
-    TL_TEST(repl_test(&e, "(var newvar 23)", "newvar"));
-    TL_TEST(repl_test(&e, "(var? newvar)", "T"));
+    TL_TEST(repl_test(&e, "(global! newvar1 23)", "newvar1"));
+    TL_TEST(repl_test(&e, "(local! newvar2 5)", "newvar2"));
+    TL_TEST(repl_test(&e, "(var? newvar1)", "T"));
+    TL_TEST(repl_test(&e, "(var? newvar2)", "T"));
+
+    TL_TEST(repl_test(&e, "(const? newvar1)", "NIL"));
+    TL_TEST(repl_test(&e, "(const? newvar2)", "NIL"));
+    TL_TEST(repl_test(&e, "(const? PI2)", "T"));
+    TL_TEST(repl_test(&e, "(const? E)", "T"));
 
     TL_TEST(repl_test(&e, "(fn? +)", "T"));
     TL_TEST(repl_test(&e, "(fn? PI)", "NIL"));
 
     TL_TEST(repl_test(&e,
-                      "(fn factorial (v)"
+                      "(fn! factorial (v)"
                       "  (if (= v 0) "
                       "    1"
                       "    (* v (factorial (- v 1)))"
@@ -733,11 +743,13 @@ test_predicates(void)
     TL_TEST(repl_test(&e, "(macro? PI)", "NIL"));
 
     TL_TEST(repl_test(&e,
-                      "(macro same (v)"
+                      "(macro! same (v)"
                       "v)",
                       "same"));
 	
     TL_TEST(repl_test(&e, "(macro? same)", "T"));
+
+
 }
 
 void
@@ -759,8 +771,10 @@ test_lambda(void)
     TL_TEST(repl_test(&e, "(lambda (a) a)", "#<lambda>"));
     TL_TEST(repl_test(&e, "((lambda (a) a) 12)", "12"));
     TL_TEST(repl_test(&e, "((lambda () 5))", "5"));
+    TL_TEST(repl_test(&e, "(lambda () 5)", "#<lambda>"));
     TL_TEST(repl_test(&e, "((lambda () '(1 1 1)))", "(1 1 1)"));
-    TL_TEST(repl_test(&e, "((lambda (n) [n 2 3]) 2)", "(2 2 3)"));
+    TL_TEST(repl_test(&e, "((lambda (n) [n 2 3]) 1)", "(1 2 3)"));
+    TL_TEST(repl_test(&e, "((lambda (n) [n 2 3]) 'hi!)", "(hi! 2 3)"));
     TL_TEST(repl_test(&e, "((lambda (a) (+ a 10)) 4)", "14"));
     TL_TEST(repl_test(&e, "((lambda (b c) (+ b c)) 4 6)", "10"));
     TL_TEST(repl_test(&e, "((lambda (a b) (+ a b)) 10 20)", "30"));
@@ -768,10 +782,179 @@ test_lambda(void)
     TL_TEST(repl_test(&e, "((lambda (a b) (* a b)) 4 6)", "24"));
     TL_TEST(repl_test(&e,
                       "((lambda (a b c) "
-                      "(var s (* a b))"
-                      "(+ s c))"
+                      "  (local! s (* a b))"
+                      "  (+ s c))"
                       "2 4 3)",
                       "11"));
+
+    TL_TEST(repl_test(&e,
+                      "((lambda (a) "
+                      "  (return '(early-return))"
+                      "  (* a a))"
+                      "2)",
+                      "(early-return)"));
+
+    TL_TEST(repl_test(&e,
+                      "((lambda (a) "
+                      "  (return)"
+                      "  (* a a))"
+                      "2)",
+                      "NIL"));
+
+
+}
+
+void
+test_fn(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, 
+                       "(fn! same (a) a)",
+                       "same"));
+
+    TL_TEST(repl_test(&e, 
+                       "(same 12)",
+                       "12"));
+
+    TL_TEST(repl_test(&e, 
+                       "(fn! ignore (&all) NIL)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, 
+                       "(ignore 'a 'b 'c 'd)",
+                       "NIL"));
+
+    TL_TEST(repl_test(&e, 
+                       "(fn! add2 (a b) (+ a b))",
+                       "add2"));
+
+    TL_TEST(repl_test(&e, 
+                       "(add2 5 10)",
+                       "15"));
+
+    TL_TEST(repl_test(&e, 
+                       "(add2 5 (+ 5 5))",
+                       "15"));
+
+    TL_TEST(repl_test(&e, 
+                       "(fn! move (this scale offset) (add2 offset (* this scale)))",
+                       "move"));
+
+    TL_TEST(repl_test(&e, 
+                       "(move 5 10 3)",
+                       "53"));
+
+    TL_TEST(repl_test(&e, 
+                      "(fn! with-docstring (a b) "
+                      "\"This is my optional documentation string for my function!\""
+                      "(+ a b))",
+                       "with-docstring"));
+
+    TL_TEST(repl_test(&e, 
+                       "(with-docstring 5 10)",
+                       "15"));
+
+    /*
+    TL_TEST(repl_test(&e, 
+                      "(cusum (l h) "
+                      "(var s (range l h))"
+                      "(apply '+ s)",
+                      "cusum"));
+
+    TL_TEST(repl_test(&e, 
+                       "(cusum 1 10)",
+                       "55"));
+
+     */
+}
+
+void
+test_functions_and_recursion(void)
+{
+    yal::Environment e;
+    e.load_core();
+    /*
+(defun factorial (n)
+  (if (= n 0)
+      1
+      (* n (factorial (- n 1))) ) )
+    */
+
+    TL_TEST(repl_test(&e, 
+                      "(fn factorial (v)"
+                      "  (if (= v 0) "
+                      "    1"
+                      "    (* v (factorial (- v 1)))"
+                      "))",
+                      "factorial"));
+
+    TL_TEST(repl_test(&e, 
+                       "(factorial 5)",
+                       "120"));
+    TL_TEST(repl_test(&e, 
+                       "(factorial 3)",
+                       "6"));
+    TL_TEST(repl_test(&e, 
+                       "(factorial 10)",
+                       "3628800"));
+
+
+    TL_TEST(repl_test(&e, 
+                      "(fn list-len (list)"
+                      "  (if list "
+                      "    (+ 1 (list-len (cdr list)))"
+                      "    -1"
+                      "))",
+                      "list-len"));
+
+    TL_TEST(repl_test(&e, 
+                       "(list-len '(1 2 3))",
+                       "3"));
+    TL_TEST(repl_test(&e, 
+                       "(list-len [1 (+ 2 2) 3])",
+                       "3"));
+    TL_TEST(repl_test(&e, 
+                       "(list-len '(1 ((((3))))))",
+                       "2"));
+
+    TL_TEST(repl_test(&e, 
+                      "(fn isin (v l)"
+                      "  (if l"
+                      "     (if (eq (car l) v)"
+                      "      t (isin (cdr v) l))"
+                      "nil))",
+                      "isin"));
+
+    /*
+    TL_TEST(repl_test(&e, 
+                       "(isin 3 '(1 2 3 4))",
+                       "t"));
+
+     TL_TEST(repl_test(&e, 
+                       "(isin 5 '(1 2 3 4))",
+                       "nil"));
+    */
+    /*https://www.omnicalculator.com/math/binomial-coefficient*/
+    TL_TEST(repl_test(&e, 
+                      "(fn bin-coeff (n k)"
+                      "(/ (factorial n) (factorial (- n k)) (factorial k)"
+                      ")",
+                      "bin-coeff"));
+
+     TL_TEST(repl_test(&e, 
+                       "(bin-coeff 5 2)",
+                       "10"));
+
+     TL_TEST(repl_test(&e, 
+                       "(bin-coeff 5 4)",
+                       "5"));
+     /*
+     TL_TEST(repl_test(&e, 
+                       "(bin-coeff 22 13)",
+                       "497.4200000"));
+      */
 }
 
 int
@@ -782,6 +965,7 @@ main(int argc, char **argv)
 
     TL(test_sizes());
     TL(test_types_creation());
+    TL(test_read());
     TL(test_nilp());
     TL(test_len());
     TL(test_assoc());
@@ -789,7 +973,6 @@ main(int argc, char **argv)
     TL(test_ipreverse());
     TL(test_simple_eval());
     TL(test_lex_types());
-    TL(test_read());
     TL(test_buildin_range());
     TL(test_buildin_accessors());
     TL(test_buildin_list_creation());
@@ -801,8 +984,10 @@ main(int argc, char **argv)
     TL(test_set_variables());
     TL(test_apply());
     TL(test_try_catch_throw());
-    //TL(test_predicates());
-    //TL(test_lambda());
+    TL(test_predicates());
+    TL(test_lambda());
+    TL(test_fn());
+    //TL(test_functions_and_recursion());
 
     tl_summary();
 }
