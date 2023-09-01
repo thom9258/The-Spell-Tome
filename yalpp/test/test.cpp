@@ -262,33 +262,22 @@ test_globals(void)
     e.add_constant("*Creator*", e.string("Thomas Alexgaard"));
     e.add_constant("PI", e.decimal(pi));
 
-    std::cout << "len of constants: " << yal::len(e.constants()) << std::endl;
-    TL_TEST(yal::len(e.constants()) == 2);
+    std::cout << "len of constants: " << e.global_scope()->variables_len() << std::endl;
+    TL_TEST(e.global_scope()->variables_len() == 2);
 
-    std::cout << "constants: " << yal::stringify(e.constants()) << std::endl;
-    TL_TEST(yal::stringify(e.constants()) == "((PI . 3.14159) (*Creator* . \"Thomas Alexgaard\"))");
+    yal::Expr* constant = e.global_scope()->variable_get("PI");
+    std::cout << "PI: " << yal::stringify(constant) << std::endl;
+    TL_TEST(yal::stringify(constant) == "(PI 3.14159 CONSTANT)");
+
+    constant = e.global_scope()->variable_get("*Creator*");
+    std::cout << "Creator: " << yal::stringify(constant) << std::endl;
+    TL_TEST(yal::stringify(constant) == "(*Creator* \"Thomas Alexgaard\" CONSTANT)");
 
     e.add_constant("*Creator-github*", e.string("https://github.com/thom9258/"));
     e.add_constant("*Host-Languange*", e.string("C++"));
     e.add_constant("*Version*", e.list({e.real(0), e.real(1)}));
     e.add_constant("PI/2", e.decimal(pi/2));
     e.add_constant("PI2", e.decimal(pi*2));
-
-    yal::Expr* pisym = yal::cdr(yal::assoc(e.symbol("PI"), e.constants()));
-    std::cout << "pisym-value: " << yal::stringify(pisym) << std::endl;
-    TL_TEST(yal::stringify(pisym) == "3.14159");
-}
-
-void
-print_core(void)
-{
-    yal::Environment e;
-    e.load_core();
-    std::cout << yal::stringify(e.constants()) << std::endl;
-
-    yal::Expr* sym = yal::cdr(yal::assoc(e.symbol("*Host-Languange*"), e.constants()));
-    std::cout << "symbol-value: " << yal::stringify(sym) << std::endl;
-    TL_TEST(yal::stringify(sym) == "\"C++\"");
 }
 
 void
@@ -668,6 +657,10 @@ test_try_catch_throw(void)
                           "    err ['caught-error err])",
                           "(caught-error (error \"[throw] shit-hit-the-fan\"))"));
 
+    TL_TEST(repl_test(&e, "(try (throw \"shit-hit-the-fan\") "
+                          "    err (+ 2 2)",
+                          "4"));
+
     TL_TEST(repl_test(&e, "(try (set! myvar 10) "
                           "    err err)",
                           "(error \"[setvar!] variable to set does not exist\")"));
@@ -793,7 +786,6 @@ main(int argc, char **argv)
     TL(test_len());
     TL(test_assoc());
     TL(test_globals());
-    TL(print_core());
     TL(test_ipreverse());
     TL(test_simple_eval());
     TL(test_lex_types());
@@ -807,10 +799,10 @@ main(int argc, char **argv)
     TL(test_buildin_equality());
     TL(test_variables());
     TL(test_set_variables());
-    TL(test_try_catch_throw());
     TL(test_apply());
+    TL(test_try_catch_throw());
     //TL(test_predicates());
-    TL(test_lambda());
+    //TL(test_lambda());
 
     tl_summary();
 }

@@ -13,11 +13,16 @@
 #ifndef YALCPP_H
 #define YALCPP_H
 
+/*TODO:
+  Make environment a const refrence
+*/
+
 namespace yal {
 
 #define ASSERT_UNREACHABLE(str) assert(str && "Unmanaged execution path observed!")  
 #define UNUSED(v) ((void)v)
 
+const auto constvar_id = "CONSTANT";
 
 enum TYPE {
     TYPE_INVALID = 0,
@@ -41,7 +46,7 @@ enum TYPE {
 struct Expr;
 class VariableScope;
 class Environment;
-typedef Expr*(*buildin_fn)(Environment*, VariableScope*, Expr*);
+typedef Expr*(*BuildinFn)(VariableScope*, Expr*);
 
 const size_t smallXsz = (sizeof(Expr*) * 2) / sizeof(char);
 struct Expr {
@@ -54,7 +59,7 @@ struct Expr {
           creating a heap allocation*/
         char smallstring[smallXsz]; 
         char smallsymbol[smallXsz];
-        buildin_fn buildin;
+        BuildinFn buildin;
         struct {
             Expr* binds;
             Expr* body;
@@ -86,11 +91,10 @@ Expr* third(Expr* _e);
 Expr* fourth(Expr* _e);
 Expr* nthcdr(int _n, Expr* _e);
 
-Expr* put(Environment* _env, Expr* _val, Expr* _list);
 Expr* assoc(Expr* _key, Expr* _list);
 Expr* ipreverse(Expr* _list);
 
-char* to_cstr(std::string _s);
+char* to_cstr(const std::string& _s);
 Expr* nil(void);
 /*TODO: Make this one private somehow..*/
 std::stringstream _stream_value(Expr* _e);
@@ -100,100 +104,122 @@ std::string stringify(Expr* _e);
 
 namespace core {
 
-Expr* progn(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* apply(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* progn(VariableScope* _scope, Expr* _e);
+Expr* apply(VariableScope* _scope, Expr* _e);
 
-Expr* quote(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* list(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* len(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* put(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* reverse_ip(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* range(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* quote(VariableScope* _scope, Expr* _e);
+Expr* list(VariableScope* _scope, Expr* _e);
+Expr* len(VariableScope* _scope, Expr* _e);
+Expr* put(VariableScope* _scope, Expr* _e);
+Expr* reverse_ip(VariableScope* _scope, Expr* _e);
+Expr* range(VariableScope* _scope, Expr* _e);
 
-Expr* car(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* cdr(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* cons(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* nthcdr(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* car(VariableScope* _scope, Expr* _e);
+Expr* cdr(VariableScope* _scope, Expr* _e);
+Expr* cons(VariableScope* _scope, Expr* _e);
+Expr* nthcdr(VariableScope* _scope, Expr* _e);
 
-Expr* plus(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* minus(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* multiply(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* divide(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* lessthan(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* greaterthan(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* mathequal(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* eq(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* equal(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* plus(VariableScope* _scope, Expr* _e);
+Expr* minus(VariableScope* _scope, Expr* _e);
+Expr* multiply(VariableScope* _scope, Expr* _e);
+Expr* divide(VariableScope* _scope, Expr* _e);
+Expr* lessthan(VariableScope* _scope, Expr* _e);
+Expr* greaterthan(VariableScope* _scope, Expr* _e);
+Expr* mathequal(VariableScope* _scope, Expr* _e);
+Expr* eq(VariableScope* _scope, Expr* _e);
+Expr* equal(VariableScope* _scope, Expr* _e);
 
-Expr* defconst(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* defglobal(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* deflocal(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* deflambda(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* deffunction(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* defmacro(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* setvar(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* defconst(VariableScope* _scope, Expr* _e);
+Expr* defglobal(VariableScope* _scope, Expr* _e);
+Expr* deflocal(VariableScope* _scope, Expr* _e);
+Expr* deflambda(VariableScope* _scope, Expr* _e);
+Expr* deffunction(VariableScope* _scope, Expr* _e);
+Expr* defmacro(VariableScope* _scope, Expr* _e);
+Expr* setvar(VariableScope* _scope, Expr* _e);
 
-Expr* _try(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* _throw(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* _try(VariableScope* _scope, Expr* _e);
+Expr* _throw(VariableScope* _scope, Expr* _e);
 
-Expr* _if(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* _cond(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* _or(Environment* _env, VariableScope* _scope, Expr* _e);
-Expr* _and(Environment* _env, VariableScope* _scope, Expr* _e);
+Expr* _if(VariableScope* _scope, Expr* _e);
+Expr* _cond(VariableScope* _scope, Expr* _e);
+Expr* _or(VariableScope* _scope, Expr* _e);
+Expr* _and(VariableScope* _scope, Expr* _e);
 };
 
 class GarbageCollector {
     std::vector<Expr*> m_in_use = {};
 public:
-    Expr *new_variable(void);
+    Expr* new_variable(void);
     void destroy_variable(Expr* _e);
     ~GarbageCollector(void);
 };
 
+//class VariableScope {
+//public:
+//    VariableScope(VariableScope* _outer);
+//    VariableScope* m_outer;
+//    Expr* m_variables = nullptr;
+//};
+
 class VariableScope {
 public:
-    VariableScope(VariableScope* _outer);
-    VariableScope* m_outer;
+    VariableScope(Environment* _env, VariableScope* _outer);
+    Environment* env(void);
+    VariableScope* global_scope(void);
+    VariableScope create_internal(void);
+    bool is_var_const(Expr* _var);
+    Expr* variable_get(const std::string& _name);
+    int variables_len(void);
+	bool add_constant(const char* _name, Expr* _v);
+    bool add_global(const char* _name, Expr* _v);
+	bool add_buildin(const char* _name, const BuildinFn _fn);
+    bool add_variable(const char* _name, Expr* _v);
+    void bind(Expr* _binds, Expr* _values);
+
+private:
+    VariableScope* m_outer = nullptr;
+    Environment* m_env;
     Expr* m_variables = nullptr;
 };
 
 class Environment {
 public:
     Environment(void);
-
-    Expr* globals(void);
-    Expr* constants(void);
+    VariableScope* global_scope(void);
 
     Expr* read(const char* _program);
     Expr* eval(Expr* _e);
-    Expr* scoped_eval(VariableScope* _scope, Expr* _e);
     Expr* list_eval(VariableScope* _scope, Expr* _list);
+    Expr* scoped_eval(VariableScope* _scope, Expr* _e);
 
-	bool add_constant(const char* _name, Expr* _v);
-    bool add_global(const char* _name, Expr* _v);
-	bool add_buildin(const char* _name, buildin_fn _fn);
-    bool add_variable(VariableScope* _scope, const char* _name, Expr* _v);
+	Expr* blank(void);
+	Expr* cons(Expr *_car, Expr *_cdr);
+    Expr* real(int _v);
+    Expr* decimal(float _v);
+    Expr* symbol(const std::string& _v);
+    Expr* string(const std::string& _v);
+    Expr* buildin(const BuildinFn _v);
+    Expr* list(const std::initializer_list<Expr *>& _lst);
+    Expr* put_in_list(Expr* _val, Expr* _list);
 
     bool load_core(void);
-
-	Expr *blank(void);
-	Expr *cons(Expr *_car, Expr *_cdr);
-    Expr *real(int _v);
-    Expr *decimal(float _v);
-    Expr *symbol(std::string _v);
-    Expr *symbol(const char* _v);
-    Expr *string(std::string _v);
-    Expr *string(const char* _v);
-    Expr *buildin(buildin_fn _v);
-    Expr *list(std::initializer_list<Expr *> _lst);
+	bool add_constant(const char* _name, Expr* _v);
+    bool add_global(const char* _name, Expr* _v);
+	bool add_buildin(const char* _name, const BuildinFn _fn);
+    bool add_variable(const char* _name, Expr* _v);
 
 private:
     GarbageCollector m_gc;
     VariableScope m_global_scope;
-    Expr* m_constants = nullptr; /*constant values and buildins*/
-    void bind(VariableScope* _scope, Expr* _binds, Expr* _values);
     Expr* lex_value(std::string& _token);
     Expr* lex(std::list<std::string>& _tokens);
+};
+
+class NormalReturn {
+    Expr* m_r;
+public:
+    NormalReturn(Expr* _r) : m_r(_r) {};
+    Expr* expr(void);
 };
 
 #define YALCPP_IMPLEMENTATION
@@ -218,6 +244,13 @@ std::runtime_error
 NotImplemented(const char *_fn)
 {
     return UserError(_fn, "Not Implemented!");
+}
+
+
+Expr*
+NormalReturn::expr(void)
+{
+    return m_r;
 }
 
 Expr*
@@ -256,21 +289,150 @@ GarbageCollector::~GarbageCollector(void)
         destroy_variable(v);
 }
 
-VariableScope::VariableScope(VariableScope* _outer) : m_outer(_outer) {}
+VariableScope::VariableScope(Environment* _env, VariableScope* _outer) : m_outer(_outer), m_env(_env) {};
 
-Environment::Environment(void) : m_global_scope(nullptr) {}
-
-Expr*
-Environment::globals(void)
+VariableScope*
+VariableScope::global_scope(void)
 {
-    return m_global_scope.m_variables; 
+    VariableScope* g = this;
+    while (g->m_outer != nullptr)
+        g = g->m_outer;
+    return g;
+}
+
+VariableScope
+VariableScope::create_internal(void)
+{
+    return VariableScope(env(), this);
+}
+
+Environment*
+VariableScope::env(void)
+{
+    return m_env;
+}
+
+int
+VariableScope::variables_len(void)
+{
+    return len(m_variables);
 }
 
 Expr*
-Environment::constants(void)
+VariableScope::variable_get(const std::string& _s)
 {
-    return m_constants; 
+    Expr* v = nullptr;
+    VariableScope* scope = this;
+    while (scope != nullptr) {
+        std::cout << "looking for " << _s << " in scope " << scope << std::endl;
+        v = assoc(env()->symbol(_s), m_variables);
+        if (!is_nil(v))
+            return v;
+        scope = scope->m_outer;
+    }
+    std::cout << "could not find " << _s << std::endl;
+    return nullptr;
 }
+
+bool
+VariableScope::add_variable(const char* _name, Expr* _v)
+{
+    Expr* entry = env()->list({env()->symbol(_name), _v});
+    if (!is_nil(variable_get(_name)))
+        throw UserError("INTERNAL add_variable", "could not add variable, because it already exists");
+    m_variables = env()->put_in_list(entry, m_variables);
+    return true;
+}
+
+bool
+VariableScope::add_global(const char* _name, Expr* _v)
+{
+    return global_scope()->add_variable(_name, _v);
+}
+
+bool
+VariableScope::add_constant(const char* _name, Expr* _v)
+{
+    Expr* entry;
+    if (!is_nil(variable_get(_name)))
+        throw UserError("INTERNAL add_constant", "could not add variable, because it already exists");
+    entry = env()->list({env()->symbol(_name), _v, env()->symbol(constvar_id)});
+    global_scope()->m_variables = env()->put_in_list(entry, global_scope()->m_variables);
+    return true;
+}
+
+bool
+VariableScope::add_buildin(const char* _name, const BuildinFn _fn)
+{
+    return add_constant(_name, env()->buildin(_fn));
+}
+
+void
+VariableScope::bind(Expr* _binds, Expr* _values)
+{
+  /*TODO: We just blindly pair binds and values,
+          In the future, add support for &rest and keyword binds aswell*/
+    std::string bindstr;
+    Expr* bind = _binds; 
+    Expr* val = _values; 
+    std::cout << "binding " << stringify(_binds) << " to " << stringify(_values) << std::endl;
+    while (!is_nil(bind) && !is_nil(val)) {
+        if (bind->type != TYPE_SYMBOL)
+            throw UserError("internal bind", "expected binds to be symbols");
+        //bindstr = bind->symbol;
+        //if (bindstr.size() > 1 && bindstr.find_first_of('&') == 0) {
+        //    bind = env()->symbol(bindstr.c_str()+1);
+        //    add_variable(car(bind)->symbol, car(val));
+        //    
+        //}
+        add_variable(car(bind)->symbol, car(val));
+        bind = cdr(bind);
+        val = cdr(val);
+    }
+}
+
+bool
+VariableScope::is_var_const(Expr* _var)
+{
+    if (!is_nil(third(_var)) &&
+        third(_var)->type == TYPE_SYMBOL &&
+        third(_var)->symbol == std::string(constvar_id))
+        return true;
+    return false;
+}
+
+
+VariableScope*
+Environment::global_scope(void)
+{
+    return &m_global_scope;
+}
+
+bool
+Environment::add_variable(const char* _name, Expr* _v)
+{
+    return m_global_scope.add_variable(_name, _v);
+}
+
+bool
+Environment::add_global(const char* _name, Expr* _v)
+{
+    return m_global_scope.add_global(_name, _v);
+}
+
+bool
+Environment::add_constant(const char* _name, Expr* _v)
+{
+    return m_global_scope.add_constant(_name, _v);
+}
+
+bool
+Environment::add_buildin(const char* _name, const BuildinFn _fn)
+{
+    return m_global_scope.add_global(_name, buildin(_fn));
+}
+
+Environment::Environment(void) : m_global_scope(this, nullptr) {}
 
         /*TODO:  Do error checking like matching+even parens*/
         /*TODO:  Remove garbage tokens*/
@@ -307,7 +469,6 @@ _try_get_special_token(const char* _start)
     }
     return "";
 }
-
 
 std::string
 _get_next_token(const char* _source, int& _cursor)
@@ -430,7 +591,7 @@ Environment::lex(std::list<std::string>& _tokens)
             if (_tokens.empty())
                 return ipreverse(program);
             curr = lex(_tokens);
-            program = put(this, curr, program);
+            program = put_in_list(curr, program);
             token = _tokens.front();
         }
         _tokens.pop_front();
@@ -440,12 +601,12 @@ Environment::lex(std::list<std::string>& _tokens)
         _tokens.pop_front();
         if (_tokens.front() == "]")
             return nil();
-        program = put(this, symbol("list"), program);
+        program = put_in_list(symbol("list"), program);
         while (token != "]" ) {
             if (_tokens.empty())
                 return ipreverse(program);
             curr = lex(_tokens);
-            program = put(this, curr, program);
+            program = put_in_list(curr, program);
             token = _tokens.front();
         }
         _tokens.pop_front();
@@ -463,7 +624,7 @@ Environment::lex(std::list<std::string>& _tokens)
     return program;
 }
 
-Expr *
+Expr*
 Environment::read(const char* _program)
 {
     std::list<std::string> tokens;
@@ -483,59 +644,29 @@ Environment::eval(Expr* _e)
     try {
         res = scoped_eval(&m_global_scope, _e);
     }
-    //catch (Error& e) {
     catch (std::exception& e) {
-        //std::cout << "ERROR CAUGHT: " << e.what() << std::endl;
         return list({symbol("error"), string(e.what())});
     }
-    return res;
-}
-
-void
-Environment::bind(VariableScope* _scope, Expr* _binds, Expr* _values)
-{
-  /*TODO: We just blindly pair binds and values,
-          In the future, add support for &rest and keyword binds aswell*/
-    std::string bindstr;
-    Expr* bind = _binds; 
-    Expr* val = _values; 
-    std::cout << "binding " << stringify(_binds) << " to " << stringify(_values) << std::endl;
-    while (!is_nil(bind) && !is_nil(val)) {
-        if (bind->type != TYPE_SYMBOL)
-            throw UserError("internal bind", "expected binds to be symbols");
-        bindstr = bind->symbol;
-        if (bindstr.size() > 1 && bindstr.find_first_of('&') == 0) {
-            bind = symbol(bindstr.c_str()+1);
-            
-            add_variable(_scope, car(bind)->symbol, car(val));
-            
-        }
-        add_variable(_scope, car(bind)->symbol, car(val));
-        bind = cdr(bind);
-        val = cdr(val);
+    catch (NormalReturn& e) {
+        return e.expr();
     }
+    return res;
 }
 
 Expr*
 Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
-    Expr* var = nullptr;
-    Expr* fn = nullptr;
-    Expr* callable = nullptr;
-    Expr* args = nullptr;
-    VariableScope* sc = _scope;
-    VariableScope internal_scope(_scope);
     if (is_nil(_e)) return nil();
 
-    switch (_e->type) {
-    case TYPE_REAL:
-        /*Fallthrough*/
-    case TYPE_DECIMAL:
-        /*Fallthrough*/
-    case TYPE_STRING:
+    if (_e->type == TYPE_REAL    ||
+        _e->type == TYPE_DECIMAL ||
+        _e->type == TYPE_STRING  )
         return _e;
 
-    case TYPE_CONS:
+    if (_e->type ==  TYPE_CONS) {
+        Expr* fn = nullptr;
+        Expr* args = nullptr;
+        std::cout << "got cons " << std::endl;
         fn = car(_e);
         args = cdr(_e);
 
@@ -543,44 +674,47 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         if (fn->type == TYPE_CONS)
             fn = scoped_eval(_scope, fn);
 
+        std::cout << "got cons with fn   " << stringify(fn) << std::endl;
+        std::cout << "got cons with args " << stringify(args) << std::endl;
+
         /*Evaluate as lambda*/
         if (fn->type == TYPE_LAMBDA) {
+            VariableScope internal = _scope->create_internal();
             std::cout << "evaluating lambda " << stringify(fn->callable.binds)
                       << " " << stringify(fn->callable.body) << std::endl;
             args = list_eval(_scope, args);
-            bind(&internal_scope, fn->callable.binds, args);
-            return core::progn(this, &internal_scope, fn->callable.body);
+            internal.bind(fn->callable.binds, args);
+            return core::progn(&internal, fn->callable.body);
         }
 
         /*Evaluate as buildin*/
-        callable = cdr(assoc(fn, m_constants));
+        Expr* callable = nullptr;
+        std::cout << "finding callable " << stringify(fn) << std::endl;
+        callable = _scope->variable_get(fn->symbol);
+        std::cout << "got fn " << stringify(callable) << std::endl;
+        callable = second(callable);
+
         if (!is_nil(callable)) {
             if (callable->type == TYPE_BUILDIN)
-                return callable->buildin(this, _scope, args);
+                return callable->buildin(_scope, args);
         }
         throw UserError("eval", "could not find function called ", fn);
+    }
 
-    case TYPE_SYMBOL:
+    if (_e->type == TYPE_SYMBOL) {
+        Expr* var = nullptr;
+        std::cout << "got symbol " << std::endl;
         if (is_nil(_e))
             return symbol("NIL");
         if (_e->symbol == std::string("t") || _e->symbol == std::string("T"))
             return symbol("T");
 
-        var = assoc(_e, m_constants);
+        var = _scope->variable_get(_e->symbol);
         if (!is_nil(var))
-            return cdr(var);
-        while (sc != nullptr) {
-            var = assoc(_e, _scope->m_variables);
-            if (!is_nil(var))
-                return cdr(var);
-            sc = sc->m_outer;
-        }
+            return second(var);
         throw UserError("eval", "could not find existing symbol called ", _e);
-
-    default:
-        ASSERT_UNREACHABLE("unknown type");
-    };
-    ASSERT_UNREACHABLE("unreachable");
+    }
+    throw UserError("eval", "Got something that could not be evaluated", _e);
     return nil();
 
 }
@@ -594,42 +728,10 @@ Environment::list_eval(VariableScope* _scope, Expr* _list)
         return nil();
     }
     while (!is_nil(curr)) {
-        root = put(this, scoped_eval(_scope, car(curr)), root);
+        root = put_in_list(scoped_eval(_scope, car(curr)), root);
         curr = cdr(curr);
     }
     return ipreverse(root);
-}
-
-bool
-Environment::add_variable(VariableScope* _scope, const char* _name, Expr* _v)
-{
-    Expr* entry = cons(symbol(_name), _v);
-    if (!is_nil(assoc(entry, _scope->m_variables)))
-        return false;
-    _scope->m_variables = put(this, entry, _scope->m_variables);
-    return true;
-}
-
-bool
-Environment::add_global(const char* _name, Expr* _v)
-{
-    return add_variable(&m_global_scope, _name, _v);
-}
-
-bool
-Environment::add_constant(const char* _name, Expr* _v)
-{
-    Expr* entry = cons(symbol(_name), _v);
-    if (!is_nil(assoc(entry, m_constants)))
-        return false;
-    m_constants = put(this, entry, m_constants);
-    return true;
-}
-
-bool
-Environment::add_buildin(const char* _name, buildin_fn _fn)
-{
-    return add_constant(_name, buildin(_fn));
 }
 
 bool
@@ -640,10 +742,12 @@ Environment::load_core(void)
     add_constant("*Creator*", string("Thomas Alexgaard"));
     add_constant("*Creator-github*", string("https://github.com/thom9258/"));
     add_constant("*Host-Languange*", string("C++"));
-    add_constant("*Version*", list({real(0), real(1)}));
+    add_constant("*Version*", list({real(0), real(0), real(1)}));
     add_constant("PI", decimal(pi));
     add_constant("PI/2", decimal(pi/2));
     add_constant("PI2", decimal(pi*2));
+    add_constant("E", decimal(2.71828));
+    add_constant("E-constant", decimal(0.57721));
 
     add_buildin("const!", core::defconst);
     add_buildin("global!", core::defglobal);
@@ -723,7 +827,7 @@ Environment::decimal(float _v) {
    }
 
 Expr*
-Environment::symbol(std::string _v) {
+Environment::symbol(const std::string& _v) {
     /*Test size of inp and store smallstr if possible*/
      Expr *out = m_gc.new_variable();
      if (out == nullptr)
@@ -733,13 +837,8 @@ Environment::symbol(std::string _v) {
      return out;
 }
 
-Expr*
-Environment::symbol(const char* _v) {
-    return symbol(std::string(_v));
-}
-
 Expr *
-Environment::string(std::string _v) {
+Environment::string(const std::string& _v) {
     /*Test size of inp and store smallstr if possible*/
   Expr *out = m_gc.new_variable();
   if (out == nullptr)
@@ -750,11 +849,7 @@ Environment::string(std::string _v) {
 }
 
 Expr *
-Environment::string(const char* _v) {
-    return string(std::string(_v));
-}
-
-Expr *Environment::buildin(buildin_fn _v) {
+Environment::buildin(BuildinFn _v) {
   Expr *out = m_gc.new_variable();
   if (out == nullptr)
     return nil();
@@ -763,16 +858,22 @@ Expr *Environment::buildin(buildin_fn _v) {
   return out;
 }
 
-Expr *Environment::list(std::initializer_list<Expr*> _lst) {
+Expr *Environment::list(const std::initializer_list<Expr*>& _lst) {
     Expr* lst = nil();
     /*Iterating in reverse order*/
     for (auto it = std::rbegin(_lst); it != std::rend(_lst); ++it)
-        lst = put(this, *it, lst);
+        lst = put_in_list(*it, lst);
     return lst;
 }
 
+Expr*
+Environment::put_in_list(Expr* _val, Expr* _list)
+{
+    return cons(_val, _list);
+}
+
 char*
-to_cstr(std::string _s) 
+to_cstr(const std::string& _s) 
 {
     char* out = new char[_s.size()+1];
     out[_s.size()] = '\0';
@@ -844,11 +945,6 @@ len(Expr* _e)
     return cnt;
 }
 
-Expr*
-put(Environment* _env, Expr* _val, Expr* _list)
-{
-    return _env->cons(_val, _list);
-}
 
 Expr*
 assoc(Expr* _key, Expr* _list)
@@ -1008,61 +1104,60 @@ stringify(Expr* _e)
 
 
 Expr*
-core::quote(Environment* _env, VariableScope* _scope, Expr* _e)
+core::quote(VariableScope* _s, Expr* _e)
 {
-    UNUSED(_env);
-    UNUSED(_scope);
+    UNUSED(_s);
     if (len(_e) != 1)
       throw UserError("quote", "expected 1 argument");
     return first(_e);
 }
 
 Expr*
-core::list(Environment* _env, VariableScope* _scope, Expr* _e)
+core::list(VariableScope* _s, Expr* _e)
 {
-    return _env->list_eval(_scope, _e);
+    return _s->env()->list_eval(_s, _e);
 }
 
 Expr*
-core::cons(Environment* _env, VariableScope* _scope, Expr* _e)
+core::cons(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(_e) != 2)
       throw UserError("cons", "expected 2 arguments");
-    return _env->cons(first(args), second(args));
+    return _s->env()->cons(first(args), second(args));
 }
 
 Expr*
-core::car(Environment* _env, VariableScope* _scope, Expr* _e)
+core::car(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(_e) != 1)
       throw UserError("car", "expected 1 argument");
     return car(first(args));
 }
 
 Expr*
-core::cdr(Environment* _env, VariableScope* _scope, Expr* _e)
+core::cdr(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(_e) != 1)
       throw UserError("cdr", "expected 1 argument");
     return cdr(first(args));
 }
 
 Expr*
-core::reverse_ip(Environment* _env, VariableScope* _scope, Expr* _e)
+core::reverse_ip(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
         return nil();
     return ipreverse(first(args));
 }
 
 Expr*
-core::nthcdr(Environment* _env, VariableScope* _scope, Expr* _e)
+core::nthcdr(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(_e) != 2)
       throw UserError("nthcdr", "expected 2 arguments");
     if (len(args) != 2)
@@ -1073,27 +1168,27 @@ core::nthcdr(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-core::len(Environment* _env, VariableScope* _scope, Expr* _e)
+core::len(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
-    return _env->real(len(args));
+    Expr* args = _s->env()->list_eval(_s, _e);
+    return _s->env()->real(len(args));
 }
 
 Expr*
-core::plus(Environment* _env, VariableScope* _scope, Expr* _e)
+core::plus(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
-    Expr* res = _env->real(0);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* res = _s->env()->real(0);
     Expr* curr = args;
 
-    auto PLUS2 = [_env] (Expr* _a, Expr* _b) {
+    auto PLUS2 = [_s] (Expr* _a, Expr* _b) {
         if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _env->decimal(_a->decimal + _b->decimal);
+            return _s->env()->decimal(_a->decimal + _b->decimal);
         else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _env->decimal(_a->real + _b->decimal);
+            return _s->env()->decimal(_a->real + _b->decimal);
         else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _env->decimal(_a->decimal + _b->real);
-        return _env->real(_a->real + _b->real);
+            return  _s->env()->decimal(_a->decimal + _b->real);
+        return _s->env()->real(_a->real + _b->real);
     };
 
     while (!is_nil(curr)) {
@@ -1106,24 +1201,24 @@ core::plus(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-core::minus(Environment* _env, VariableScope* _scope, Expr* _e)
+core::minus(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
-    Expr* res = _env->real(0);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* res = _s->env()->real(0);
     Expr* curr = args;
 
-    auto MINUS2 = [_env] (Expr* _a, Expr* _b) {
+    auto MINUS2 = [_s] (Expr* _a, Expr* _b) {
         if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _env->decimal(_a->decimal - _b->decimal);
+            return _s->env()->decimal(_a->decimal - _b->decimal);
         else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _env->decimal(_a->real - _b->decimal);
+            return _s->env()->decimal(_a->real - _b->decimal);
         else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _env->decimal(_a->decimal - _b->real);
-        return _env->real(_a->real - _b->real);
+            return  _s->env()->decimal(_a->decimal - _b->real);
+        return _s->env()->real(_a->real - _b->real);
     };
 
     if (len(args) == 0) {
-        return _env->real(0);
+        return _s->env()->real(0);
     }
 
     res = car(curr);
@@ -1138,24 +1233,24 @@ core::minus(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-core::multiply(Environment* _env, VariableScope* _scope, Expr* _e)
+core::multiply(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
-    Expr* res = _env->real(1);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* res = _s->env()->real(1);
     Expr* curr = args;
 
-    auto MULT2 = [_env] (Expr* _a, Expr* _b) {
+    auto MULT2 = [_s] (Expr* _a, Expr* _b) {
         if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _env->decimal(_a->decimal * _b->decimal);
+            return _s->env()->decimal(_a->decimal * _b->decimal);
         else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _env->decimal(_a->real * _b->decimal);
+            return _s->env()->decimal(_a->real * _b->decimal);
         else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _env->decimal(_a->decimal * _b->real);
-        return _env->real(_a->real * _b->real);
+            return  _s->env()->decimal(_a->decimal * _b->real);
+        return _s->env()->real(_a->real * _b->real);
     };
 
     if (len(args) == 0)
-        return _env->real(1);
+        return _s->env()->real(1);
     if (len(args) == 1)
         return first(args);
     while (!is_nil(curr)) {
@@ -1168,34 +1263,34 @@ core::multiply(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-core::divide(Environment* _env, VariableScope* _scope, Expr* _e)
+core::divide(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     Expr* res = nullptr;
     Expr* curr = args;
 
-    auto DIV2 = [_env] (Expr* _a, Expr* _b) {
+    auto DIV2 = [_s] (Expr* _a, Expr* _b) {
         //std::cout << "a = " << stringify(_a) << " , "
         //          << "b = " << stringify(_b) << std::endl;
         if ((_a->type == TYPE_DECIMAL && _a->decimal == 0) ||
             (_a->type == TYPE_REAL && _a->real == 0)        )
-            return _env->decimal(0);
+            return _s->env()->decimal(0);
 
         if ((_b->type == TYPE_DECIMAL && _b->decimal == 0) ||
             (_b->type == TYPE_REAL && _b->real == 0)        )
           throw UserError("/", "divide by zero error");
 
         if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _env->decimal(_a->decimal / _b->decimal);
+            return _s->env()->decimal(_a->decimal / _b->decimal);
         else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _env->decimal(_a->real / _b->decimal);
+            return _s->env()->decimal(_a->real / _b->decimal);
         else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _env->decimal(_a->decimal / _b->real);
-        return _env->decimal(_a->real / _b->real);
+            return  _s->env()->decimal(_a->decimal / _b->real);
+        return _s->env()->decimal(_a->real / _b->real);
     };
 
     if (len(args) == 0)
-        return _env->real(1);
+        return _s->env()->real(1);
     if (len(args) == 1)
         return first(args);
 
@@ -1211,9 +1306,9 @@ core::divide(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-core::mathequal(Environment* _env, VariableScope* _scope, Expr* _e)
+core::mathequal(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     Expr* curr = cdr(args);
     Expr* prev = args;
 
@@ -1235,24 +1330,24 @@ core::mathequal(Environment* _env, VariableScope* _scope, Expr* _e)
         return false;
     };
     if (len(args) < 2)
-        return _env->symbol("T");
+        return _s->env()->symbol("T");
     while (!is_nil(curr)) {
         if (!EQ2(car(prev), car(curr)))
             return nil();
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("T");
+    return _s->env()->symbol("T");
 }
 
 Expr*
-core::lessthan(Environment* _env, VariableScope* _scope, Expr* _e)
+core::lessthan(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     Expr* curr = cdr(args);
     Expr* prev = args;
 
-    auto LT2 = [_env] (Expr* _a, Expr* _b) {
+    auto LT2 = [_s] (Expr* _a, Expr* _b) {
         if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
             return _a->decimal < _b->decimal;
         else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
@@ -1263,7 +1358,7 @@ core::lessthan(Environment* _env, VariableScope* _scope, Expr* _e)
     };
 
     if (len(args) < 2)
-        return _env->symbol("T");
+        return _s->env()->symbol("T");
     while (!is_nil(curr)) {
         if (!is_val(car(prev)) || !is_val(car(curr)))
           throw UserError("<", "can only compare values");
@@ -1272,17 +1367,17 @@ core::lessthan(Environment* _env, VariableScope* _scope, Expr* _e)
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("T");
+    return _s->env()->symbol("T");
 }
 
 Expr*
-core::greaterthan(Environment* _env, VariableScope* _scope, Expr* _e)
+core::greaterthan(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     Expr* curr = cdr(args);
     Expr* prev = args;
 
-    auto GT2 = [_env] (Expr* _a, Expr* _b) {
+    auto GT2 = [_s] (Expr* _a, Expr* _b) {
         if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
             return _a->decimal > _b->decimal;
         else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
@@ -1293,7 +1388,7 @@ core::greaterthan(Environment* _env, VariableScope* _scope, Expr* _e)
     };
 
     if (len(args) < 2)
-        return _env->symbol("T");
+        return _s->env()->symbol("T");
     while (!is_nil(curr)) {
         if (!is_val(car(prev)) || !is_val(car(curr)))
           throw UserError(">", "can only compare values");
@@ -1302,23 +1397,23 @@ core::greaterthan(Environment* _env, VariableScope* _scope, Expr* _e)
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("T");
+    return _s->env()->symbol("T");
 }
 
 Expr*
-core::equal(Environment* _env, VariableScope* _scope, Expr* _e)
+core::equal(VariableScope* _s, Expr* _e)
 {
-    UNUSED(_scope);
+    UNUSED(_s);
     Expr* args = _e;
     Expr* curr = cdr(args);
     Expr* prev = args;
 
-    auto EQ2 = [_env] (Expr* _a, Expr* _b) {
+    auto EQ2 = [_s] (Expr* _a, Expr* _b) {
         return stringify(_a) == stringify(_b);
     };
 
     if (len(args) < 2) {
-        return _env->symbol("T");
+        return _s->env()->symbol("T");
     }
     while (!is_nil(curr)) {
         if (!EQ2(car(prev), car(curr)))
@@ -1326,22 +1421,22 @@ core::equal(Environment* _env, VariableScope* _scope, Expr* _e)
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("T");
+    return _s->env()->symbol("T");
 }
 
 Expr*
-core::eq(Environment* _env, VariableScope* _scope, Expr* _e)
+core::eq(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     Expr* curr = cdr(args);
     Expr* prev = args;
 
-    auto EQ2 = [_env] (Expr* _a, Expr* _b) {
+    auto EQ2 = [_s] (Expr* _a, Expr* _b) {
         return stringify(_a) == stringify(_b);
     };
 
     if (len(args) < 2) {
-        return _env->symbol("T");
+        return _s->env()->symbol("T");
     }
     while (!is_nil(curr)) {
         if (!EQ2(car(prev), car(curr)))
@@ -1349,41 +1444,41 @@ core::eq(Environment* _env, VariableScope* _scope, Expr* _e)
         prev = curr;
         curr = cdr(curr);
     }
-    return _env->symbol("T");
+    return _s->env()->symbol("T");
 }
 
 Expr*
-core::apply(Environment* _env, VariableScope* _scope, Expr* _e)
+core::apply(VariableScope* _s, Expr* _e)
 {
     /*TODO: fix apply*/
     Expr* call;
     std::cout << "apply inp " << stringify(_e) << std::endl;
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     std::cout << "apply args " << stringify(args) << std::endl;
     if (len(args) != 2)
       throw UserError("apply", "Expected 2 arguments");
-    call = _env->cons(first(args), second(args));
-    return _env->scoped_eval(_scope, call);
+    call = _s->env()->cons(first(args), second(args));
+    return _s->env()->scoped_eval(_s, call);
 }
 
 Expr*
-core::progn(Environment* _env, VariableScope* _scope, Expr* _e)
+core::progn(VariableScope* _s, Expr* _e)
 {
     Expr* last = nil();
     while (!is_nil(_e)) {
-        last = _env->scoped_eval(_scope, car(_e));
+        last = _s->env()->scoped_eval(_s, car(_e));
         _e = cdr(_e);
     }
     return last;
 }
 
 Expr*
-core::range(Environment* _env, VariableScope* _scope, Expr* _e)
+core::range(VariableScope* _s, Expr* _e)
 {
     bool reverse = false;
     int low;
     int high;
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     Expr* out = nullptr;
 
     if (first(args)->real < second(args)->real) {
@@ -1394,15 +1489,16 @@ core::range(Environment* _env, VariableScope* _scope, Expr* _e)
         high = first(args)->real;
         reverse = true;
     }
-    for (int i = low; i <= high; i++)
-        out = put(_env, _env->real(i), out);
+    for (int i = low; i <= high; i++) {
+        out = _s->env()->put_in_list(_s->env()->real(i), out);
+    }
     if (reverse)
         return out;
     return ipreverse(out);
 }
 
 Expr*
-core::_if(Environment* _env, VariableScope* _scope, Expr* _e)
+core::_if(VariableScope* _s, Expr* _e)
 {
     Expr* cond = nullptr;    
     //std::cout << "if input " << stringify(_e) << std::endl; 
@@ -1410,25 +1506,25 @@ core::_if(Environment* _env, VariableScope* _scope, Expr* _e)
       throw UserError("if", "expected required condition and true body");
     if (!(len(_e) == 2 || len(_e) == 3))
       throw UserError("if", "expected required condition and true body");
-    cond = _env->scoped_eval(_scope, first(_e));
+    cond = _s->env()->scoped_eval(_s, first(_e));
     std::cout << "condition res " << stringify(cond) << std::endl; 
     if (!is_nil(cond))
-        return _env->scoped_eval(_scope, second(_e));
-    return _env->scoped_eval(_scope, third(_e));
+        return _s->env()->scoped_eval(_s, second(_e));
+    return _s->env()->scoped_eval(_s, third(_e));
 }
 
 Expr*
-core::_try(Environment* _env, VariableScope* _scope, Expr* _e)
+core::_try(VariableScope* _s, Expr* _e)
 {
     Expr* res = nullptr;
     Expr* err = nullptr;
     try {
         //std::cout << "trying " << stringify(first(_e)) << std::endl; 
-        res = _env->scoped_eval(_scope, first(_e));
+        res = _s->env()->scoped_eval(_s, first(_e));
     }
     //catch (Error& e) {
     catch (std::exception& e) {
-        err = _env->list({_env->symbol("error"), _env->string(e.what())});
+        err = _s->env()->list({_s->env()->symbol("error"), _s->env()->string(e.what())});
         //std::cout << "caught err " << stringify(err) << std::endl; 
     }
     if (is_nil(err))
@@ -1441,17 +1537,17 @@ core::_try(Environment* _env, VariableScope* _scope, Expr* _e)
     if (is_nil(third(_e)) || !is_cons(_e))
       throw UserError("try", "arg 3 expected expression for error evaluation");
 
-    VariableScope internal(_scope);
-    _env->add_variable(&internal, second(_e)->symbol, err);
-    res = _env->scoped_eval(&internal, third(_e));
+    VariableScope internal = _s->create_internal();
+    internal.add_variable(second(_e)->symbol, err);
+    res = _s->env()->scoped_eval(&internal, third(_e));
     return res;
 }
 
 
 Expr*
-core::_throw(Environment* _env, VariableScope* _scope, Expr* _e)
+core::_throw(VariableScope* _s, Expr* _e)
 {
-    Expr* args = _env->list_eval(_scope, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (first(args)->type != TYPE_STRING)
       throw UserError("throw", "expects string input");
     throw UserError("throw", first(args)->string);
@@ -1459,67 +1555,65 @@ core::_throw(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-core::defconst(Environment* _env, VariableScope* _scope, Expr* _e)
+core::defconst(VariableScope* _s, Expr* _e)
 {
-    Expr* val = _env->scoped_eval(_scope, second(_e));
+    Expr* val = _s->env()->scoped_eval(_s, second(_e));
     if (len(_e) != 2)
       throw UserError("const!", "expects symbol and value.");
     if (first(_e)->type != TYPE_SYMBOL)
       throw UserError("const!", "expects name to be type symbol");
-    _env->add_constant(first(_e)->symbol, val);
+    _s->add_constant(first(_e)->symbol, val);
     return first(_e);
 }
 
 Expr*
-core::defglobal(Environment* _env, VariableScope* _scope, Expr* _e)
+core::defglobal(VariableScope* _s, Expr* _e)
 {
-    Expr* val = _env->scoped_eval(_scope, second(_e));
+    Expr* val = _s->env()->scoped_eval(_s, second(_e));
     if (len(_e) != 2)
       throw UserError("global!", "expects symbol and value.");
     if (first(_e)->type != TYPE_SYMBOL)
       throw UserError("global!", "expects name to be type symbol");
-    _env->add_global(first(_e)->symbol, val);
+    _s->add_global(first(_e)->symbol, val);
     return first(_e);
 }
 
 Expr*
-core::deflocal(Environment* _env, VariableScope* _scope, Expr* _e)
+core::deflocal(VariableScope* _s, Expr* _e)
 {
-    Expr* val = _env->scoped_eval(_scope, second(_e));
+    Expr* val = _s->env()->scoped_eval(_s, second(_e));
     if (len(_e) != 2)
       throw UserError("local!", "expects symbol and value.");
     if (first(_e)->type != TYPE_SYMBOL)
       throw UserError("local!", "expects name to be type symbol");
-    _env->add_variable(_scope, first(_e)->symbol, val);
+    _s->add_variable(first(_e)->symbol, val);
     return first(_e);
 }
 
 Expr*
-core::setvar(Environment* _env, VariableScope* _scope, Expr* _e)
+core::setvar(VariableScope* _s, Expr* _e)
 {
+    std::cout << "setting " << stringify(first(_e)) << " to "
+              << stringify(second(_e)) << std::endl;
     Expr* var = nullptr;
-    VariableScope* s = _scope;
-    while (s != nullptr) {
-        var = assoc(first(_e), s->m_variables);
-        if (!is_nil(var)) {
-            var->cons.cdr = _env->scoped_eval(_scope, second(_e));
-            return cdr(var);
-        }
-        s = s->m_outer;
-    }
-    var = assoc(first(_e), _env->globals());
-    if (!is_nil(var)) {
-        var->cons.cdr = _env->scoped_eval(_scope, second(_e));
-        return cdr(var);
-    }
-    throw UserError("setvar!", "variable to set does not exist");
+    if (first(_e)->type != TYPE_SYMBOL)
+        throw UserError("set!", "Expected symbol name to set");
+
+    var = _s->variable_get(first(_e)->symbol);
+    if (is_nil(var))
+        throw UserError("setvar!", "variable to set does not exist");
+
+    if (_s->is_var_const(var))
+        throw UserError("set!", "Cannot set constant symbol");
+    cdr(var)->cons.car = _s->env()->scoped_eval(_s, second(_e));
+    return second(var);
 }
 
 Expr*
-core::deflambda(Environment* _env, VariableScope* _scope, Expr* _e)
+core::deflambda(VariableScope* _s, Expr* _e)
 {
-    UNUSED(_scope);
-    Expr* l = _env->blank();
+    UNUSED(_s);
+    Expr* l = _s->env()->blank();
     if (len(_e) != 2)
         throw UserError("lambda", "expected arguments to be binds and body");
     l->type = TYPE_LAMBDA;
@@ -1529,20 +1623,18 @@ core::deflambda(Environment* _env, VariableScope* _scope, Expr* _e)
 }
 
 Expr*
-core::deffunction(Environment* _env, VariableScope* _scope, Expr* _e)
+core::deffunction(VariableScope* _s, Expr* _e)
 {
-    UNUSED(_scope);
-    UNUSED(_env);
+    UNUSED(_s);
     UNUSED(_e);
     throw NotImplemented("fn!");
     return nil();
 }
 
 Expr*
-core::defmacro(Environment* _env, VariableScope* _scope, Expr* _e)
+core::defmacro(VariableScope* _s, Expr* _e)
 {
-    UNUSED(_scope);
-    UNUSED(_env);
+    UNUSED(_s);
     UNUSED(_e);
     throw NotImplemented("macro!");
     return nil();
