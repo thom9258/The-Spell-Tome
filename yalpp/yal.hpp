@@ -1,14 +1,16 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <initializer_list>
 #include <algorithm>
 #include <string>
 #include <cstring>
 #include <vector>
 #include <list>
-#include <sstream>
 #include <functional>
 #include <cassert>
 #include <stdexcept>
+#include <math.h>
 
 #ifndef YALCPP_H
 #define YALCPP_H
@@ -125,6 +127,18 @@ Expr* greaterthan(VariableScope* _scope, Expr* _e);
 Expr* mathequal(VariableScope* _scope, Expr* _e);
 Expr* eq(VariableScope* _scope, Expr* _e);
 Expr* equal(VariableScope* _scope, Expr* _e);
+Expr* _or(VariableScope* _scope, Expr* _e);
+Expr* _and(VariableScope* _scope, Expr* _e);
+
+// more math! https://www.w3schools.com/cpp/cpp_math.asp
+Expr* cos(VariableScope* _scope, Expr* _e);
+Expr* sin(VariableScope* _scope, Expr* _e);
+Expr* sqrt(VariableScope* _scope, Expr* _e);
+
+Expr* slurp_file(VariableScope* _scope, Expr* _e);
+Expr* read(VariableScope* _scope, Expr* _e);
+Expr* eval(VariableScope* _scope, Expr* _e);
+Expr* print(VariableScope* _scope, Expr* _e);
 
 Expr* defconst(VariableScope* _scope, Expr* _e);
 Expr* defglobal(VariableScope* _scope, Expr* _e);
@@ -141,8 +155,8 @@ Expr* _return(VariableScope* _s, Expr* _e);
 
 Expr* _if(VariableScope* _scope, Expr* _e);
 Expr* _cond(VariableScope* _scope, Expr* _e);
-Expr* _or(VariableScope* _scope, Expr* _e);
-Expr* _and(VariableScope* _scope, Expr* _e);
+Expr* _do(VariableScope* _scope, Expr* _e);
+
 };
 
 class GarbageCollector {
@@ -750,6 +764,9 @@ Environment::list_eval(VariableScope* _scope, Expr* _list)
 bool
 Environment::load_core(void)
 {
+    auto add_interpreted = [&] (auto& s) {
+        eval(read(s));
+    };
     const float pi = 3.141592; 
 
     add_constant("*Creator*", string("Thomas Alexgaard"));
@@ -798,6 +815,14 @@ Environment::load_core(void)
     add_buildin("try", core::_try);
     add_buildin("throw", core::_throw);
     add_buildin("return", core::_return);
+    //add_interpreted("(macro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))");
+
+    add_buildin("slurp-file", core::slurp_file);
+    add_buildin("read", core::read);
+    add_buildin("eval", core::eval);
+    add_buildin("print", core::print);
+    add_interpreted("(fn! load-file (f) (eval (read (slurp-file f))))");
+
     return true;
 }
 
@@ -1090,7 +1115,6 @@ stringify(Expr* _e)
         return "";
     return ss.str();
 }
-
 
 Expr*
 core::quote(VariableScope* _s, Expr* _e)
@@ -1437,6 +1461,57 @@ core::eq(VariableScope* _s, Expr* _e)
 }
 
 Expr*
+core::slurp_file(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    std::string content;
+    std::ifstream ifs;
+    std::stringstream ss;
+    if (len(args) != 1)
+        throw UserError("slurp-file", "expects only 1 argument");
+    if (first(args)->type != TYPE_STRING)
+        throw UserError("slurp-file", "expects string as argument");
+    ifs.open(first(args)->string);
+    if (!ifs)
+        throw UserError("slurp-file", "could not open file ", first(args));
+
+    while (std::getline(ifs, content))
+        ss << content << std::endl;
+    ifs.close(); 
+    return _s->env()->string(ss.str());
+}
+
+Expr*
+core::read(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1)
+        throw UserError("read", "expects only 1 argument");
+    if (first(args)->type != TYPE_STRING)
+        throw UserError("read", "expects string as argument");
+    return _s->env()->read(first(args)->symbol);
+}
+
+Expr*
+core::eval(VariableScope* _s, Expr* _e)
+{
+     Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1)
+        throw UserError("eval", "expects only 1 argument");
+    return _s->env()->eval(first(args));
+}
+
+Expr*
+core::print(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1)
+        throw UserError("read", "expects only 1 argument");
+    std::cout << stringify(first(args)) << std::endl;
+    return first(args);
+}
+
+Expr*
 core::apply(VariableScope* _s, Expr* _e)
 {
     /*TODO: fix apply*/
@@ -1646,12 +1721,16 @@ core::deffunction(VariableScope* _s, Expr* _e)
 Expr*
 core::defmacro(VariableScope* _s, Expr* _e)
 {
-    UNUSED(_s);
-    UNUSED(_e);
-    throw NotImplemented("macro!");
-    return nil();
+    //https://github.com/kanaka/mal/blob/master/process/guide.md#step-8-macros
+    Expr* macro = _s->env()->blank();
+    if (len(_e) < 2)
+        throw UserError("macro!", "expected arguments to be name, binds and body");
+    macro->type = TYPE_MACRO;
+    macro->callable.binds = second(_e);
+    macro->callable.body = cdr(cdr(_e));
+    _s->add_constant(first(_e)->symbol, macro);
+    return first(_e);
 }
-
 
 #endif /*YALPP_IMPLEMENTATION*/
 #endif /*YALCPP_H*/

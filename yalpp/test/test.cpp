@@ -953,6 +953,71 @@ test_functions_and_recursion(void)
       */
 }
 
+void
+test_slurp_read_eval(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(slurp-file \"../test_pow.yal\")",
+                          "\"(fn! pow (a) (* a a))\""));
+
+    TL_TEST(repl_test(&e, "(read (slurp-file \"../test_pow.yal\"))",
+                          "(fn! pow (a) (* a a))"));
+
+    TL_TEST(repl_test(&e, "(eval (read (slurp-file \"../test_pow.yal\")))",
+                          "pow"));
+
+    TL_TEST(repl_test(&e, "(pow 2)", "4"));
+
+    /*NOTE: this is now done in load_core*/
+    //TL_TEST(repl_test(&e, "(fn! load-file (f) (eval (read (slurp-file f))))", "load-file"));
+
+    TL_TEST(repl_test(&e, "(load-file \"../test_factorial.yal\")", "factorial"));
+
+    TL_TEST(repl_test(&e, 
+                       "(factorial 5)",
+                       "120"));
+    TL_TEST(repl_test(&e, 
+                       "(factorial 3)",
+                       "6"));
+    TL_TEST(repl_test(&e, 
+                       "(factorial 10)",
+                       "3628800"));
+}
+
+void
+test_libraries(void)
+{
+    yal::Environment e;
+    e.load_core();
+
+    TL_TEST(repl_test(&e, "(load-file \"../math.yal\")", "math"));
+
+    TL_TEST(repl_test(&e, "(pow 2)", "4"));
+
+    TL_TEST(repl_test(&e, 
+                       "(factorial 5)",
+                       "120"));
+
+    TL_TEST(repl_test(&e, 
+                       "(factorial 3)",
+                       "6"));
+
+    TL_TEST(repl_test(&e, 
+                       "(factorial 10)",
+                       "3628800"));
+
+     TL_TEST(repl_test(&e, 
+                       "(bin-coeff 5 2)",
+                       "10"));
+
+     TL_TEST(repl_test(&e, 
+                       "(bin-coeff 5 4)",
+                       "5"));
+
+}
+
 int
 main(int argc, char **argv)
 {
@@ -984,6 +1049,8 @@ main(int argc, char **argv)
     TL(test_lambda());
     TL(test_fn());
     TL(test_functions_and_recursion());
+    TL(test_slurp_read_eval());
+    TL(test_libraries());
 
     tl_summary();
 }

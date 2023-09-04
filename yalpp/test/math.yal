@@ -1,0 +1,13 @@
+(progn
+
+(fn! pow (v) (* v v))
+
+(fn! factorial (v)
+  (if (= v 0)
+    1
+    (* v (factorial (- v 1)))))
+
+(fn! bin-coeff (n k)
+  (/ (factorial n) (factorial (- n k)) (factorial k)))
+
+'math)

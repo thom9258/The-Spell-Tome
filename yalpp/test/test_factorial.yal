@@ -1,0 +1,5 @@
+(fn! factorial (v)
+  (if (= v 0)
+    1
+    (* v (factorial (- v 1)))
+))
