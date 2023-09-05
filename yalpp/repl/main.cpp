@@ -19,6 +19,7 @@ main(int argc, char **argv)
     int i = 0;
 
     e.load_core();
+    e.load_std();
     std::cout << "yal - Yet Another LISP" << std::endl
               << "Created by Thomas Alexgaard." << std::endl << std::endl;
     while (1) {

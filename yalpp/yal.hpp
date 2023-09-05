@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <math.h>
 
+#include "yalstd.hpp"
+
 #ifndef YALCPP_H
 #define YALCPP_H
 
@@ -104,59 +106,61 @@ std::string stringify(Expr* _e);
 
 namespace core {
 
-Expr* progn(VariableScope* _scope, Expr* _e);
-Expr* apply(VariableScope* _scope, Expr* _e);
+Expr* progn(VariableScope* _s, Expr* _e);
+Expr* apply(VariableScope* _s, Expr* _e);
 
-Expr* quote(VariableScope* _scope, Expr* _e);
-Expr* list(VariableScope* _scope, Expr* _e);
-Expr* len(VariableScope* _scope, Expr* _e);
-Expr* reverse_ip(VariableScope* _scope, Expr* _e);
-Expr* range(VariableScope* _scope, Expr* _e);
+Expr* quote(VariableScope* _s, Expr* _e);
+Expr* list(VariableScope* _s, Expr* _e);
+Expr* len(VariableScope* _s, Expr* _e);
+Expr* reverse_ip(VariableScope* _s, Expr* _e);
+Expr* range(VariableScope* _s, Expr* _e);
 
-Expr* car(VariableScope* _scope, Expr* _e);
-Expr* cdr(VariableScope* _scope, Expr* _e);
-Expr* cons(VariableScope* _scope, Expr* _e);
-Expr* nthcdr(VariableScope* _scope, Expr* _e);
+Expr* car(VariableScope* _s, Expr* _e);
+Expr* cdr(VariableScope* _s, Expr* _e);
+Expr* cons(VariableScope* _s, Expr* _e);
+Expr* nthcdr(VariableScope* _s, Expr* _e);
 
-Expr* plus(VariableScope* _scope, Expr* _e);
-Expr* minus(VariableScope* _scope, Expr* _e);
-Expr* multiply(VariableScope* _scope, Expr* _e);
-Expr* divide(VariableScope* _scope, Expr* _e);
-Expr* lessthan(VariableScope* _scope, Expr* _e);
-Expr* greaterthan(VariableScope* _scope, Expr* _e);
-Expr* mathequal(VariableScope* _scope, Expr* _e);
-Expr* eq(VariableScope* _scope, Expr* _e);
-Expr* equal(VariableScope* _scope, Expr* _e);
-Expr* _or(VariableScope* _scope, Expr* _e);
-Expr* _and(VariableScope* _scope, Expr* _e);
+Expr* plus(VariableScope* _s, Expr* _e);
+Expr* minus(VariableScope* _s, Expr* _e);
+Expr* multiply(VariableScope* _s, Expr* _e);
+Expr* divide(VariableScope* _s, Expr* _e);
+Expr* lessthan(VariableScope* _s, Expr* _e);
+Expr* greaterthan(VariableScope* _s, Expr* _e);
+Expr* mathequal(VariableScope* _s, Expr* _e);
+Expr* eq(VariableScope* _s, Expr* _e);
+Expr* equal(VariableScope* _s, Expr* _e);
+Expr* is_nil(VariableScope* _s, Expr* _e);
+Expr* _or(VariableScope* _s, Expr* _e);
+Expr* _and(VariableScope* _s, Expr* _e);
 
 // more math! https://www.w3schools.com/cpp/cpp_math.asp
-Expr* cos(VariableScope* _scope, Expr* _e);
-Expr* sin(VariableScope* _scope, Expr* _e);
-Expr* sqrt(VariableScope* _scope, Expr* _e);
+Expr* cos(VariableScope* _s, Expr* _e);
+Expr* sin(VariableScope* _s, Expr* _e);
+Expr* sqrt(VariableScope* _s, Expr* _e);
 
-Expr* slurp_file(VariableScope* _scope, Expr* _e);
-Expr* read(VariableScope* _scope, Expr* _e);
-Expr* eval(VariableScope* _scope, Expr* _e);
-Expr* print(VariableScope* _scope, Expr* _e);
+Expr* slurp_file(VariableScope* _s, Expr* _e);
+Expr* read(VariableScope* _s, Expr* _e);
+Expr* eval(VariableScope* _s, Expr* _e);
+Expr* print(VariableScope* _s, Expr* _e);
+Expr* stringify(VariableScope* _s, Expr* _e);
 
-Expr* defconst(VariableScope* _scope, Expr* _e);
-Expr* defglobal(VariableScope* _scope, Expr* _e);
-Expr* deflocal(VariableScope* _scope, Expr* _e);
-Expr* deflambda(VariableScope* _scope, Expr* _e);
-Expr* deffunction(VariableScope* _scope, Expr* _e);
-Expr* defmacro(VariableScope* _scope, Expr* _e);
-Expr* setvar(VariableScope* _scope, Expr* _e);
-Expr* symbol_variable(VariableScope* _scope, Expr* _e);
+Expr* defconst(VariableScope* _s, Expr* _e);
+Expr* defglobal(VariableScope* _s, Expr* _e);
+Expr* deflocal(VariableScope* _s, Expr* _e);
+Expr* deflambda(VariableScope* _s, Expr* _e);
+Expr* deffunction(VariableScope* _s, Expr* _e);
+Expr* defmacro(VariableScope* _s, Expr* _e);
+Expr* setvar(VariableScope* _s, Expr* _e);
+Expr* symbol_variable(VariableScope* _s, Expr* _e);
 
-Expr* _try(VariableScope* _scope, Expr* _e);
-Expr* _throw(VariableScope* _scope, Expr* _e);
+Expr* _try(VariableScope* _s, Expr* _e);
+Expr* _throw(VariableScope* _s, Expr* _e);
 Expr* _return(VariableScope* _s, Expr* _e);
 
-Expr* _if(VariableScope* _scope, Expr* _e);
-Expr* _cond(VariableScope* _scope, Expr* _e);
-Expr* _do(VariableScope* _scope, Expr* _e);
-
+Expr* _if(VariableScope* _s, Expr* _e);
+Expr* _cond(VariableScope* _s, Expr* _e);
+Expr* _do(VariableScope* _s, Expr* _e);
+Expr* _typeof(VariableScope* _s, Expr* _e);
 };
 
 class GarbageCollector {
@@ -217,6 +221,7 @@ public:
     Expr* put_in_list(Expr* _val, Expr* _list);
 
     bool load_core(void);
+    bool load_std(void);
 	bool add_constant(const char* _name, Expr* _v);
     bool add_global(const char* _name, Expr* _v);
 	bool add_buildin(const char* _name, const BuildinFn _fn);
@@ -716,14 +721,16 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         }
 
         /*Evaluate as buildin*/
-        Expr* callable = nullptr;
-        callable = second(_scope->variable_get(fn->symbol));
-        if (!is_nil(callable)) {
-            if (callable->type == TYPE_BUILDIN) {
-                return callable->buildin(_scope, args);
-            }
-            if (callable->type == TYPE_FUNCTION) {
-                return eval_fn(callable, args);
+        if (fn->type == TYPE_SYMBOL) {
+            Expr* callable = nullptr;
+            callable = second(_scope->variable_get(fn->symbol));
+            if (!is_nil(callable)) {
+                if (callable->type == TYPE_BUILDIN) {
+                    return callable->buildin(_scope, args);
+                }
+                if (callable->type == TYPE_FUNCTION) {
+                    return eval_fn(callable, args);
+                }
             }
         }
         throw UserError("eval", "could not find function called ", fn);
@@ -764,31 +771,14 @@ Environment::list_eval(VariableScope* _scope, Expr* _list)
 bool
 Environment::load_core(void)
 {
-    auto add_interpreted = [&] (auto& s) {
-        eval(read(s));
-    };
-    const float pi = 3.141592; 
-
-    add_constant("*Creator*", string("Thomas Alexgaard"));
-    add_constant("*Creator-github*", string("https://github.com/thom9258/"));
-    add_constant("*Host-Languange*", string("C++"));
-    add_constant("*Version*", list({real(0), real(0), real(1)}));
-    add_constant("PI", decimal(pi));
-    add_constant("PI/2", decimal(pi/2));
-    add_constant("PI2", decimal(pi*2));
-    add_constant("E", decimal(2.71828));
-    add_constant("E-constant", decimal(0.57721));
-
     add_buildin("const!", core::defconst);
     add_buildin("global!", core::defglobal);
     add_buildin("local!", core::deflocal);
     add_buildin("symbol-variable", core::symbol_variable);
     add_buildin("set!", core::setvar);
-
     add_buildin("fn!", core::deffunction);
     add_buildin("macro!", core::defmacro);
     add_buildin("lambda", core::deflambda);
-
     add_buildin("quote", core::quote);
     add_buildin("list", core::list);
     add_buildin("cons", core::cons);
@@ -796,11 +786,9 @@ Environment::load_core(void)
     add_buildin("apply", core::apply);
     add_buildin("reverse!", core::reverse_ip);
     add_buildin("progn", core::progn);
-
     add_buildin("car", core::car);
     add_buildin("cdr", core::cdr);
     add_buildin("nthcdr", core::nthcdr);
-
     add_buildin("+", core::plus);
     add_buildin("-", core::minus);
     add_buildin("*", core::multiply);
@@ -810,19 +798,26 @@ Environment::load_core(void)
     add_buildin(">", core::greaterthan);
     add_buildin("eq", core::eq);
     add_buildin("equal", core::equal);
-
+    add_buildin("nil?", core::is_nil);
+    add_buildin("and", core::_and);
+    add_buildin("or", core::_or);
     add_buildin("if", core::_if);
     add_buildin("try", core::_try);
     add_buildin("throw", core::_throw);
     add_buildin("return", core::_return);
-    //add_interpreted("(macro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))");
-
+    add_buildin("typeof", core::_typeof);
     add_buildin("slurp-file", core::slurp_file);
     add_buildin("read", core::read);
     add_buildin("eval", core::eval);
     add_buildin("print", core::print);
-    add_interpreted("(fn! load-file (f) (eval (read (slurp-file f))))");
+    add_buildin("stringify", core::stringify);
+    return true;
+}
 
+bool
+Environment::load_std(void)
+{
+    std::cout << "std: " << stringify(eval(read(std_lib))) << std::endl;
     return true;
 }
 
@@ -1120,8 +1115,8 @@ Expr*
 core::quote(VariableScope* _s, Expr* _e)
 {
     UNUSED(_s);
-    if (len(_e) != 1)
-      throw UserError("quote", "expected 1 argument");
+    //if (len(_e) != 1)
+    //throw UserError("quote", "expected 1 argument, not ", _e);
     return first(_e);
 }
 
@@ -1145,7 +1140,7 @@ core::car(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(_e) != 1)
-      throw UserError("car", "expected 1 argument");
+    throw UserError("car", "expected 1 argument");
     return car(first(args));
 }
 
@@ -1154,9 +1149,27 @@ core::cdr(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(_e) != 1)
-      throw UserError("cdr", "expected 1 argument");
+    throw UserError("cdr", "expected 1 argument");
     return cdr(first(args));
 }
+
+//Expr*
+//core::car(VariableScope* _s, Expr* _e)
+//{
+//    UNUSED(_s);
+//    if (len(_e) != 1)
+//    throw UserError("car", "expected 1 argument");
+//    return car(first(_e));
+//}
+//
+//Expr*
+//core::cdr(VariableScope* _s, Expr* _e)
+//{
+//    UNUSED(_s);
+//    if (len(_e) != 1)
+//    throw UserError("cdr", "expected 1 argument");
+//    return cdr(first(_e));
+//}
 
 Expr*
 core::reverse_ip(VariableScope* _s, Expr* _e)
@@ -1335,7 +1348,7 @@ core::mathequal(VariableScope* _s, Expr* _e)
         else if (a->type == TYPE_REAL && b->type == TYPE_REAL)
             return a->real == b->real;
         else if (a->type == TYPE_SYMBOL && b->type == TYPE_SYMBOL)
-            return std::string(a->symbol) ==b->symbol;
+            return std::string(a->symbol) == b->symbol;
         else if (a->type == TYPE_STRING && b->type == TYPE_STRING)
             return std::string(a->string) == b->string;
         else if (a->type == TYPE_CONS && b->type == TYPE_CONS)
@@ -1346,7 +1359,7 @@ core::mathequal(VariableScope* _s, Expr* _e)
         return _s->env()->symbol("T");
     while (!is_nil(curr)) {
         if (!EQ2(car(prev), car(curr)))
-            return nil();
+            return _s->env()->symbol("NIL");
         prev = curr;
         curr = cdr(curr);
     }
@@ -1438,6 +1451,42 @@ core::equal(VariableScope* _s, Expr* _e)
 }
 
 Expr*
+core::is_nil(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (is_nil(first(args)))
+        return _s->env()->symbol("T");
+    return _s->env()->symbol("NIL");
+}
+
+Expr*
+core::_and(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) > 2)
+        throw UserError("and", "expected 2 or less arguments");
+
+    if (!is_nil(first(args)) && !is_nil(second(args)))
+        return _s->env()->symbol("T");
+    return _s->env()->symbol("NIL");
+}
+
+Expr*
+core::_or(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) > 2)
+        throw UserError("or", "expected 2 or less arguments");
+
+    if (!is_nil(first(args)))
+        return _s->env()->symbol("T");
+    if (!is_nil(second(args)))
+        return _s->env()->symbol("T");
+    return _s->env()->symbol("NIL");
+
+}
+
+Expr*
 core::eq(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
@@ -1475,8 +1524,9 @@ core::slurp_file(VariableScope* _s, Expr* _e)
     if (!ifs)
         throw UserError("slurp-file", "could not open file ", first(args));
 
-    while (std::getline(ifs, content))
+    while (std::getline(ifs, content)) {
         ss << content << std::endl;
+    }
     ifs.close(); 
     return _s->env()->string(ss.str());
 }
@@ -1509,6 +1559,17 @@ core::print(VariableScope* _s, Expr* _e)
         throw UserError("read", "expects only 1 argument");
     std::cout << stringify(first(args)) << std::endl;
     return first(args);
+}
+
+Expr*
+core::stringify(VariableScope* _s, Expr* _e)
+{
+    std::stringstream ss;
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1)
+        throw UserError("read", "expects only 1 argument");
+    ss << stringify(first(args));
+    return _s->env()->string(ss.str());
 }
 
 Expr*
@@ -1572,6 +1633,31 @@ core::_if(VariableScope* _s, Expr* _e)
     if (!is_nil(cond))
         return _s->env()->scoped_eval(_s, second(_e));
     return _s->env()->scoped_eval(_s, third(_e));
+}
+
+Expr*
+core::_typeof(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) > 1)
+        throw UserError("typeof", "Expects zero or 1 argument");
+    if (is_nil(first(args)))
+        return nil();
+    switch (first(args)->type) {
+    case TYPE_CONS:        return _s->env()->symbol("cons");
+    case TYPE_LAMBDA:      return _s->env()->symbol("lambda");
+    case TYPE_MACRO:       return _s->env()->symbol("macro");
+    case TYPE_FUNCTION:    return _s->env()->symbol("function");
+    case TYPE_BUILDIN:     return _s->env()->symbol("buildin");
+    case TYPE_REAL:        return _s->env()->symbol("real");
+    case TYPE_DECIMAL:     return _s->env()->symbol("decimal");
+    case TYPE_SMALLSYMBOL: return _s->env()->symbol("symbol");
+    case TYPE_SYMBOL:      return _s->env()->symbol("symbol");
+    case TYPE_SMALLSTRING: return _s->env()->symbol("string");
+    case TYPE_STRING:      return _s->env()->symbol("string");
+    default:
+        throw UserError("typeof", "Could not determine type of input");
+    };
 }
 
 Expr*
@@ -1676,8 +1762,6 @@ core::symbol_variable(VariableScope* _s, Expr* _e)
 Expr*
 core::setvar(VariableScope* _s, Expr* _e)
 {
-    std::cout << "setting " << stringify(first(_e)) << " to "
-              << stringify(second(_e)) << std::endl;
     Expr* var = nullptr;
     if (first(_e)->type != TYPE_SYMBOL)
         throw UserError("set!", "Expected symbol name to set");
