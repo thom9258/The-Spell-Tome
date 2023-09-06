@@ -17,10 +17,6 @@
 #ifndef YALCPP_H
 #define YALCPP_H
 
-/*TODO:
-  Make environment a const refrence
-*/
-
 namespace yal {
 
 #define ASSERT_UNREACHABLE(str) assert(str && "Unmanaged execution path observed!")  
@@ -163,6 +159,10 @@ Expr* _typeof(VariableScope* _s, Expr* _e);
 };
 
 class GarbageCollector {
+  /*TODO:
+    Currently just a dummy gc
+    Implement a mark-and-sweep algorithm as the primary gc
+  */
     std::vector<Expr*> m_in_use = {};
 public:
     Expr* new_variable(void);
@@ -170,15 +170,10 @@ public:
     ~GarbageCollector(void);
 };
 
-//class VariableScope {
-//public:
-//    VariableScope(VariableScope* _outer);
-//    VariableScope* m_outer;
-//    Expr* m_variables = nullptr;
-//};
-
 class VariableScope {
 public:
+/*TODO:
+  Make environment a const refrence */
     VariableScope(Environment* _env, VariableScope* _outer);
     Environment* env(void);
     VariableScope* global_scope(void);

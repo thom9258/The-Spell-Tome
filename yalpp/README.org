@@ -20,8 +20,3 @@ This means, that core functionality is implemented in the languange itself, such
       (contains value (cdr list)))))
 
 #+end_src
-
-* Features that will be implemented
-
-- Garbage collection
-- Compilation
