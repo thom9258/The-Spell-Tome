@@ -1,7 +1,13 @@
 * Yet Another LISP
 
 YAL is a programming languange in the LISP style aiming to provide a robust, fully-fledged programming interpreter.
-The aim of the project is to create a minimal implementation in the host languange C++, and having the rest of the languange be hosted in itself using the host implementation.
+The aim of the project is to create a highly scaleable implementation that is:
+
+- Embeddable as a scripting languange for running C++ applications.
+- Scaleable and modyfiable to the degree that you can mold the languange to fit the project's needs.
+- Useable as a serializeable datastructure like JSON and XML.
+
+YAL is a minimal implementation written in C++. this means that the rest of the languange be hosted in itself using the host implementation.
 This means, that core functionality is implemented in the languange itself, such as core list functionality:
 
 #+begin_src lisp
