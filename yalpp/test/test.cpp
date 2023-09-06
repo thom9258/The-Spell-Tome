@@ -558,8 +558,8 @@ test_conditionals(void)
     TL_TEST(repl_test(&e, "(if t 2)", "2"));
     TL_TEST(repl_test(&e, "(if '(1 2 3) t)", "T"));
     TL_TEST(repl_test(&e, "(if nil 2 3)", "3"));
-    //TL_TEST(repl_test(&e, "(if () t nil)", "NIL"));
-    TL_TEST(repl_test(&e, "(if (NIL) t nil)", "NIL"));
+    TL_TEST(repl_test(&e, "(if () t nil)", "NIL"));
+    TL_TEST(repl_test(&e, "(if NIL t nil)", "NIL"));
     TL_TEST(repl_test(&e, "(if (= 2 3) t nil)", "NIL"));
     TL_TEST(repl_test(&e, "(if (= 2 3) 1 0)", "0"));
 
@@ -889,7 +889,6 @@ void
 test_functions_and_recursion(void)
 {
     yal::Environment e;
-    e.load_core();
     e.load_std();
     
     TL_TEST(repl_test(&e, 
@@ -911,12 +910,12 @@ test_functions_and_recursion(void)
                       "isin"));
 
     TL_TEST(repl_test(&e, 
-                       "(isin 3 '(1 2 3 4))",
-                       "t"));
+                       "(contains 3 '(1 2 3 4))",
+                       "T"));
 
      TL_TEST(repl_test(&e, 
-                       "(isin 5 '(1 2 3 4))",
-                       "nil"));
+                       "(contains 5 '(1 2 3 4))",
+                       "NIL"));
 }
 
 void

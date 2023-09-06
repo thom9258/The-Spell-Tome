@@ -76,15 +76,17 @@ namespace yal {
         " (fn! cdaar (l) (cdr (car (car l))))"
 
         " (fn! len (l)"
-        "  (print l)"
-        "  (if (= l NIL)"
-        "    (+ 1 (len (cdr l)))"
+        "  (if (nil? l)"
         "    0"
-        " ))"
+        "    (+ 1 (len (tail l)))))"
 
-
-
-
+        /*TODO: Reimplement this with cond*/
+        "(fn! contains (value list)"
+        "  (if (nil? list)"
+        "    NIL"
+        "    (if (eq (car list) value)"
+        "      T"
+        "      (contains value (cdr list)))))"
 
         " 'std)"
         ;
