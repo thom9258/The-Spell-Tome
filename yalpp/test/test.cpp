@@ -458,35 +458,6 @@ test_buildin_accessors(void)
     TL_TEST(repl_test(&e,
                        "(cdr '(1 2 3 4))",
                        "(2 3 4)"));
-
-    /*TODO: add these as macros*/
-    //TL_TEST(repl_test(&e,
-    //                   "(first (quote (1 2 3 4)))",
-    //                   "1"));
-    //
-    //TL_TEST(repl_test(&e,
-    //                   "(second (quote ((1 2) (3 4) (5 6)) ))",
-    //                   "(3 4)"));
-    //
-    //TL_TEST(repl_test(&e,
-    //                   "(third (quote (1 2 3 4)))",
-    //                   "3"));
-    //
-    //TL_TEST(repl_test(&e,
-    //                   "(fourth (quote (1 2 3 4)))",
-    //                   "4"));
-
-    //TL_TEST(repl_test(&e,
-    //                   "(nth 9 (range 0 20))",
-    //                   "9"));
-
-    TL_TEST(repl_test(&e,
-                       "(nthcdr 17 (range 0 20))",
-                       "(17 18 19 20)"));
-
-    TL_TEST(repl_test(&e,
-                       "(nthcdr 21 (range 0 20))",
-                       "NIL"));
 }
 
 void
@@ -586,29 +557,6 @@ test_conditionals(void)
     TL_TEST(repl_test(&e, "(and NIL T)", "NIL"));
     TL_TEST(repl_test(&e, "(and nil NIL)", "NIL"));
     TL_TEST(repl_test(&e, "(and t T)", "T"));
-}
-
-void
-test_buildin_progn(void)
-{
-    yal::Environment e;
-    e.load_core();
-
-    TL_TEST(repl_test(&e, 
-                       "(progn)",
-                       "NIL"));
-
-    TL_TEST(repl_test(&e, 
-                       "(progn (+ 2 3) (- 5 2))",
-                       "3"));
-
-    TL_TEST(repl_test(&e, 
-                       "(progn (+ 30 51) (* 10 3 2) (range 0 5) [1 2 3])",
-                       "(1 2 3)"));
-
-    TL_TEST(repl_test(&e, 
-                       "(progn 5)",
-                       "5"));
 }
 
 void
@@ -772,16 +720,6 @@ test_predicates(void)
 }
 
 void
-test_apply(void)
-{
-    yal::Environment e;
-    e.load_core();
-
-    TL_TEST(repl_test(&e, "(apply '- '(5 2))", "3"));
-    TL_TEST(repl_test(&e, "(apply '+ (range 1 10))", "55"));
-}
-
-void
 test_lambda(void)
 {
     yal::Environment e;
@@ -827,7 +765,7 @@ void
 test_fn(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
 
     TL_TEST(repl_test(&e, 
                        "(fn! same (a) a)",
@@ -942,7 +880,7 @@ test_full_circle(void)
 }
 
 void
-test_libraries(void)
+test_load_libraries(void)
 {
     yal::Environment e;
     e.load_core();
@@ -971,8 +909,93 @@ test_libraries(void)
      TL_TEST(repl_test(&e, 
                        "(bin-coeff 5 4)",
                        "5"));
-
 }
+
+void
+test_std(void)
+{
+    yal::Environment e;
+    e.load_std();
+
+    TL_TEST(repl_test(&e, "(not t)", "NIL"));
+    TL_TEST(repl_test(&e, "(not nil)", "T"));
+
+    TL_TEST(repl_test(&e, "(apply '- '(5 2))", "3"));
+    TL_TEST(repl_test(&e, "(apply '+ (range 1 10))", "55"));
+    TL_TEST(repl_test(&e, "(apply (lambda (a b) (+ a (* a b))) '(2 3))", "8"));
+
+    //TL_TEST(repl_test(&e, "(funcall '+ 1 2 3)", "6"));
+    //TL_TEST(repl_test(&e, "(funcall 'first (1 2 3))", "1"));
+
+    //TL_TEST(repl_test(&e, "(reduce '+ 0 '(1 2 3))", "6"));
+    //TL_TEST(repl_test(&e, "(reduce '+ 4 '(1 2 3))", "10"));
+
+    TL_TEST(repl_test(&e, "(put 1 [2 3 4])", "(1 2 3 4)"));
+    TL_TEST(repl_test(&e, "(put '(1 2) '((2 3) (3 4)))", "((1 2) (2 3) (3 4))"));
+    TL_TEST(repl_test(&e, "(put NIL '(T NIL T)", "(NIL T NIL T)"));
+
+    TL_TEST(repl_test(&e, "(contains '(1 2) '((1 2) (2 3) (3 4))", "T"));
+    TL_TEST(repl_test(&e, "(contains 3 '(1 2 3 4))", "T"));
+    TL_TEST(repl_test(&e, "(contains 5 '(1 2 3 4))", "NIL"));
+
+    TL_TEST(repl_test(&e, "(head [1 2 3 4])", "1"));
+    TL_TEST(repl_test(&e, "(tail [1 2 3 4])", "(2 3 4)"));
+    TL_TEST(repl_test(&e, "(car (cdr [1 2 3 4]))", "2"));
+    TL_TEST(repl_test(&e, "(car (cdr (tail  [1 2 3 4])))", "3"));
+
+    TL_TEST(repl_test(&e, "(second [1 2 3 4])", "2"));
+    //TL_TEST(repl_test(&e, "(const! to100 (range 1 100))", "to100"));
+    TL_TEST(repl_test(&e, "(const! to10 (range 1 10))", "to10"));
+    TL_TEST(repl_test(&e, "to10", "(1 2 3 4 5 6 7 8 9 10)"));
+
+    TL_TEST(repl_test(&e, "(first to10)", "1"));
+    TL_TEST(repl_test(&e, "(second to10)", "2"));
+    TL_TEST(repl_test(&e, "(third to10)", "3"));
+    TL_TEST(repl_test(&e, "(fourth to10)", "4"));
+    TL_TEST(repl_test(&e, "(fifth to10)", "5"));
+    TL_TEST(repl_test(&e, "(sixth to10)", "6"));
+    TL_TEST(repl_test(&e, "(seventh to10)", "7"));
+    TL_TEST(repl_test(&e, "(eighth to10)", "8"));
+    TL_TEST(repl_test(&e, "(ninth to10)", "9"));
+    TL_TEST(repl_test(&e, "(tenth to10)", "10"));
+
+    TL_TEST(repl_test(&e, "(nthcdr 5 to10)", "(6 7 8 9 10)"));
+    TL_TEST(repl_test(&e, "(nthcdr 8 to10)", "(9 10)"));
+    TL_TEST(repl_test(&e, "(nth 7 to10)", "8"));
+    TL_TEST(repl_test(&e, "(nth 5 to10)", "6"));
+    /*NOTE: negative indexes returns first element*/
+    TL_TEST(repl_test(&e, "(nth -7 to10)", "1"));
+    TL_TEST(repl_test(&e, "(nth 0 to10)", "1"));
+    TL_TEST(repl_test(&e, "(nth 23 to10)", "NIL"));
+
+    TL_TEST(repl_test(&e, "(const! to100 (range 1 100))", "to100"));
+    TL_TEST(repl_test(&e, "(nth 77 to100)", "78"));
+    TL_TEST(repl_test(&e, "(nth 52 to100)", "53"));
+
+    TL_TEST(repl_test(&e, "(last to10)", "10"));
+    TL_TEST(repl_test(&e, "(last to100)", "100"));
+    TL_TEST(repl_test(&e, "(last '((1 2) (3 4) (5 6)))", "(5 6)"));
+
+    TL_TEST(repl_test(&e, "(assoc 'a '((a 1) (b 2) (c 3))", "(a 1)"));
+    TL_TEST(repl_test(&e, "(assoc 'b '((a 1) (b 2) (c 3))", "(b 2)"));
+    TL_TEST(repl_test(&e, "(assoc 'c '((a 1) (b 2) (c 3))", "(c 3)"));
+    TL_TEST(repl_test(&e, "(assoc 'd '((a 1) (b 2) (c 3))", "NIL"));
+
+
+    TL_TEST(repl_test(&e, "(progn (+ 2 2) (* 2 2) 'END)", "END"));
+    TL_TEST(repl_test(&e, "(progn (- 8 6) (* 5 5))", "25"));
+    TL_TEST(repl_test(&e, "(progn NIL)", "NIL"));
+    /*TODO: this is a binding error,
+      it does not know what to set arg var to because none is supplied*/
+    //TL_TEST(repl_test(&e, "(my-progn)", "NIL"));
+    TL_TEST(repl_test(&e, "(progn (+ 30 51) (* 10 3 2) (range 0 5) [1 2 3])", "(1 2 3)"));
+
+    TL_TEST(repl_test(&e, "(abs 2.345)", "2.345"));
+    TL_TEST(repl_test(&e, "(abs -72.5)", "72.5"));
+    TL_TEST(repl_test(&e, "(abs (* -5 2))", "10"));
+}
+
+
 
 
 int
@@ -995,19 +1018,18 @@ main(int argc, char **argv)
     TL(test_buildin_accessors());
     TL(test_buildin_list_creation());
     TL(test_buildin_math());
-    TL(test_buildin_progn());
     TL(test_conditionals());
     TL(test_buildin_equality());
     TL(test_variables());
     TL(test_set_variables());
-    TL(test_apply());
     TL(test_try_catch_throw());
     TL(test_lambda());
     TL(test_fn());
     TL(test_full_circle());
-    TL(test_libraries());
+    TL(test_load_libraries());
     TL(test_predicates());
     TL(test_functions_and_recursion());
+    TL(test_std());
 
     tl_summary();
 }

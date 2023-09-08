@@ -89,7 +89,6 @@ Expr* first(Expr* _e);
 Expr* second(Expr* _e);
 Expr* third(Expr* _e);
 Expr* fourth(Expr* _e);
-Expr* nthcdr(int _n, Expr* _e);
 
 Expr* assoc(Expr* _key, Expr* _list);
 Expr* ipreverse(Expr* _list);
@@ -101,7 +100,6 @@ std::string stringify(Expr* _e);
 
 namespace core {
 
-Expr* progn(VariableScope* _s, Expr* _e);
 Expr* apply(VariableScope* _s, Expr* _e);
 
 Expr* quote(VariableScope* _s, Expr* _e);
@@ -113,7 +111,6 @@ Expr* range(VariableScope* _s, Expr* _e);
 Expr* car(VariableScope* _s, Expr* _e);
 Expr* cdr(VariableScope* _s, Expr* _e);
 Expr* cons(VariableScope* _s, Expr* _e);
-Expr* nthcdr(VariableScope* _s, Expr* _e);
 
 Expr* plus(VariableScope* _s, Expr* _e);
 Expr* minus(VariableScope* _s, Expr* _e);
@@ -136,7 +133,7 @@ Expr* sqrt(VariableScope* _s, Expr* _e);
 Expr* slurp_file(VariableScope* _s, Expr* _e);
 Expr* read(VariableScope* _s, Expr* _e);
 Expr* eval(VariableScope* _s, Expr* _e);
-Expr* print(VariableScope* _s, Expr* _e);
+Expr* write(VariableScope* _s, Expr* _e);
 Expr* stringify(VariableScope* _s, Expr* _e);
 
 Expr* defconst(VariableScope* _s, Expr* _e);
@@ -686,12 +683,19 @@ Environment::eval(Expr* _e)
 Expr*
 Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
-
     auto eval_fn = [this, _scope] (Expr* fn, Expr* args) {
+        auto progn = [] (VariableScope* s, Expr* e) {
+            Expr* last = nullptr;
+            while (!is_nil(e)) {
+                last = s->env()->scoped_eval(s, car(e));
+                e = cdr(e);
+            }
+            return last;
+        };
         VariableScope internal = _scope->create_internal();
         args = list_eval(_scope, args);
         internal.bind(fn->callable.binds, args);
-        return core::progn(&internal, fn->callable.body);
+        return progn(&internal, fn->callable.body);
     };
     
     if (is_nil(_e)) return nil();
@@ -781,12 +785,9 @@ Environment::load_core(void)
         add_buildin("list", core::list);
         add_buildin("cons", core::cons);
         add_buildin("range", core::range);
-        add_buildin("apply", core::apply);
         add_buildin("reverse!", core::reverse_ip);
-        add_buildin("progn", core::progn);
         add_buildin("car", core::car);
         add_buildin("cdr", core::cdr);
-        add_buildin("nthcdr", core::nthcdr);
         add_buildin("+", core::plus);
         add_buildin("-", core::minus);
         add_buildin("*", core::multiply);
@@ -807,7 +808,7 @@ Environment::load_core(void)
         add_buildin("slurp-file", core::slurp_file);
         add_buildin("read", core::read);
         add_buildin("eval", core::eval);
-        add_buildin("print", core::print);
+        add_buildin("write", core::write);
         add_buildin("stringify", core::stringify);
     }
     catch (std::exception& e) {
@@ -821,6 +822,11 @@ Environment::load_std(void)
 {
     //std::cout << "std: " << stringify(eval(read(std_lib))) << std::endl;
     load_core();
+    eval(read(" (fn! progn (&body)"
+              "   \"evaluate body and return last result\""
+              "   (if (nil? body)"
+              "     NIL"
+              "     (last body)))"));
     eval(read(std_lib));
     return true;
 }
@@ -1051,18 +1057,6 @@ Expr* third(Expr* _e)
 Expr* fourth(Expr* _e)
 { return car(cdr(cdr(cdr(_e)))); }
 
-Expr*
-nthcdr(int _n, Expr* _e)
-{
-    int i;
-    Expr* tmp = _e;
-    if (_n < 0)
-        return nullptr;
-    for (i = 0; i < _n; i++)
-        tmp = cdr(tmp);
-    return tmp;
-}
-
 std::stringstream
 stream(Expr* _e)
 {
@@ -1154,8 +1148,8 @@ core::car(VariableScope* _s, Expr* _e)
     Expr* out;
     if (len(_e) != 1)
         throw UserError("car", "expected 1 argument");
-
     out = car(first(args));
+    //std::cout << "car returns " << stringify(out) << std::endl;
     if (is_nil(out))
         return _s->env()->nil();
     return car(first(args));
@@ -1168,7 +1162,6 @@ core::cdr(VariableScope* _s, Expr* _e)
     Expr* out;
     if (len(_e) != 1)
         throw UserError("cdr", "expected 1 argument");
-
     out = cdr(first(args));
     if (is_nil(out))
         return _s->env()->nil();
@@ -1200,19 +1193,6 @@ core::reverse_ip(VariableScope* _s, Expr* _e)
     if (len(args) != 1)
         return nullptr;
     return ipreverse(first(args));
-}
-
-Expr*
-core::nthcdr(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    if (len(_e) != 2)
-      throw UserError("nthcdr", "expected 2 arguments");
-    if (len(args) != 2)
-        return nullptr;
-    if (first(args)->type != TYPE_REAL || second(args)->type != TYPE_CONS)
-        return nullptr;
-    return nthcdr(first(args)->real, second(args));
 }
 
 Expr*
@@ -1612,7 +1592,7 @@ core::eval(VariableScope* _s, Expr* _e)
 }
 
 Expr*
-core::print(VariableScope* _s, Expr* _e)
+core::write(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
@@ -1645,17 +1625,6 @@ core::apply(VariableScope* _s, Expr* _e)
       throw UserError("apply", "Expected 2 arguments");
     call = _s->env()->cons(first(args), second(args));
     return _s->env()->scoped_eval(_s, call);
-}
-
-Expr*
-core::progn(VariableScope* _s, Expr* _e)
-{
-    Expr* last = nullptr;
-    while (!is_nil(_e)) {
-        last = _s->env()->scoped_eval(_s, car(_e));
-        _e = cdr(_e);
-    }
-    return last;
 }
 
 Expr*
