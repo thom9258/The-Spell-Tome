@@ -26,10 +26,14 @@ const char *std_lib =
     " (fn! value?   (v) (or (= (typeof v) 'real) (= (typeof v) 'decimal)))"
     " (fn! symbol?  (v) (= (typeof v) 'symbol))"
     " (fn! string?  (v) (= (typeof v) 'string))"
-    " (fn! list?    (v) (= (typeof v) 'cons))"
+    " (fn! cons?    (v) (= (typeof v) 'cons))"
+    " (fn! list?    (v) (or (nil? v) (= (typeof v) 'cons)))"
     " (fn! lambda?  (v) (= (typeof v) 'lambda))"
     " (fn! fn?      (v) (= (typeof v) 'function))"
     " (fn! macro?   (v) (= (typeof v) 'macro))"
+
+    " (fn! var? (var)"
+    "   (nil? (variable-definition var)))"
 
     /*File Management*/
     " (fn! load-file (f) (eval (read (slurp-file f))))"
@@ -60,8 +64,7 @@ const char *std_lib =
     " (fn! seventh (l) (car (cdr (cdr (cdr (cdr (cdr (cdr l))))))))"
     " (fn! eighth  (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr l)))))))))"
     " (fn! ninth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr l))))))))))"
-    " (fn! tenth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr "
-    "l)))))))))))"
+    " (fn! tenth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr l)))))))))))"
 
     " (fn! cddr (l) (cdr (cdr l)))"
     " (fn! cdar (l) (cdr (car l)))"
@@ -78,7 +81,13 @@ const char *std_lib =
     " (fn! cdaar (l) (cdr (car (car l))))"
 
     " (fn! not (x)"
-    "  (if x NIL T))"
+    "  (if (nil? x) T NIL))"
+
+    " (macro! when (test &body)"
+    "  (if test (progn body)))"
+
+    " (macro! unless (test &body)"
+    "  (if test NIL (progn body)))"
 
     " (fn! put (v l)"
     "  \"Join value onto front of list\""
@@ -131,6 +140,32 @@ const char *std_lib =
     "     init"
     "     (reduce fn (fn init (first list)) (rest list))"
     " ))"
+
+    " (fn! format (&args)"
+    "   \"stringify and concatenate arguments to single string\""
+    " (throw \"format not implemented\"))"
+
+    " (fn! print (&args)"
+    "   \"print formatted string\""
+    "   (throw \"print not implemented\")"
+    "   (write (format args)))"
+
+    " (fn! recurse (n)"
+    "   \"create recursion calls n times (used to test tail-call-optimization)\""
+    "   (if (> n 0) (recurse (- n 1)) 'did-we-blow-up?))"
+
+    " (fn! setnth! (n v list)"
+    "   \"set the nth value of a list\""
+    "   (local! target (nthcdr n list))"
+    "   (if (nil? target)"
+    "     (throw \"invalid index to set\")"
+    "     (setcar! target v)))"
+
+    " (fn! variable-symbol (var)"
+    "   \"get symbol associated with variable\""
+    "   (second (variable-definition var)))"
+
+
 
 
     " 'std)";

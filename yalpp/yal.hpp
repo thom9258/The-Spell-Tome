@@ -100,8 +100,6 @@ std::string stringify(Expr* _e);
 
 namespace core {
 
-Expr* apply(VariableScope* _s, Expr* _e);
-
 Expr* quote(VariableScope* _s, Expr* _e);
 Expr* list(VariableScope* _s, Expr* _e);
 Expr* len(VariableScope* _s, Expr* _e);
@@ -126,9 +124,9 @@ Expr* _or(VariableScope* _s, Expr* _e);
 Expr* _and(VariableScope* _s, Expr* _e);
 
 // more math! https://www.w3schools.com/cpp/cpp_math.asp
-Expr* cos(VariableScope* _s, Expr* _e);
-Expr* sin(VariableScope* _s, Expr* _e);
-Expr* sqrt(VariableScope* _s, Expr* _e);
+//Expr* cos(VariableScope* _s, Expr* _e);
+//Expr* sin(VariableScope* _s, Expr* _e);
+//Expr* sqrt(VariableScope* _s, Expr* _e);
 
 Expr* slurp_file(VariableScope* _s, Expr* _e);
 Expr* read(VariableScope* _s, Expr* _e);
@@ -143,7 +141,9 @@ Expr* deflambda(VariableScope* _s, Expr* _e);
 Expr* deffunction(VariableScope* _s, Expr* _e);
 Expr* defmacro(VariableScope* _s, Expr* _e);
 Expr* setvar(VariableScope* _s, Expr* _e);
-Expr* symbol_variable(VariableScope* _s, Expr* _e);
+Expr* setcar(VariableScope* _s, Expr* _e);
+Expr* setcdr(VariableScope* _s, Expr* _e);
+Expr* variable_definition(VariableScope* _s, Expr* _e);
 
 Expr* _try(VariableScope* _s, Expr* _e);
 Expr* _throw(VariableScope* _s, Expr* _e);
@@ -162,6 +162,7 @@ class GarbageCollector {
   */
     std::vector<Expr*> m_in_use = {};
 public:
+    size_t exprs_in_use(void);
     Expr* new_variable(void);
     void destroy_variable(Expr* _e);
     ~GarbageCollector(void);
@@ -183,7 +184,7 @@ public:
     bool add_global(const char* _name, Expr* _v);
 	bool add_buildin(const char* _name, const BuildinFn _fn);
     bool add_variable(const char* _name, Expr* _v);
-    void bind(Expr* _binds, Expr* _values);
+    void bind(const char* _fnname, Expr* _binds, Expr* _values);
 
 private:
     VariableScope* m_outer = nullptr;
@@ -196,11 +197,17 @@ public:
     Environment(void);
     VariableScope* global_scope(void);
 
+    /*Info*/
+    size_t exprs_in_use(void);
+    const std::string gc_info(void);
+
+    /*Evaluation*/
     Expr* read(const char* _program);
     Expr* eval(Expr* _e);
     Expr* list_eval(VariableScope* _scope, Expr* _list);
     Expr* scoped_eval(VariableScope* _scope, Expr* _e);
 
+    /*Expr creation*/
 	Expr* blank(void);
 	Expr* t(void);
 	Expr* nil(void);
@@ -213,6 +220,7 @@ public:
     Expr* list(const std::initializer_list<Expr *>& _lst);
     Expr* put_in_list(Expr* _val, Expr* _list);
 
+    /*Library creation*/
     bool load_core(void);
     bool load_std(void);
 	bool add_constant(const char* _name, Expr* _v);
@@ -301,6 +309,13 @@ GarbageCollector::~GarbageCollector(void)
         destroy_variable(v);
 }
 
+
+size_t
+GarbageCollector::exprs_in_use(void)
+{
+    return m_in_use.size(); 
+}
+
 VariableScope::VariableScope(Environment* _env, VariableScope* _outer) : m_outer(_outer), m_env(_env) {};
 
 VariableScope*
@@ -384,32 +399,31 @@ VariableScope::add_buildin(const char* _name, const BuildinFn _fn)
 }
 
 void
-VariableScope::bind(Expr* _binds, Expr* _values)
+VariableScope::bind(const char* _fnname, Expr* _binds, Expr* _values)
 {
   /*TODO: add support for keyword binds aswell*/
     std::string bindstr;
     Expr* rest = nullptr;
-    Expr* bind = _binds; 
-    Expr* val = _values; 
-    while (!is_nil(bind) && !is_nil(val)) {
-        if (car(bind)->type != TYPE_SYMBOL)
+    while (!is_nil(_binds) && !is_nil(_values)) {
+        if (car(_binds)->type != TYPE_SYMBOL)
             throw UserError("internal bind", "expected binds to be symbols");
-        bindstr = std::string(car(bind)->symbol);
+        bindstr = std::string(car(_binds)->symbol);
         if (bindstr.size() > 1 && bindstr.find_first_of('&') == 0) {
-            while (!is_nil(val)) {
-                rest = env()->put_in_list(car(val), rest);
-                val = cdr(val);
+            while (!is_nil(_values)) {
+                rest = env()->put_in_list(car(_values), rest);
+                _values = cdr(_values);
             }
             rest = ipreverse(rest);
-            //std::cout << bindstr.c_str()+1 << " " << stringify(rest) << std::endl;
             add_variable(bindstr.c_str()+1, rest);
             return;
         }
-        //std::cout << "Binding " << car(bind)->symbol << " to " << stringify(car(val)) << std::endl;
-        add_variable(car(bind)->symbol, car(val));
-        bind = cdr(bind);
-        val = cdr(val);
+        add_variable(car(_binds)->symbol, car(_values));
+        _binds = cdr(_binds);
+        _values = cdr(_values);
     }
+
+    if (len(_binds) != 0)
+        throw UserError(_fnname, "invalid amount of inputs given!");
 }
 
 bool
@@ -428,6 +442,24 @@ Environment::global_scope(void)
 {
     return &m_global_scope;
 }
+
+size_t
+Environment::exprs_in_use(void)
+{
+    return m_gc.exprs_in_use(); 
+}
+
+const std::string
+Environment::gc_info(void)
+{
+    std::stringstream ss;
+    ss << "Expr size:   bytes " << sizeof(yal::Expr) << std::endl
+       << "used Expr's:       " << exprs_in_use() << std::endl
+       << "used memory: bytes " << exprs_in_use() * sizeof(yal::Expr) << std::endl
+       << "             MB    " << float(exprs_in_use() * sizeof(yal::Expr)) / 1000000;
+    return ss.str();
+}
+
 
 bool
 Environment::add_variable(const char* _name, Expr* _v)
@@ -683,7 +715,7 @@ Environment::eval(Expr* _e)
 Expr*
 Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
-    auto eval_fn = [this, _scope] (Expr* fn, Expr* args) {
+    auto eval_fn = [this, _scope] (const char* name, Expr* fn, Expr* args) {
         auto progn = [] (VariableScope* s, Expr* e) {
             Expr* last = nullptr;
             while (!is_nil(e)) {
@@ -694,7 +726,7 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         };
         VariableScope internal = _scope->create_internal();
         args = list_eval(_scope, args);
-        internal.bind(fn->callable.binds, args);
+        internal.bind(name, fn->callable.binds, args);
         return progn(&internal, fn->callable.body);
     };
     
@@ -718,7 +750,7 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 
         /*Evaluate as lambda*/
         if (fn->type == TYPE_LAMBDA) {
-            return eval_fn(fn, args);
+            return eval_fn("lambda", fn, args);
         }
 
         /*Evaluate as buildin*/
@@ -730,7 +762,7 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
                     return callable->buildin(_scope, args);
                 }
                 if (callable->type == TYPE_FUNCTION) {
-                    return eval_fn(callable, args);
+                    return eval_fn(fn->symbol, callable, args);
                 }
             }
         }
@@ -776,8 +808,11 @@ Environment::load_core(void)
         add_buildin("const!", core::defconst);
         add_buildin("global!", core::defglobal);
         add_buildin("local!", core::deflocal);
-        add_buildin("symbol-variable", core::symbol_variable);
+        add_buildin("variable-definition", core::variable_definition);
+        /*TODO: set! can be replaced by interpreted fn now*/
         add_buildin("set!", core::setvar);
+        add_buildin("setcar!", core::setcar);
+        add_buildin("setcdr!", core::setcdr);
         add_buildin("fn!", core::deffunction);
         add_buildin("macro!", core::defmacro);
         add_buildin("lambda", core::deflambda);
@@ -1167,24 +1202,6 @@ core::cdr(VariableScope* _s, Expr* _e)
         return _s->env()->nil();
     return cdr(first(args));
 }
-
-//Expr*
-//core::car(VariableScope* _s, Expr* _e)
-//{
-//    UNUSED(_s);
-//    if (len(_e) != 1)
-//    throw UserError("car", "expected 1 argument");
-//    return car(first(_e));
-//}
-//
-//Expr*
-//core::cdr(VariableScope* _s, Expr* _e)
-//{
-//    UNUSED(_s);
-//    if (len(_e) != 1)
-//    throw UserError("cdr", "expected 1 argument");
-//    return cdr(first(_e));
-//}
 
 Expr*
 core::reverse_ip(VariableScope* _s, Expr* _e)
@@ -1616,18 +1633,6 @@ core::stringify(VariableScope* _s, Expr* _e)
 }
 
 Expr*
-core::apply(VariableScope* _s, Expr* _e)
-{
-    /*TODO: fix apply*/
-    Expr* call;
-    Expr* args = _s->env()->list_eval(_s, _e);
-    if (len(args) != 2)
-      throw UserError("apply", "Expected 2 arguments");
-    call = _s->env()->cons(first(args), second(args));
-    return _s->env()->scoped_eval(_s, call);
-}
-
-Expr*
 core::range(VariableScope* _s, Expr* _e)
 {
     bool reverse = false;
@@ -1744,6 +1749,15 @@ core::_return(VariableScope* _s, Expr* _e)
 }
 
 Expr*
+core::variable_definition(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || first(args)->type != TYPE_SYMBOL)
+      throw UserError("variable-definition", "expects symbol to lookup");
+    return _s->variable_get(first(args)->symbol);
+}
+
+Expr*
 core::defconst(VariableScope* _s, Expr* _e)
 {
     Expr* val = _s->env()->scoped_eval(_s, second(_e));
@@ -1780,32 +1794,40 @@ core::deflocal(VariableScope* _s, Expr* _e)
 }
 
 Expr*
-core::symbol_variable(VariableScope* _s, Expr* _e)
-{
-    Expr* var;
-    if (len(_e) != 1)
-      throw UserError("symbol-variable", "expects symbol");
-    if (first(_e)->type != TYPE_SYMBOL)
-      throw UserError("symbol!", "expects symbol");
-    var = _s->variable_get(first(_e)->symbol);
-    return second(var);
-}
-
-Expr*
 core::setvar(VariableScope* _s, Expr* _e)
 {
     Expr* var = nullptr;
     if (first(_e)->type != TYPE_SYMBOL)
         throw UserError("set!", "Expected symbol name to set");
-
+    if (len(_e) != 2)
+        throw UserError("set!", "Expected value to set");
     var = _s->variable_get(first(_e)->symbol);
     if (is_nil(var))
-        throw UserError("setvar!", "variable to set does not exist");
-
+        throw UserError("set!", "variable to set does not exist");
     if (_s->is_var_const(var))
         throw UserError("set!", "Cannot set constant symbol");
     cdr(var)->cons.car = _s->env()->scoped_eval(_s, second(_e));
     return second(var);
+}
+
+Expr*
+core::setcar(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (first(args)->type != TYPE_CONS)
+        throw UserError("setcar!", "Expected cons to modify");
+    first(args)->cons.car = second(args);
+    return second(args);
+}
+
+Expr*
+core::setcdr(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (first(args)->type != TYPE_CONS)
+        throw UserError("setcdr!", "Expected cons to modify");
+    first(args)->cons.cdr = second(args);
+    return second(args);
 }
 
 Expr*

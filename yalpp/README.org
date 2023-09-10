@@ -25,4 +25,28 @@ This means, that core functionality is implemented in the languange itself, such
       T
       (contains value (cdr list)))))
 
+(contains a '(d c b a))
+
 #+end_src
+
+
+
+** Version 1.0 Requirements
+
+- [ ] Macro evaluation
+- [ ] Garbage collection
+- [ ] Tail call optimization
+- [ ] Reading of files to not require a progn
+- [ ] Incorporate quasi-quote and its associates as special tokens
+- [ ] buildin or interpreted for iteration function (cl do)
+- [ ] buildin readline and atoi/atof equivilants for inputs
+- [ ] Redefine variables to contain symbol-value and symbol-function, with this we can have a funcall macro
+
+*** Nice to have
+
+- [ ] Use a hash map for O(1) access of variables instead of iteration using assoc
+- [ ] map transformator for lists (idealy start with single list map)
+- [ ] Keywords and stricter error checking for function binds
+- [ ] let and flet scopes
+
+- [ ] format and print functions
