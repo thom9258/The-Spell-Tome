@@ -40,13 +40,13 @@ This means, that core functionality is implemented in the languange itself, such
 - [ ] Incorporate quasi-quote and its associates as special tokens
 - [ ] buildin or interpreted for iteration function (cl do)
 - [ ] buildin readline and atoi/atof equivilants for inputs
-- [ ] Redefine variables to contain symbol-value and symbol-function, with this we can have a funcall macro
 
 *** Nice to have
 
+- [ ] Redefine variables to contain variable-value and variable-function
 - [ ] Use a hash map for O(1) access of variables instead of iteration using assoc
 - [ ] map transformator for lists (idealy start with single list map)
-- [ ] Keywords and stricter error checking for function binds
+- [ ] Keywords and stricter error checking for function binds and checking of correct input len
 - [ ] let and flet scopes
 
 - [ ] format and print functions

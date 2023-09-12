@@ -10,17 +10,18 @@ namespace yal {
 const char *std_lib =
     "(progn "
     /*Info*/
-    " (const! *Creator* \"Thomas Alexgaard\")"
-    " (const! *Creator-Git* \"https://github.com/thom9258/\")"
-    " (const! *Host* \"C++\")"
-    " (const! *Version* '(0 0 1))"
+    " (const! *creator* \"Thomas Alexgaard\")"
+    " (const! *creator-git* \"https://github.com/thom9258/\")"
+    " (const! *host* \"C++\")"
+    " (const! *version* '(0 0 1))"
 
-    " (const! NIL 'NIL)"
-    " (const! nil 'NIL)"
-    " (const! T 'T)"
-    " (const! t 'T)"
+    //" (const! NIL 'NIL)"
+    //" (const! nil 'NIL)"
+    //" (const! T 'T)"
+    //" (const! t 'T)"
 
     /*Predicates*/
+    " (fn! notnil?  (v) (not (nil? v)))"
     " (fn! real?    (v) (= (typeof v) 'real))"
     " (fn! decimal? (v) (= (typeof v) 'decimal))"
     " (fn! value?   (v) (or (= (typeof v) 'real) (= (typeof v) 'decimal)))"
@@ -33,7 +34,12 @@ const char *std_lib =
     " (fn! macro?   (v) (= (typeof v) 'macro))"
 
     " (fn! var? (var)"
-    "   (nil? (variable-definition var)))"
+    "   (and (symbol? var) (notnil? (variable-definition var))))"
+
+    " (fn! const? (var)"
+    "   (if (not (var? var)) (return NIL))"
+    "   (= 'CONSTANT (third (variable-definition var))))"
+
 
     /*File Management*/
     " (fn! load-file (f) (eval (read (slurp-file f))))"
@@ -47,6 +53,8 @@ const char *std_lib =
     " (const! PI         3.141592)"
     " (const! PI2        (* PI 2))"
     " (const! PI/2       (/ PI 2))"
+    " (const! PI/3       (/ PI 3))"
+    " (const! PI/4       (/ PI 4))"
     " (const! E          2.71828)"
     " (const! E-constant 0.57721)"
 
@@ -64,7 +72,8 @@ const char *std_lib =
     " (fn! seventh (l) (car (cdr (cdr (cdr (cdr (cdr (cdr l))))))))"
     " (fn! eighth  (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr l)))))))))"
     " (fn! ninth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr l))))))))))"
-    " (fn! tenth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr l)))))))))))"
+    " (fn! tenth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr "
+    "l)))))))))))"
 
     " (fn! cddr (l) (cdr (cdr l)))"
     " (fn! cdar (l) (cdr (car l)))"
@@ -94,8 +103,9 @@ const char *std_lib =
     "  (cons v l))"
 
     " (fn! apply (fn list)"
-    "  \"apply function to list\""
-    "  (eval (put fn list)))"
+    "   \"apply function to list\""
+    "   (eval (put fn list)))"
+
 
     " (fn! len (l)"
     "  \"calculate length of list\""
@@ -151,22 +161,54 @@ const char *std_lib =
     "   (write (format args)))"
 
     " (fn! recurse (n)"
-    "   \"create recursion calls n times (used to test tail-call-optimization)\""
+    "   \"create recursion calls n times (used to test "
+    "tail-call-optimization)\""
     "   (if (> n 0) (recurse (- n 1)) 'did-we-blow-up?))"
 
-    " (fn! setnth! (n v list)"
+    " (fn! setnth! (n val list)"
     "   \"set the nth value of a list\""
     "   (local! target (nthcdr n list))"
     "   (if (nil? target)"
-    "     (throw \"invalid index to set\")"
-    "     (setcar! target v)))"
+    "     (throw \"invalid index to set, got\" n)"
+    "     (setcar! target val)))"
 
-    " (fn! variable-symbol (var)"
-    "   \"get symbol associated with variable\""
+    " (fn! variable-value (var)"
+    "   \"get value associated with variable\""
     "   (second (variable-definition var)))"
 
+    " (fn! set! (var val)"
+    "   \"change variable to become value on evaluation\""
+    "   (write var) (write val)"
+    "   (if (not (var? var)) (throw \"set! expected symbol variable, not\" "
+    "var))"
+    "   (if (const? var) (throw \"set! cannot set constant\" var))"
+    "   (setnth! 1 val (variable-definition var)))"
 
+    " (fn! before-n (n lst)"
+    "   \"create a list containing the first n values of a given list\""
+    "   (if (= n 0)"
+    "     NIL"
+    "     (put (first lst) (before-n (- n 1) (rest lst)))))"
 
+    " (fn! after-n (n lst)"
+    "   \"create a list containing the last n values of a given list\""
+    "   (if (= n 0)"
+    "     lst"
+    "     (after-n (- n 1) (rest lst))))"
+
+    " (fn! split (n lst)"
+    "   \"create 2 lists split at n\""
+    "   [(before-n n lst) (after-n n lst)])"
+
+    " (fn! map (fn lst)"
+    "   \"apply fn to all value in lst and collect results\""
+    "   (if (nil? lst)"
+    "     NIL"
+    "     (put ((variable-value 'fn) (first lst)) (map fn (rest lst)))))"
+
+    " (fn! scope (b)"
+    "   \"evaluate body in internal scope\""
+    "   ((lambda (x) (eval x)) b))"
 
     " 'std)";
 }

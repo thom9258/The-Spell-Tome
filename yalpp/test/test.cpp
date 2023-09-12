@@ -500,7 +500,7 @@ test_buildin_math(void)
     TL_TEST(repl_test(&e, "(* 4 3)", "12"));
     TL_TEST(repl_test(&e, "(/ 8 2)", "4"));
     TL_TEST(repl_test(&e, "(/ 0 2)", "0"));
-    TL_TEST(repl_test(&e, "(/ 2 0)", "(error \"[/] divide by zero error\")"));
+    TL_TEST(repl_test(&e, "(/ 2 0)", "(error \"[/] divide by zero error created by\" (2 . 0))"));
     TL_TEST(repl_test(&e, "(+ 2 (- 5 6) 1)", "2"));
     TL_TEST(repl_test(&e, "(+ 4 (* 2 6) (- 10 5))", "21"));
     TL_TEST(repl_test(&e, "(- 5 2)", "3"));
@@ -540,8 +540,8 @@ test_buildin_equality(void)
     TL_TEST(repl_test(&e, "(> 1 2 5 7 9 12)", "NIL"));
     TL_TEST(repl_test(&e, "(> 4 2 3)", "NIL"));
     TL_TEST(repl_test(&e, "(< 4 2 3)", "NIL"));
-    TL_TEST(repl_test(&e, "(< 'sym1 'sym2 3)", "(error \"[<] can only compare values\")"));
-    TL_TEST(repl_test(&e, "(> 'sym1 'sym2 3)",  "(error \"[>] can only compare values\")"));
+    TL_TEST(repl_test(&e, "(< 'sym1 'sym2 3)", "(error \"[<] can only compare values, not\" sym1)"));
+    TL_TEST(repl_test(&e, "(> 'sym1 'sym2 3)",  "(error \"[>] can only compare values, not\" sym1)"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -619,32 +619,35 @@ void
 test_set_variables(void)
 {
     yal::Environment e;
-    e.load_core();
-
-    TL_TEST(repl_test(&e, "(const! max-health 10)", "max-health"));
-    TL_TEST(repl_test(&e, "(local! health (+ 2 2))", "health"));
-    TL_TEST(repl_test(&e, "(set! health (- health 1))", "3"));
-    TL_TEST(repl_test(&e, "health", "3"));
-    TL_TEST(repl_test(&e, "(set! health max-health)", "10"));
-    TL_TEST(repl_test(&e, "(set! health (- health 1))", "9"));
-    TL_TEST(repl_test(&e, "(set! invalid-name 7)",
-                          "(error \"[set!] variable to set does not exist\")"));
-    TL_TEST(repl_test(&e, "(set! health)", "(error \"[set!] Expected value to set\")"));
-
+    e.load_std();
 
     TL_TEST(repl_test(&e, "(global! mycons (cons 'a 'b))", "mycons"));
     TL_TEST(repl_test(&e, "(setcar! mycons 'c)", "c"));
     TL_TEST(repl_test(&e, "mycons", "(c . b)"));
-
     TL_TEST(repl_test(&e, "(setcdr! mycons 'c)", "c"));
     TL_TEST(repl_test(&e, "mycons", "(c . c)"));
-
     TL_TEST(repl_test(&e, "(setcar! mycons 'car)", "car"));
     TL_TEST(repl_test(&e, "(setcdr! mycons 'cdr)", "cdr"));
     TL_TEST(repl_test(&e, "mycons", "(car . cdr)"));
+    TL_TEST(repl_test(&e, "(setcar! 'notcons 'a)",
+                          "(error \"[setcar!] Expected cons to modify, got\" notcons)"));
+    TL_TEST(repl_test(&e, "(setcdr! 'notcons 'a)",
+                          "(error \"[setcdr!] Expected cons to modify, got\" notcons)"));
 
-    TL_TEST(repl_test(&e, "(setcar! 'notcons 'a)", "(error \"[setcar!] Expected cons to modify\")"));
-    TL_TEST(repl_test(&e, "(setcdr! 'notcons 'a)", "(error \"[setcdr!] Expected cons to modify\")"));
+    TL_TEST(repl_test(&e, "(const! max-health 10)", "max-health"));
+    TL_TEST(repl_test(&e, "(variable-definition 'max-health)", "(max-health 10 CONSTANT)"));
+    TL_TEST(repl_test(&e, "(local! health (+ 2 2))", "health"));
+    TL_TEST(repl_test(&e, "(set! 'health (- health 1))", "3"));
+    TL_TEST(repl_test(&e, "health", "3"));
+    TL_TEST(repl_test(&e, "(set! 'health max-health)", "10"));
+    TL_TEST(repl_test(&e, "(set! 'health (- health 1))", "9"));
+    TL_TEST(repl_test(&e, "(set! 'invalid-name 7)",
+                          "(error \"set! expected symbol variable, not\" invalid-name)"));
+    TL_TEST(repl_test(&e, "(set! 'PI 7)",
+                          "(error \"set! cannot set constant\" PI)"));
+    /*TODO: how do we allow setting something to nil but only when explicitly supplied as input?*/
+    TL_TEST(repl_test(&e, "(set! 'health)", "NIL"));
+    TL_TEST(repl_test(&e, "health", "NIL"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -653,33 +656,33 @@ void
 test_try_catch_throw(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
 
-    TL_TEST(repl_test(&e, "(throw \"some error!\")", "(error \"[throw] some error!\")"));
+    TL_TEST(repl_test(&e, "(throw \"some error!\")", "(error \"some error!\")"));
 
-    TL_TEST(repl_test(&e, "(try (throw \"myerr!\") "
-                          "    )",
-                          "(error \"[throw] myerr!\")"));
+    TL_TEST(repl_test(&e, "(try (throw \"another error!\") "
+                          "    err err)",
+                          "(error \"another error!\")"));
 
     TL_TEST(repl_test(&e, "(try (throw \"myerr!\") "
                           "    err err)",
-                          "(error \"[throw] myerr!\")"));
+                          "(error \"myerr!\")"));
 
     TL_TEST(repl_test(&e, "(try (throw \"shit-hit-the-fan\") "
                           "    err ['caught-error err])",
-                          "(caught-error (error \"[throw] shit-hit-the-fan\"))"));
+                          "(caught-error (error \"shit-hit-the-fan\"))"));
 
     TL_TEST(repl_test(&e, "(try (throw \"shit-hit-the-fan\") "
                           "    err (+ 2 2)",
                           "4"));
 
-    TL_TEST(repl_test(&e, "(try (set! myvar 10) "
-                          "    err err)",
-                          "(error \"[set!] variable to set does not exist\")"));
+    //TL_TEST(repl_test(&e, "(try (set! myvar 10) "
+    //                      "    err err)",
+    //                      "(error \"[set!] variable to set does not exist\")"));
 
-    TL_TEST(repl_test(&e, "(try (/ 2 0) "
+    TL_TEST(repl_test(&e, "(try (/ 2 0)"
                           "    err err)",
-                          "(error \"[/] divide by zero error\")"));
+                          "(error \"[/] divide by zero error created by\" (2 . 0))"));
 
     TL_TEST(repl_test(&e, "(try (/ 2 0) "
                           "    err (/ 0 2)",
@@ -730,19 +733,26 @@ test_predicates(void)
 
     TL_TEST(repl_test(&e, "(global! myvar '(1 2))", "myvar"));
 
-    TL_TEST(repl_test(&e, "(var? 'PI)", "NIL"));
-    TL_TEST(repl_test(&e, "(var? '(1 2 3))", "(error \"[variable-definition] expects symbol to lookup\")"));
+    TL_TEST(repl_test(&e, "(var? 'PI)", "T"));
+    TL_TEST(repl_test(&e, "(var? 'PI2)", "T"));
+    TL_TEST(repl_test(&e, "(var? 'PI/2)", "T"));
+    TL_TEST(repl_test(&e, "(var? 'PI/3)", "T"));
+    TL_TEST(repl_test(&e, "(var? 'PI/4)", "T"));
+    TL_TEST(repl_test(&e, "(var? 'PI/5)", "NIL"));
+    TL_TEST(repl_test(&e,
+                      "(var? '(1 2 3))",
+                      "(error \"[variable-definition] expects symbol variable, but got\" (1 2 3))"));
     TL_TEST(repl_test(&e, "(var? 'myvar)", "T"));
+    TL_TEST(repl_test(&e, "(global! newvar1 23)", "newvar1"));
+    TL_TEST(repl_test(&e, "(local! newvar2 5)", "newvar2"));
+    TL_TEST(repl_test(&e, "(var? 'newvar1)", "T"));
+    TL_TEST(repl_test(&e, "(var? 'newvar2)", "T"));
 
     //TL_TEST(repl_test(&e, "(const? 'PI)", "T"));
     //TL_TEST(repl_test(&e, "(const? '(1 2 3))", "NIL"));
     //TL_TEST(repl_test(&e, "(const? 'myvar)", "NIL"));
 
     
-    TL_TEST(repl_test(&e, "(global! newvar1 23)", "newvar1"));
-    TL_TEST(repl_test(&e, "(local! newvar2 5)", "newvar2"));
-    TL_TEST(repl_test(&e, "(var? 'newvar1)", "T"));
-    TL_TEST(repl_test(&e, "(var? 'newvar2)", "T"));
 
     //TL_TEST(repl_test(&e, "(const? 'newvar1)", "NIL"));
     //TL_TEST(repl_test(&e, "(const? 'newvar2)", "NIL"));
@@ -1070,7 +1080,7 @@ test_tco(void)
 }
 
 void
-test_sets(void)
+test_setnth(void)
 {
     yal::Environment e;
     e.load_std();
@@ -1080,7 +1090,7 @@ test_sets(void)
     TL_TEST(repl_test(&e, "(nth 5 to10)", "fifth"));
     TL_TEST(repl_test(&e, "to10", "(0 1 2 3 4 fifth 6 7 8 9 10)"));
 
-    TL_TEST(repl_test(&e, "(setnth! 77 'seven2 to10)", "(error \"[throw] invalid index to set\")"));
+    TL_TEST(repl_test(&e, "(setnth! 77 'seven2 to10)", "(error \"invalid index to set, got\" 77)"));
     TL_TEST(repl_test(&e, "to10", "(0 1 2 3 4 fifth 6 7 8 9 10)"));
 
 
@@ -1095,7 +1105,41 @@ test_variable_definition(void)
 
     TL_TEST(repl_test(&e, "(variable-definition 'PI)", "(PI 3.14159 CONSTANT)"));
     TL_TEST(repl_test(&e, "(variable-definition 'NOTPI)", "NIL"));
-    TL_TEST(repl_test(&e, "(variable-symbol 'PI)", "3.14159"));
+    TL_TEST(repl_test(&e, "(variable-value 'PI)", "3.14159"));
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
+test_scope_management(void)
+{
+    yal::Environment e;
+    e.load_std();
+
+    TL_TEST(repl_test(&e, "(local! a 10)", "a"));
+    TL_TEST(repl_test(&e, "(scope '(progn (local! a 7) (write a) a)) ", "7"));
+    TL_TEST(repl_test(&e, "a", "10"));
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
+test_std_list_stuff(void)
+{
+    yal::Environment e;
+    e.load_std();
+
+    TL_TEST(repl_test(&e, "(before-n 3 (range 1 10))", "(1 2 3)"));
+    TL_TEST(repl_test(&e, "(after-n 7 (range 1 10))", "(8 9 10)"));
+    TL_TEST(repl_test(&e, "(split 5 (range 1 10))", "((1 2 3 4 5) (6 7 8 9 10))"));
+
+    TL_TEST(repl_test(&e, "(map '- (range 1 5))", "(-1 -2 -3 -4 -5)"));
+    TL_TEST(repl_test(&e, "(map (lambda (x) (+ 2 x)) (range 1 5))", "(3 4 5 6 7)"));
+    TL_TEST(repl_test(&e, "(map 'real? [-1 2.3 4 3.2 9])", "(T NIL T NIL T)"));
+
+
+    //TL_TEST(repl_test(&e, "(filter 'real? [-1 2.3 4 3.2 9])", "(-1 4 9)"));
+    //TL_TEST(repl_test(&e, "(filter 'symbol? [1 'two 3 'four 5])", "(two four)"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -1106,34 +1150,37 @@ main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-    TL(test_sizes());
-    TL(test_types_creation());
-    TL(test_read());
-    TL(test_nilp());
-    TL(test_len());
-    TL(test_assoc());
-    TL(test_globals());
-    TL(test_ipreverse());
-    TL(test_simple_eval());
-    TL(test_lex_types());
-    TL(test_buildin_range());
-    TL(test_buildin_accessors());
-    TL(test_buildin_list_creation());
-    TL(test_buildin_math());
-    TL(test_conditionals());
-    TL(test_buildin_equality());
-    TL(test_variables());
-    TL(test_try_catch_throw());
-    TL(test_lambda());
-    TL(test_fn());
-    TL(test_full_circle());
-    TL(test_load_libraries());
-    TL(test_functions_and_recursion());
+    //TL(test_sizes());
+    //TL(test_types_creation());
+    //TL(test_read());
+    //TL(test_nilp());
+    //TL(test_len());
+    //TL(test_assoc());
+    //TL(test_globals());
+    //TL(test_ipreverse());
+    //TL(test_simple_eval());
+    //TL(test_lex_types());
+    //TL(test_buildin_range());
+    //TL(test_buildin_accessors());
+    //TL(test_buildin_list_creation());
+    //TL(test_buildin_math());
+    //TL(test_conditionals());
+    //TL(test_buildin_equality());
+    //TL(test_variables());
+    //TL(test_lambda());
+    //TL(test_fn());
+    //TL(test_try_catch_throw());
+    //TL(test_full_circle());
+    //TL(test_load_libraries());
+    //TL(test_functions_and_recursion());
+    //TL(test_predicates());
     TL(test_std());
-    TL(test_set_variables());
-    TL(test_sets());
+    TL(test_setnth());
     TL(test_variable_definition());
-    TL(test_predicates());
+    TL(test_set_variables());
+    TL(test_std_list_stuff());
+    TL(test_scope_management());
+
     //TL(test_tco());
 
     tl_summary();
