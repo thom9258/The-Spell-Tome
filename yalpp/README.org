@@ -34,10 +34,10 @@ This means, that core functionality is implemented in the languange itself, such
 ** Version 1.0 Requirements
 
 - [X] Macro evaluation
+  - [ ] Incorporate quasi-quote and its associates as special tokens
 - [ ] Garbage collection
 - [ ] Tail call optimization
 - [ ] Reading of files to not require a progn
-- [ ] Incorporate quasi-quote and its associates as special tokens
 - [ ] buildin or interpreted list iteration function (cl do)
 - [ ] buildin readline and atoi/atof equivilants for inputs
 
