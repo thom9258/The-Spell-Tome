@@ -505,6 +505,8 @@ VariableScope::bind(const char* _fnname, Expr* _binds, Expr* _values)
             return;
         }
         add_variable(car(_binds)->symbol, car(_values));
+        //std::cout << "bound " << stringify(car(_binds)) << " to " << stringify(car(_values)) << std::endl;
+
         _binds = cdr(_binds);
         _values = cdr(_values);
     }
@@ -805,28 +807,61 @@ Environment::eval(Expr* _e)
 Expr*
 Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
-    auto eval_fn = [this, _scope] (const char* name, Expr* fn, Expr* args) {
-        auto progn = [this] (VariableScope* s, Expr* e) {
-            Expr* last = nullptr;
-                while (!is_nil(e)) {
-                    try {
-                        last = s->env()->scoped_eval(s, car(e));
-                    } catch (Throwable& e) {
-                        if (e.is_error())
-                            return list({symbol("error"), string(e.error_msg()), e.error_expr()});
-                        if (e.is_thrown())
-                            return e.thrown();
-                        if (e.is_returned())
-                            return e.returned();
-                    }
-                    e = cdr(e);
-            }
-            return last;
-        };
+    auto progn = [this] (VariableScope* s, Expr* e) {
+        Expr* last = nullptr;
+            while (!is_nil(e)) {
+                try {
+                    last = s->env()->scoped_eval(s, car(e));
+                } catch (Throwable& e) {
+                    if (e.is_error())
+                        return list({symbol("error"), string(e.error_msg()), e.error_expr()});
+                    if (e.is_thrown())
+                        return e.thrown();
+                    if (e.is_returned())
+                        return e.returned();
+                }
+                e = cdr(e);
+        }
+        return last;
+    };
+
+    auto eval_fn = [progn, this, _scope] (const char* name, Expr* fn, Expr* args) {
         VariableScope internal = _scope->create_internal();
-        args = list_eval(_scope, args);
+        args = list_eval(&internal, args);
         internal.bind(name, fn->callable.binds, args);
         return progn(&internal, fn->callable.body);
+    };
+
+    auto macro_expand = [] (auto macro_expand, VariableScope* scope, Expr* body) {
+        if (is_nil(body))
+            return body;
+        //std::cout << "is expanding: " << stringify(body) << std::endl;
+        if (body->type == TYPE_SYMBOL) {
+            Expr* sym = second(scope->variable_get_this_scope(body->symbol));
+            if (is_nil(sym)) {
+                //std::cout << "did not expand: " << stringify(body) << std::endl;
+                return body;
+            }
+            sym = scope->env()->list({scope->env()->symbol("quote"), sym});
+            //std::cout << "expanded sym: " << stringify(body) << " to " << stringify(sym) << std::endl;
+            return sym;
+        }
+        if (body->type == TYPE_CONS) {
+            //std::cout << "got " << stringify(body) << std::endl;
+            body->cons.car = macro_expand(macro_expand, scope, car(body));
+            body->cons.cdr = macro_expand(macro_expand, scope, cdr(body));
+            //std::cout << "expanded to " << stringify(body) << std::endl;
+            return body;
+        }
+        return body;
+    };
+ 
+    auto eval_macro = [this, progn, macro_expand, _scope] (const char* name, Expr* fn, Expr* args) {
+        VariableScope internal = _scope->create_internal();
+        internal.bind(name, fn->callable.binds, args);
+        Expr* expanded = macro_expand(macro_expand, &internal, fn->callable.body);
+        //std::cout << "after expansion: " << stringify(expanded) << std::endl;
+        return scoped_eval(&internal, progn(&internal, expanded));
     };
     
     if (is_nil(_e)) return nil();
@@ -848,28 +883,24 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
             fn = scoped_eval(_scope, fn);
 
         /*Evaluate as lambda*/
-        if (fn->type == TYPE_LAMBDA) {
+        if (fn->type == TYPE_LAMBDA)
             return eval_fn("lambda", fn, args);
-        }
 
         /*Evaluate as buildin*/
         if (fn->type == TYPE_SYMBOL) {
             Expr* callable = nullptr;
             callable = second(_scope->variable_get(fn->symbol));
             if (!is_nil(callable)) {
-                if (callable->type == TYPE_BUILDIN) {
+                if (callable->type == TYPE_BUILDIN)
                     return callable->buildin(_scope, args);
-                }
-                if (callable->type == TYPE_FUNCTION) {
+                if (callable->type == TYPE_FUNCTION)
                     return eval_fn(fn->symbol, callable, args);
-                }
-                if (callable->type == TYPE_MACRO) {
+                if (callable->type == TYPE_MACRO)
                     //https://github.com/kanaka/mal/blob/master/process/guide.md#step-8-macros
-                    return eval_fn(fn->symbol, callable, args);
-                }
-
+                    return eval_macro(fn->symbol, callable, args);
             }
         }
+        //std::cout << "fn does not exist: " << fn->symbol << std::endl;
         throw ProgramError("eval", "could not find function called ", fn);
     }
 

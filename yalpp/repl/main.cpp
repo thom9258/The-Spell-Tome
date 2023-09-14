@@ -18,10 +18,11 @@ main(int argc, char **argv)
     yal::Environment e;
     int i = 0;
 
-    e.load_core();
     e.load_std();
     std::cout << "yal - Yet Another LISP" << std::endl
-              << "Created by Thomas Alexgaard." << std::endl << std::endl;
+              << "\tCreated by Thomas Alexgaard." << std::endl
+              << "(quit) to quit." << std::endl << std::endl;
+
     while (1) {
         std::stringstream greet;
         yal::Expr* p = nullptr;

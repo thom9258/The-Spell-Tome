@@ -15,11 +15,6 @@ const char *std_lib =
     " (const! *host* \"C++\")"
     " (const! *version* '(0 0 1))"
 
-    //" (const! NIL 'NIL)"
-    //" (const! nil 'NIL)"
-    //" (const! T 'T)"
-    //" (const! t 'T)"
-
     /*Predicates*/
     " (fn! notnil?  (v) (not (nil? v)))"
     " (fn! real?    (v) (= (typeof v) 'real))"
@@ -39,6 +34,10 @@ const char *std_lib =
     " (fn! const? (var)"
     "   (if (not (var? var)) (return NIL))"
     "   (= 'CONSTANT (third (variable-definition var))))"
+
+    /*TODO: use this one with a folding function for multiple values*/
+    //" (fn! _EQUAL2 (a b)"
+    //"   (= (stringify a) (stringify b)))"
 
 
     /*File Management*/
@@ -91,6 +90,9 @@ const char *std_lib =
 
     " (fn! not (x)"
     "  (if (nil? x) T NIL))"
+
+    " (macro! setq! (v x)"
+    "   ['set! 'v x])"
 
     " (macro! when (test &body)"
     "  (if test (progn body)))"
@@ -178,7 +180,6 @@ const char *std_lib =
 
     " (fn! set! (var val)"
     "   \"change variable to become value on evaluation\""
-    "   (write var) (write val)"
     "   (if (not (var? var)) (throw \"set! expected symbol variable, not\" "
     "var))"
     "   (if (const? var) (throw \"set! cannot set constant\" var))"
@@ -206,9 +207,38 @@ const char *std_lib =
     "     NIL"
     "     (put ((variable-value 'fn) (first lst)) (map fn (rest lst)))))"
 
-    " (fn! scope (b)"
+    /*TODO: this one should be a macro to allow &body instead of single body*/
+    " (fn! scope (body)"
     "   \"evaluate body in internal scope\""
-    "   ((lambda (x) (eval x)) b))"
+    "   ((lambda (x) (eval x)) body))"
+
+    " (fn! let1 (vardef body)"
+    "   \"evaluate body in internal scope\""
+    "   (scope (progn (apply 'local! vardef) body)))"
+
+
+
+    //" (fn! reduce (fn start lst)"
+    //"   \"evaluate fn incrementally along lst using start value\""
+    //"   (write start) (write lst)"
+    //"   (if (nil? lst)"
+    //"     start"
+    //"     (reduce fn ((variable-value 'fn) (first lst)) (rest lst))))"
+
+
+
+    //" (fn! reduce (f start lst)"
+    //"   \"evaluate fn incrementally along lst using start value\""
+    ////"   (write fn) (write start) (write lst)"
+    //"     )"
+
+/*
+(fun {foldl f z l} {
+  if (== l nil)
+    {z}
+    {foldl f (f z (fst l)) (tail l)}
+})
+*/
 
     " 'std)";
 }

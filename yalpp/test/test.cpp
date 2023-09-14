@@ -513,7 +513,7 @@ void
 test_buildin_equality(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
 
     TL_TEST(repl_test(&e, "(= 1 2)", "NIL"));
     TL_TEST(repl_test(&e, "(= 'somesym 'somesym)", "T"));
@@ -532,7 +532,6 @@ test_buildin_equality(void)
 
     TL_TEST(repl_test(&e, "(equal 4 (+ 2 2))", "NIL"));
     TL_TEST(repl_test(&e, "(equal (1 2 3) (1 2 3) (1 2 3))", "T"));
-
 
     TL_TEST(repl_test(&e, "(< 1 2)", "T"));
     TL_TEST(repl_test(&e, "(< 1 2 5 7 9 12)", "T"));
@@ -1120,6 +1119,14 @@ test_scope_management(void)
     TL_TEST(repl_test(&e, "(scope '(progn (local! a 7) (write a) a)) ", "7"));
     TL_TEST(repl_test(&e, "a", "10"));
 
+    TL_TEST(repl_test(&e, "(let1 '(b 7) '(progn (write b) (+ b 2)))", "9"));
+    TL_TEST(repl_test(&e, "(var? 'b)", "NIL"));
+    TL_TEST(repl_test(&e, "b", "NIL"));
+
+    TL_TEST(repl_test(&e, "((lambda () (local! c 20) c))", "20"));
+    TL_TEST(repl_test(&e, "c", "NIL"));
+
+
     std::cout << e.gc_info() << std::endl;
 }
 
@@ -1144,6 +1151,66 @@ test_std_list_stuff(void)
     std::cout << e.gc_info() << std::endl;
 }
 
+void
+test_std_reduce(void)
+{
+    yal::Environment e;
+    e.load_std();
+
+    TL_TEST(repl_test(&e, 
+                      " (fn! reduce (fn start lst)"
+                      "   \"evaluate fn incrementally along lst using start value\""
+                      "   (if (nil? lst)"
+                      "     start"
+                      "     (reduce fn ((variable-value 'fn) (first lst)) (rest lst))))"
+                      , "reduce"));
+
+    TL_TEST(repl_test(&e, "(reduce '+ 0 '(1 2 3 4 5))", "15"));
+    TL_TEST(repl_test(&e, "(reduce '* 1 '(3 8))", "24"));
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
+test_macros(void)
+{
+    yal::Environment e;
+    e.load_std();
+
+    TL_TEST(repl_test(&e, "(global! v1 2)", "v1"));
+    TL_TEST(repl_test(&e,
+                      "(macro! setq! (v x)"
+                      //"['set! ''v 'x])",
+                      "['set! 'v x])",
+                      "setq!"));
+
+    TL_TEST(repl_test(&e, "(setq! v1 7)", "7"));
+    TL_TEST(repl_test(&e, "v1", "7"));
+
+
+    //TL_TEST(repl_test(&e,
+    //                  "(macro! set2! (a b val)"
+    //                  "['progn"
+    //                  "  ['set! 'a 'val]"
+    //                  "  ['set! 'b 'val]])",
+    //                  "set2!"));
+    //
+    //
+    //TL_TEST(repl_test(&e, "(global! x 8)", "x"));
+    //TL_TEST(repl_test(&e, "(global! y 22)", "y"));
+    //TL_TEST(repl_test(&e, "(set2! 'x 'y 3)", "3"));
+    //TL_TEST(repl_test(&e, "x", "3"));
+    //TL_TEST(repl_test(&e, "y", "3"));
+
+    //TL_TEST(repl_test(&e,
+    //                  "(macro! when (test &body)"
+    //                  "['if test '(progn body)))",
+    //                  "when"));
+ 
+
+    std::cout << e.gc_info() << std::endl;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1161,11 +1228,11 @@ main(int argc, char **argv)
     //TL(test_simple_eval());
     //TL(test_lex_types());
     //TL(test_buildin_range());
+    //TL(test_buildin_equality());
     //TL(test_buildin_accessors());
     //TL(test_buildin_list_creation());
     //TL(test_buildin_math());
     //TL(test_conditionals());
-    //TL(test_buildin_equality());
     //TL(test_variables());
     //TL(test_lambda());
     //TL(test_fn());
@@ -1174,12 +1241,14 @@ main(int argc, char **argv)
     //TL(test_load_libraries());
     //TL(test_functions_and_recursion());
     //TL(test_predicates());
-    TL(test_std());
-    TL(test_setnth());
-    TL(test_variable_definition());
+    //TL(test_std());
+    //TL(test_setnth());
+    //TL(test_variable_definition());
     TL(test_set_variables());
     TL(test_std_list_stuff());
-    TL(test_scope_management());
+    TL(test_macros());
+    //TL(test_std_reduce());
+    //TL(test_scope_management());
 
     //TL(test_tco());
 
