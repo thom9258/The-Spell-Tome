@@ -207,16 +207,6 @@ const char *std_lib =
     "     NIL"
     "     (put ((variable-value 'fn) (first lst)) (map fn (rest lst)))))"
 
-    /*TODO: this one should be a macro to allow &body instead of single body*/
-    " (fn! scope (body)"
-    "   \"evaluate body in internal scope\""
-    "   ((lambda (x) (eval x)) body))"
-
-    " (fn! let1 (vardef body)"
-    "   \"evaluate body in internal scope\""
-    "   (scope (progn (apply 'local! vardef) body)))"
-
-
 
     //" (fn! reduce (fn start lst)"
     //"   \"evaluate fn incrementally along lst using start value\""

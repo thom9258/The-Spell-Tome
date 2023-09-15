@@ -144,6 +144,7 @@ Expr* divide(VariableScope* _s, Expr* _e);
 Expr* lessthan(VariableScope* _s, Expr* _e);
 Expr* greaterthan(VariableScope* _s, Expr* _e);
 Expr* mathequal(VariableScope* _s, Expr* _e);
+/*TODO: make eq a macro called similar and equal a function*/
 Expr* eq(VariableScope* _s, Expr* _e);
 Expr* equal(VariableScope* _s, Expr* _e);
 Expr* is_nil(VariableScope* _s, Expr* _e);
@@ -165,8 +166,10 @@ Expr* defconst(VariableScope* _s, Expr* _e);
 Expr* defglobal(VariableScope* _s, Expr* _e);
 Expr* deflocal(VariableScope* _s, Expr* _e);
 Expr* deflambda(VariableScope* _s, Expr* _e);
+/*TODO: make deffunction into a macro that creates a lambda*/
 Expr* deffunction(VariableScope* _s, Expr* _e);
 Expr* defmacro(VariableScope* _s, Expr* _e);
+Expr* macro_expand(VariableScope* _s, Expr* _e);
 //Expr* setvar(VariableScope* _s, Expr* _e);
 Expr* setcar(VariableScope* _s, Expr* _e);
 Expr* setcdr(VariableScope* _s, Expr* _e);
@@ -177,8 +180,6 @@ Expr* _throw(VariableScope* _s, Expr* _e);
 Expr* _return(VariableScope* _s, Expr* _e);
 
 Expr* _if(VariableScope* _s, Expr* _e);
-Expr* _cond(VariableScope* _s, Expr* _e);
-Expr* _do(VariableScope* _s, Expr* _e);
 Expr* _typeof(VariableScope* _s, Expr* _e);
 };
 
@@ -196,6 +197,7 @@ public:
 };
 
 class VariableScope {
+    friend class Environment;
 public:
 /*TODO:
   Make environment a const refrence */
@@ -207,6 +209,7 @@ public:
     Expr* variable_get(const std::string& _name);
     Expr* variable_get_this_scope(const std::string& _name);
     int variables_len(void);
+    Expr* variables(void);
 	bool add_constant(const char* _name, Expr* _v);
     bool add_global(const char* _name, Expr* _v);
 	bool add_buildin(const char* _name, const BuildinFn _fn);
@@ -220,6 +223,7 @@ private:
 };
 
 class Environment {
+    friend class VariableScope;
 public:
     Environment(void);
     VariableScope* global_scope(void);
@@ -229,8 +233,9 @@ public:
     const std::string gc_info(void);
 
     /*Evaluation*/
-    Expr* read(const char* _program);
+    Expr* read(const std::string& _program);
     Expr* eval(Expr* _e);
+    /*TODO: put these into private and access as friend*/
     Expr* list_eval(VariableScope* _scope, Expr* _list);
     Expr* scoped_eval(VariableScope* _scope, Expr* _e);
 
@@ -430,6 +435,12 @@ VariableScope::variables_len(void)
 }
 
 Expr*
+VariableScope::variables(void)
+{
+    return m_variables;
+}
+
+Expr*
 VariableScope::variable_get(const std::string& _s)
 {
     Expr* v = nullptr;
@@ -544,10 +555,10 @@ const std::string
 Environment::gc_info(void)
 {
     std::stringstream ss;
-    ss << "Expr size:   bytes " << sizeof(yal::Expr) << std::endl
-       << "used Expr's:       " << exprs_in_use() << std::endl
-       << "used memory: bytes " << exprs_in_use() * sizeof(yal::Expr) << std::endl
-       << "             MB    " << float(exprs_in_use() * sizeof(yal::Expr)) / 1000000;
+    ss << "Expr size:   " << sizeof(yal::Expr) << " bytes" << std::endl
+       << "used Expr's: " << exprs_in_use() << std::endl
+       << "used memory: " << float(exprs_in_use() * sizeof(yal::Expr)) / 1000000
+       << " MB";
     return ss.str();
 }
 
@@ -578,16 +589,6 @@ Environment::add_buildin(const char* _name, const BuildinFn _fn)
 
 Environment::Environment(void) : m_global_scope(this, nullptr) {}
 
-        /*TODO:  Do error checking like matching+even parens*/
-        /*TODO:  Remove garbage tokens*/
-/*TODO:  if you want a tokenizer impl that is isolated, take this
-        and add a tokenization recipe struct with:
-        - garbate token list
-        - literal token list
-        - extra stuff like use newline tokens
-        - etc..
-*/
-
 std::string
 _try_get_special_token(const char* _start)    
 {
@@ -615,7 +616,7 @@ _try_get_special_token(const char* _start)
 }
 
 std::string
-_get_next_token(const char* _source, int& _cursor)
+_get_next_token(const std::string& _source, int& _cursor)
 {
     std::string token;
     int len = 0;
@@ -655,7 +656,8 @@ _get_next_token(const char* _source, int& _cursor)
 }
 
 std::list<std::string>
-tokenize(const char* _str) {
+tokenize(const std::string& _str) {
+    /*TODO:  Do error checking like matching+even parens*/
     int cursor = 0;
     std::list<std::string> tokens = {};
     std::string curr;
@@ -775,7 +777,7 @@ Environment::lex(std::list<std::string>& _tokens)
 }
 
 Expr*
-Environment::read(const char* _program)
+Environment::read(const std::string& _program)
 {
     std::list<std::string> tokens;
     Expr* lexed = nullptr;
@@ -805,6 +807,52 @@ Environment::eval(Expr* _e)
 }
 
 Expr*
+_macro_expander(VariableScope* _s, const char* _macroname, Expr* _macrofn, Expr* _macroargs) {
+    auto macro_expand = [] (auto macro_expand, VariableScope* scope, Expr* body) {
+        if (is_nil(body))
+            return body;
+        if (body->type == TYPE_SYMBOL) {
+            Expr* sym = second(scope->variable_get_this_scope(body->symbol));
+            if (is_nil(sym)) {
+                return body;
+            }
+            sym = scope->env()->list({scope->env()->symbol("quote"), sym});
+            return sym;
+        }
+        if (body->type == TYPE_CONS) {
+            body->cons.car = macro_expand(macro_expand, scope, car(body));
+            body->cons.cdr = macro_expand(macro_expand, scope, cdr(body));
+            return body;
+        }
+        return body;
+    };
+    auto progn = [] (VariableScope* s, Expr* e) {
+        Expr* last = nullptr;
+            while (!is_nil(e)) {
+                try {
+                    last = s->env()->scoped_eval(s, car(e));
+                } catch (Throwable& e) {
+                    if (e.is_error())
+                        return s->env()->list({s->env()->symbol("error"), s->env()->string(e.error_msg()), e.error_expr()});
+                    if (e.is_thrown())
+                        return e.thrown();
+                    if (e.is_returned())
+                        return e.returned();
+                }
+                e = cdr(e);
+        }
+        return last;
+    };
+
+    VariableScope internal = _s->create_internal();
+    internal.bind(_macroname, _macrofn->callable.binds, _macroargs);
+    Expr* body_copy = _s->env()->read(stringify(_macrofn->callable.body));
+    Expr* expanded = macro_expand(macro_expand, &internal, body_copy);
+    expanded = progn(_s, expanded);
+    return expanded;
+}
+
+Expr*
 Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
     auto progn = [this] (VariableScope* s, Expr* e) {
@@ -824,7 +872,6 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         }
         return last;
     };
-
     auto eval_fn = [progn, this, _scope] (const char* name, Expr* fn, Expr* args) {
         VariableScope internal = _scope->create_internal();
         args = list_eval(&internal, args);
@@ -832,38 +879,6 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         return progn(&internal, fn->callable.body);
     };
 
-    auto macro_expand = [] (auto macro_expand, VariableScope* scope, Expr* body) {
-        if (is_nil(body))
-            return body;
-        //std::cout << "is expanding: " << stringify(body) << std::endl;
-        if (body->type == TYPE_SYMBOL) {
-            Expr* sym = second(scope->variable_get_this_scope(body->symbol));
-            if (is_nil(sym)) {
-                //std::cout << "did not expand: " << stringify(body) << std::endl;
-                return body;
-            }
-            sym = scope->env()->list({scope->env()->symbol("quote"), sym});
-            //std::cout << "expanded sym: " << stringify(body) << " to " << stringify(sym) << std::endl;
-            return sym;
-        }
-        if (body->type == TYPE_CONS) {
-            //std::cout << "got " << stringify(body) << std::endl;
-            body->cons.car = macro_expand(macro_expand, scope, car(body));
-            body->cons.cdr = macro_expand(macro_expand, scope, cdr(body));
-            //std::cout << "expanded to " << stringify(body) << std::endl;
-            return body;
-        }
-        return body;
-    };
- 
-    auto eval_macro = [this, progn, macro_expand, _scope] (const char* name, Expr* fn, Expr* args) {
-        VariableScope internal = _scope->create_internal();
-        internal.bind(name, fn->callable.binds, args);
-        Expr* expanded = macro_expand(macro_expand, &internal, fn->callable.body);
-        //std::cout << "after expansion: " << stringify(expanded) << std::endl;
-        return scoped_eval(&internal, progn(&internal, expanded));
-    };
-    
     if (is_nil(_e)) return nil();
 
     if (_e->type == TYPE_REAL       ||
@@ -896,12 +911,12 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
                 if (callable->type == TYPE_FUNCTION)
                     return eval_fn(fn->symbol, callable, args);
                 if (callable->type == TYPE_MACRO)
-                    //https://github.com/kanaka/mal/blob/master/process/guide.md#step-8-macros
-                    return eval_macro(fn->symbol, callable, args);
+                    return scoped_eval(_scope,
+                                       _macro_expander(_scope, fn->symbol, callable, args));
             }
         }
         //std::cout << "fn does not exist: " << fn->symbol << std::endl;
-        throw ProgramError("eval", "could not find function called ", fn);
+        throw ProgramError("eval", "could not find function called", fn);
     }
 
     if (_e->type == TYPE_SYMBOL) {
@@ -914,7 +929,7 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         var = _scope->variable_get(_e->symbol);
         if (!is_nil(var))
             return second(var);
-        throw ProgramError("eval", "could not find existing symbol called ", _e);
+        throw ProgramError("eval", "could not find existing symbol called", _e);
     }
     throw ProgramError("eval", "Got something that could not be evaluated", _e);
     return nullptr;
@@ -950,6 +965,7 @@ Environment::load_core(void)
         add_buildin("setcdr!", core::setcdr);
         add_buildin("fn!", core::deffunction);
         add_buildin("macro!", core::defmacro);
+        add_buildin("macro-expand", core::macro_expand);
         add_buildin("lambda", core::deflambda);
         add_buildin("quote", core::quote);
         add_buildin("list", core::list);
@@ -2016,6 +2032,25 @@ core::defmacro(VariableScope* _s, Expr* _e)
     macro->callable.body = cdr(cdr(_e));
     _s->add_constant(first(_e)->symbol, macro);
     return first(_e);
+}
+
+Expr*
+core::macro_expand(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || first(args)->type != TYPE_CONS)
+        throw ProgramError("macro-expand", "expected macro call as list, got", args);
+    Expr* macro_call = first(args);
+    if (first(macro_call)->type != TYPE_SYMBOL)
+        throw ProgramError("macro-expand",
+                           "expected first arg to be a symbol pointing to a macro, not",
+                           first(macro_call));
+
+    const char* macro_name = first(macro_call)->symbol;
+    Expr* macro_fn = second(_s->variable_get(first(macro_call)->symbol));
+    Expr* macro_args = cdr(macro_call);
+    Expr* expanded = _macro_expander(_s, macro_name, macro_fn, macro_args);
+    return expanded;
 }
 
 #endif /*YALPP_IMPLEMENTATION*/

@@ -1184,8 +1184,25 @@ test_macros(void)
                       "['set! 'v x])",
                       "setq!"));
 
-    TL_TEST(repl_test(&e, "(setq! v1 7)", "7"));
+    TL_TEST(repl_test(&e, "(setq! v1 5)", "5"));
+    TL_TEST(repl_test(&e, "v1", "5"));
+
+    TL_TEST(repl_test(&e, "(setq! v1 6)", "6"));
+    TL_TEST(repl_test(&e, "v1", "6"));
+
+    TL_TEST(repl_test(&e, "(macro-expand '(setq! v1 7))", "(set! (quote v1) 7)"));
+
+    TL_TEST(repl_test(&e, "(eval (macro-expand '(setq! v1 7)))", "7"));
     TL_TEST(repl_test(&e, "v1", "7"));
+
+    //TL_TEST(repl_test(&e,
+    //                  "(macro! scope (&body)"
+    //                  "  ['lambda '() body])",
+    //                  "scope"));
+    //
+    //TL_TEST(repl_test(&e, "(scope (+ 2 2))", "4"));
+    //TL_TEST(repl_test(&e, "(macro-expand '(scope (+ 2 2)))", "(lambda NIL (progn ((+ 2 2) (* 3.5 2))))"));
+
 
 
     //TL_TEST(repl_test(&e,
