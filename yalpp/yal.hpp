@@ -9,10 +9,10 @@
 #include <list>
 #include <functional>
 #include <cassert>
-//#include <stdexcept>
 #include <math.h>
 
-#include "yalstd.hpp"
+#include <unordered_map>
+//https://www.educative.io/answers/what-is-a-hash-map-in-cpp
 
 #ifndef YALCPP_H
 #define YALCPP_H
@@ -24,6 +24,7 @@ namespace yal {
 
 const auto constvar_id = "CONSTANT";
 
+
 enum TYPE {
     TYPE_INVALID = 0,
     TYPE_CONS,
@@ -31,11 +32,8 @@ enum TYPE {
     TYPE_DECIMAL,
     TYPE_SYMBOL,
     TYPE_STRING,
-    TYPE_SMALLSYMBOL,
-    TYPE_SMALLSTRING,
 
     TYPE_BUILDIN,
-    TYPE_FUNCTION,
     TYPE_LAMBDA,
     TYPE_MACRO,
 
@@ -55,10 +53,6 @@ struct Expr {
         float decimal;
         char* string;
         char* symbol;
-        /*small* allows us to store symbols and strings without
-          creating a heap allocation*/
-        char smallstring[smallXsz]; 
-        char smallsymbol[smallXsz];
         BuildinFn buildin;
         struct {
             Expr* binds;
@@ -179,6 +173,8 @@ Expr* _return(VariableScope* _s, Expr* _e);
 Expr* _if(VariableScope* _s, Expr* _e);
 Expr* _typeof(VariableScope* _s, Expr* _e);
 };
+
+const char* std_lib(void);
 
 class GarbageCollector {
   /*TODO:
@@ -899,51 +895,14 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 
     if (is_nil(_e)) return nil();
 
+    /*Handle non-evaluating types*/
     if (_e->type == TYPE_REAL       ||
         _e->type == TYPE_DECIMAL    ||
-        _e->type == TYPE_STRING     ||
-        _e->type == TYPE_SMALLSTRING)
+        _e->type == TYPE_STRING
+        )
         return _e;
 
-    if (_e->type == TYPE_CONS) {
-        Expr* fn = nullptr;
-        Expr* args = nullptr;
-        fn = car(_e);
-        args = cdr(_e);
-
-        /*Pre-evaluation if function is represented as a list*/
-        if (fn->type == TYPE_CONS)
-            fn = scoped_eval(_scope, fn);
-
-        if (fn->type == TYPE_BUILDIN)
-            return fn->buildin(_scope, args);
-        if (fn->type == TYPE_LAMBDA)
-            return eval_fn("lambda", fn, args);
-        if (fn->type == TYPE_FUNCTION)
-            return eval_fn(fn->symbol, fn, args);
-        if (fn->type == TYPE_MACRO)
-            return scoped_eval(_scope,
-                               _macro_expander(_scope, fn->symbol, fn, args));
-
-        /*Evaluate as buildin*/
-        Expr* callable = nullptr;
-        if (fn->type == TYPE_SYMBOL) {
-            callable = second(_scope->variable_get(fn->symbol));
-        }
-        if (!is_nil(callable)) {
-            if (callable->type == TYPE_BUILDIN)
-                return callable->buildin(_scope, args);
-            if (fn->type == TYPE_LAMBDA)
-                return eval_fn("lambda", fn, args);
-            if (callable->type == TYPE_FUNCTION)
-                return eval_fn(fn->symbol, callable, args);
-            if (callable->type == TYPE_MACRO)
-                return scoped_eval(_scope,
-                                   _macro_expander(_scope, fn->symbol, callable, args));
-        }
-        throw ProgramError("eval", "could not find function called", fn);
-    }
-
+    /*Handle symbols*/
     if (_e->type == TYPE_SYMBOL) {
         Expr* var = nullptr;
         if (is_nil(_e))
@@ -956,9 +915,38 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
             return second(var);
         throw ProgramError("eval", "could not find existing symbol called", _e);
     }
-    throw ProgramError("eval", "Got something that could not be evaluated", _e);
-    return nullptr;
 
+    /*Handle function calls*/
+    if (_e->type == TYPE_CONS) {
+        Expr* name = nullptr;
+        Expr* fn = nullptr;
+        Expr* args = nullptr;
+        fn = car(_e);
+        args = cdr(_e);
+        if (fn->type == TYPE_CONS)
+            fn = scoped_eval(_scope, fn);
+        if (fn->type == TYPE_SYMBOL) {
+            name = fn;
+            fn = second(_scope->variable_get(fn->symbol));
+        }
+        if (is_nil(fn))
+            throw ProgramError("eval", "could not evaluate unknown function", first(_e));
+
+        if (fn->type == TYPE_BUILDIN) {
+            return fn->buildin(_scope, args);
+        }
+        if (fn->type == TYPE_LAMBDA) {
+            if (is_nil(name))
+                return eval_fn("lambda", fn, args);
+            return eval_fn("lambda", fn, args);
+        }
+        if (fn->type == TYPE_MACRO) {
+            return scoped_eval(_scope,
+                               _macro_expander(_scope, fn->symbol, fn, args));
+        }
+        throw ProgramError("eval", "could not find function called", fn);
+    }
+    throw ProgramError("eval", "Got something that could not be evaluated", _e);
 }
 
 Expr*
@@ -996,10 +984,6 @@ Environment::load_core(void)
         add_buildin("reverse!", core::reverse_ip);
         add_buildin("car", core::car);
         add_buildin("cdr", core::cdr);
-        //add_buildin("_PLUS2", core::plus);
-        //add_buildin("_MINUS2", core::minus);
-        //add_buildin("_MULTIPLY2", core::multiply);
-        //add_buildin("_DIVIDE2", core::divide);
         add_buildin("+", core::plus);
         add_buildin("-", core::minus);
         add_buildin("*", core::multiply);
@@ -1025,7 +1009,7 @@ Environment::load_core(void)
         add_buildin("stringify", core::stringify);
     }
     catch (std::exception& e) {
-        std::cout << "something wrong with std library!" << std::endl
+        std::cout << "something wrong with buildins!" << std::endl
                   << e.what() << std::endl;
         return false;
     }
@@ -1042,7 +1026,7 @@ Environment::load_std(void)
               "   (if (nil? body)"
               "     NIL"
               "     (last body)))"));
-    eval(read(std_lib));
+    eval(read(std_lib()));
     return true;
 }
 
@@ -1100,7 +1084,6 @@ Environment::decimal(float _v) {
 
 Expr*
 Environment::symbol(const std::string& _v) {
-    /*Test size of inp and store smallstr if possible*/
      Expr *out = m_gc.new_variable();
      if (out == nullptr)
        return nullptr;
@@ -1111,7 +1094,6 @@ Environment::symbol(const std::string& _v) {
 
 Expr *
 Environment::string(const std::string& _v) {
-    /*Test size of inp and store smallstr if possible*/
   Expr *out = m_gc.new_variable();
   if (out == nullptr)
     return nullptr;
@@ -1285,13 +1267,11 @@ stream(Expr* _e)
         case TYPE_CONS:        ss << "(" << stream(e).str() << ")"; break;
         case TYPE_LAMBDA:      ss << "#<lambda>";                   break;
         case TYPE_MACRO:       ss << "#<macro>";                    break;
-        case TYPE_FUNCTION:    ss << "#<function>";                 break;
+            //case TYPE_FUNCTION:    ss << "#<function>";                 break;
         case TYPE_BUILDIN:     ss << "#<buildin>";                  break;
         case TYPE_REAL:        ss << e->real;                       break;
         case TYPE_DECIMAL:     ss << e->decimal;                    break;
-        case TYPE_SMALLSYMBOL: ss << e->smallsymbol;                break;
         case TYPE_SYMBOL:      ss << e->symbol;                     break;
-        case TYPE_SMALLSTRING: ss << e->smallstring;                break;
         case TYPE_STRING:      ss << "\"" << e->string << "\"";     break;
         default:
             ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
@@ -1858,13 +1838,11 @@ core::_typeof(VariableScope* _s, Expr* _e)
     case TYPE_CONS:        return _s->env()->symbol("cons");
     case TYPE_LAMBDA:      return _s->env()->symbol("lambda");
     case TYPE_MACRO:       return _s->env()->symbol("macro");
-    case TYPE_FUNCTION:    return _s->env()->symbol("function");
+        //case TYPE_FUNCTION:    return _s->env()->symbol("function");
     case TYPE_BUILDIN:     return _s->env()->symbol("buildin");
     case TYPE_REAL:        return _s->env()->symbol("real");
     case TYPE_DECIMAL:     return _s->env()->symbol("decimal");
-    case TYPE_SMALLSYMBOL: return _s->env()->symbol("symbol");
     case TYPE_SYMBOL:      return _s->env()->symbol("symbol");
-    case TYPE_SMALLSTRING: return _s->env()->symbol("string");
     case TYPE_STRING:      return _s->env()->symbol("string");
     default:
         throw ProgramError("typeof", "Could not determine type of input from", first(args));
@@ -2011,7 +1989,7 @@ core::deffunction(VariableScope* _s, Expr* _e)
     Expr* fn = _s->env()->blank();
     if (len(_e) < 2)
         throw ProgramError("fn!", "expected arguments to be name, binds and body, got", _e);
-    fn->type = TYPE_FUNCTION;
+    fn->type = TYPE_LAMBDA;
     fn->callable.binds = second(_e);
     fn->callable.body = cdr(cdr(_e));
     _s->add_constant(first(_e)->symbol, fn);
@@ -2048,6 +2026,259 @@ core::macro_expand(VariableScope* _s, Expr* _e)
     Expr* macro_args = cdr(macro_call);
     Expr* expanded = _macro_expander(_s, macro_name, macro_fn, macro_args);
     return expanded;
+}
+
+const char*
+std_lib(void)
+{
+   return "(progn "
+    /*Info*/
+    " (const! *creator* \"Thomas Alexgaard\")"
+    " (const! *creator-git* \"https://github.com/thom9258/\")"
+    " (const! *host* \"C++\")"
+    " (const! *version* '(0 0 1))"
+
+    " (fn! list (&items) items)"
+
+    /*Predicates*/
+    " (fn! notnil?  (v) (not (nil? v)))"
+    " (fn! real?    (v) (= (typeof v) 'real))"
+    " (fn! decimal? (v) (= (typeof v) 'decimal))"
+    " (fn! value?   (v) (or (= (typeof v) 'real) (= (typeof v) 'decimal)))"
+    " (fn! symbol?  (v) (= (typeof v) 'symbol))"
+    " (fn! string?  (v) (= (typeof v) 'string))"
+    " (fn! cons?    (v) (= (typeof v) 'cons))"
+    " (fn! list?    (v) (or (nil? v) (= (typeof v) 'cons)))"
+    " (fn! atom?    (v) (or (nil? v) (not (cons? v))))"
+    " (fn! lambda?  (v) (= (typeof v) 'lambda))"
+    " (fn! fn?      (v) (= (typeof v) 'function))"
+    " (fn! macro?   (v) (= (typeof v) 'macro))"
+    " (fn! var? (var)"
+    "   (and (symbol? var) (notnil? (variable-definition var))))"
+    " (fn! const? (var)"
+    "   (if (not (var? var)) (return NIL))"
+    "   (= 'CONSTANT (third (variable-definition var))))"
+
+    /*TODO: use this one with a folding function for multiple values*/
+    //" (fn! _EQUAL2 (a b)"
+    //"   (= (stringify a) (stringify b)))"
+
+    /*File Management*/
+    " (fn! load-file (f) (eval (read (slurp-file f))))"
+
+    /*Math*/
+    //" (fn! + (&list) (foldl _PLUS2     0 list))"
+    //" (fn! - (&list) (foldl _MINUS2    0 list))"
+    //" (fn! * (&list) (foldl _MULTIPLY2 1 list))"
+    //" (fn! / (&list) (foldl _DIVIDE2   1 list))"
+    " (fn! zero? (v) (or (= v 0) (= v 0.0)))"
+    " (fn! abs (v) (if (< v 0) (* -1 v) v))"
+    " (fn! % (n a) (if (> n a) (% (- n a) a) a))"
+    //" (fn! even? (v) )"
+    //" (fn! odd?  (v) )"
+
+    " (const! PI         3.141592)"
+    " (const! PI2        (* PI 2))"
+    " (const! PI/2       (/ PI 2))"
+    " (const! PI/3       (/ PI 3))"
+    " (const! PI/4       (/ PI 4))"
+    " (const! E          2.71828)"
+    " (const! E-constant 0.57721)"
+
+    /*List Management*/
+    " (fn! head  (l) (car l))"
+    " (fn! tail  (l) (cdr l))"
+    " (fn! first (l) (car l))"
+    " (fn! rest  (l) (cdr l))"
+
+    " (fn! second  (l) (car (cdr l)))"
+    " (fn! third   (l) (car (cdr (cdr l))))"
+    " (fn! fourth  (l) (car (cdr (cdr (cdr l)))))"
+    " (fn! fifth   (l) (car (cdr (cdr (cdr (cdr l))))))"
+    " (fn! sixth   (l) (car (cdr (cdr (cdr (cdr (cdr l)))))))"
+    " (fn! seventh (l) (car (cdr (cdr (cdr (cdr (cdr (cdr l))))))))"
+    " (fn! eighth  (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr l)))))))))"
+    " (fn! ninth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr l))))))))))"
+    " (fn! tenth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr "
+    " l)))))))))))"
+
+    " (fn! cddr (l) (cdr (cdr l)))"
+    " (fn! cdar (l) (cdr (car l)))"
+    " (fn! cadr (l) (car (cdr l)))"
+    " (fn! caar (l) (car (car l)))"
+
+    " (fn! caddr (l) (car (cdr (cdr l))))"
+    " (fn! cadar (l) (car (cdr (car l))))"
+    " (fn! caadr (l) (car (car (cdr l))))"
+    " (fn! caaar (l) (car (car (car l))))"
+    " (fn! cdddr (l) (cdr (cdr (cdr l))))"
+    " (fn! cddar (l) (cdr (cdr (car l))))"
+    " (fn! cdadr (l) (cdr (car (cdr l))))"
+    " (fn! cdaar (l) (cdr (car (car l))))"
+
+    " (fn! not (x)"
+    "  (if (nil? x) T NIL))"
+
+    //" (macro! quote (e) e)"
+    " (fn! list (&vars) vars)"
+
+    " (macro! setq! (v x)"
+    "   ['set! 'v x])"
+
+    //" (macro! when (test &body)"
+    //"  (if test (progn body)))"
+    //
+    //" (macro! unless (test &body)"
+    //"  (if test NIL (progn body)))"
+
+    " (fn! put (v l)"
+    "  \"Join value onto front of list\""
+    "  (cons v l))"
+
+    " (fn! apply (fn list)"
+    "   \"apply function to list\""
+    "   (eval (put fn list)))"
+
+    " (fn! len (l)"
+    "  \"calculate length of list\""
+    "  (if (nil? l)"
+    "    0"
+    "    (+ 1 (len (rest l)))))"
+
+    " (fn! nthcdr (n list)"
+    "  \"get list subset starting from n\""
+    "  (if (> 1 n)"
+    "    list"
+    "    (nthcdr (- n 1) (rest list))))"
+
+    " (fn! nth (n list)"
+    "  \"get nth value of list\""
+    "  (head (nthcdr n list)))"
+
+    " (fn! last (list)"
+    "  \"get last value of list\""
+    "  (nth (- (len list) 1) list))"
+
+    /*TODO: Reimplement this with cond instead of if*/
+    " (fn! contains (value list)"
+    "   \"check if value is in list\""
+    "   (if (nil? list)"
+    "     NIL"
+    "     (if (eq (car list) value)"
+    "       T"
+    "       (contains value (cdr list)))))"
+
+    " (fn! assoc (value list)"
+    "   \"check if value is in list\""
+    "   (if (nil? list)"
+    "     NIL"
+    "     (if (eq (caar list) value)"
+    "       (car list)"
+    "       (assoc value (cdr list)))))"
+
+    " (fn! format (&args)"
+    "   \"stringify and concatenate arguments to single string\""
+    " (throw \"format not implemented\"))"
+
+    " (fn! print (&args)"
+    "   \"print formatted string\""
+    "   (throw \"print not implemented\")"
+    "   (write (format args)))"
+
+    " (fn! recurse (n)"
+    "   \"create recursion calls n times (used to test "
+    "tail-call-optimization)\""
+    "   (if (> n 0) (recurse (- n 1)) 'did-we-blow-up?))"
+
+    " (fn! setnth! (n val list)"
+    "   \"set the nth value of a list\""
+    "   (local! target (nthcdr n list))"
+    "   (if (nil? target)"
+    "     (throw \"invalid index to set, got\" n)"
+    "     (setcar! target val)))"
+
+    " (fn! variable-value (var)"
+    "   \"get value associated with variable\""
+    "   (second (variable-definition var)))"
+
+    " (fn! set! (var val)"
+    "   \"change variable to become value on evaluation\""
+    "   (if (not (var? var)) (throw \"set! expected symbol variable, not\" "
+    "var))"
+    "   (if (const? var) (throw \"set! cannot set constant\" var))"
+    "   (setnth! 1 val (variable-definition var)))"
+
+    " (fn! before-n (n lst)"
+    "   \"create a list containing the first n values of a given list\""
+    "   (if (= n 0)"
+    "     NIL"
+    "     (put (first lst) (before-n (- n 1) (rest lst)))))"
+
+    " (fn! after-n (n lst)"
+    "   \"create a list containing the last n values of a given list\""
+    "   (if (= n 0)"
+    "     lst"
+    "     (after-n (- n 1) (rest lst))))"
+
+    " (fn! split (n lst)"
+    "   \"create 2 lists split at n\""
+    "   [(before-n n lst) (after-n n lst)])"
+
+    " (fn! transform (fn lst)"
+    "   \"apply fn to all value in lst and collect results\""
+    "   (if (nil? lst)"
+    "     NIL"
+    "     (put ((variable-value 'fn) (first lst)) (transform fn (rest lst)))))"
+
+    /*https://lwh.jp/lisp/library.html*/
+    " (fn! map (fn &lists)"
+    "   \"apply fn to mapped values in lists and collect results\""
+    "   (write fn) (write lists)"
+    "   (if (nil? (car lists))"
+    "     NIL"
+    "     (cons (apply fn (transform 'car lists))"
+    "           (apply 'map (cons fn"
+    "                            (transform 'cdr lists))))))"
+
+    //https://lwh.jp/lisp/quasiquotation.html
+    " (macro! (quasiquote x)"
+    "   (if (cons? x)"
+    "     (if (= (car x) 'unquote)"
+    "       (cadr x)"
+    "       (if (= (caar x) 'unquote-splicing)"
+    "         (list 'join"
+    "               (cadr (car x))"
+    "               (list 'quasiquote (cdr x)))"
+    "         (list 'cons"
+    "               (list 'quasiquote (car x))"
+    "               (list 'quasiquote (cdr x)))))"
+    "     (list 'quote x)))"
+
+    " (fn! foldl (fn init list)"
+    "  \"fold a list using fn and init value\""
+    "   (if list"
+    "   (foldl fn"
+    "     (fn init (first list))"
+    "     (rest list))"
+    "   init))"
+
+    " (fn! foldr (fn init list)"
+    "  \"reverse fold a list using fn and init value\""
+    "   (if (nil? list)"
+    "     (fn (first list)"
+    "         (foldr fn init (rest list)))"
+    "   init))"
+
+    " (fn! join (a b)"
+    "   (if (nil? a)"
+    "   b"
+    "   (cons (first a) (join (rest a) b))))"
+
+    " (fn! reverse (list)"
+    "  \"reverse a list\""
+    "   (foldl (lambda (a x) (cons x a)) nil list))"
+
+    " 'std)";
 }
 
 #endif /*YALPP_IMPLEMENTATION*/

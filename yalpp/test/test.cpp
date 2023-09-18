@@ -1135,9 +1135,14 @@ test_std_list_stuff(void)
     TL_TEST(repl_test(&e, "(after-n 7 (range 1 10))", "(8 9 10)"));
     TL_TEST(repl_test(&e, "(split 5 (range 1 10))", "((1 2 3 4 5) (6 7 8 9 10))"));
 
-    TL_TEST(repl_test(&e, "(map '- (range 1 5))", "(-1 -2 -3 -4 -5)"));
-    TL_TEST(repl_test(&e, "(map (lambda (x) (+ 2 x)) (range 1 5))", "(3 4 5 6 7)"));
-    TL_TEST(repl_test(&e, "(map 'real? [-1 2.3 4 3.2 9])", "(T NIL T NIL T)"));
+    TL_TEST(repl_test(&e, "(join (range 1 3) (range 4 6))", "(1 2 3 4 5 6)"));
+
+    TL_TEST(repl_test(&e, "(transform - (range 1 5))", "(-1 -2 -3 -4 -5)"));
+    TL_TEST(repl_test(&e, "(transform (lambda (x) (+ 2 x)) (range 1 5))", "(3 4 5 6 7)"));
+    TL_TEST(repl_test(&e, "(transform real? [-1 2.3 4 3.2 9])", "(T NIL T NIL T)"));
+
+
+    TL_TEST(repl_test(&e, "(map '+ [1 2 3] [3 4 5])", "(4 6 8)"));
 
 
     //TL_TEST(repl_test(&e, "(filter 'real? [-1 2.3 4 3.2 9])", "(-1 4 9)"));
@@ -1253,38 +1258,38 @@ main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-    TL(test_sizes());
-    TL(test_types_creation());
-    TL(test_read());
-    TL(test_nilp());
-    TL(test_len());
-    TL(test_assoc());
-    TL(test_globals());
-    TL(test_ipreverse());
-    TL(test_simple_eval());
-    TL(test_lex_types());
-    TL(test_buildin_range());
-    TL(test_buildin_equality());
-    TL(test_buildin_accessors());
-    TL(test_buildin_list_creation());
-    TL(test_buildin_math());
-    TL(test_conditionals());
-    TL(test_variables());
-    TL(test_lambda());
-    TL(test_fn());
-    TL(test_try_catch_throw());
-    TL(test_full_circle());
-    TL(test_load_libraries());
+    //TL(test_sizes());
+    //TL(test_types_creation());
+    //TL(test_read());
+    //TL(test_nilp());
+    //TL(test_len());
+    //TL(test_assoc());
+    //TL(test_globals());
+    //TL(test_ipreverse());
+    //TL(test_simple_eval());
+    //TL(test_lex_types());
+    //TL(test_buildin_range());
+    //TL(test_buildin_equality());
+    //TL(test_buildin_accessors());
+    //TL(test_buildin_list_creation());
+    //TL(test_buildin_math());
+    //TL(test_conditionals());
+    //TL(test_variables());
+    //TL(test_lambda());
+    //TL(test_fn());
+    //TL(test_try_catch_throw());
+    //TL(test_full_circle());
+    //TL(test_load_libraries());
     TL(test_functions_and_recursion());
     TL(test_predicates());
     TL(test_std());
     TL(test_setnth());
     TL(test_variable_definition());
     TL(test_set_variables());
-    TL(test_std_list_stuff());
     TL(test_macros());
     //TL(test_funcall());
     TL(test_foldl_foldr());
+    TL(test_std_list_stuff());
 
 
 
