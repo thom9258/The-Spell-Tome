@@ -2,9 +2,6 @@
 
 #include <string>
 
-// std library to implement amongst others
-//https://www.buildyourownlisp.com/chapter15_standard_library#minimalism
-
 namespace yal {
 
 const char *std_lib =
@@ -15,6 +12,8 @@ const char *std_lib =
     " (const! *host* \"C++\")"
     " (const! *version* '(0 0 1))"
 
+    " (fn! list (&items) items)"
+
     /*Predicates*/
     " (fn! notnil?  (v) (not (nil? v)))"
     " (fn! real?    (v) (= (typeof v) 'real))"
@@ -24,13 +23,12 @@ const char *std_lib =
     " (fn! string?  (v) (= (typeof v) 'string))"
     " (fn! cons?    (v) (= (typeof v) 'cons))"
     " (fn! list?    (v) (or (nil? v) (= (typeof v) 'cons)))"
+    " (fn! atom?    (v) (or (nil? v) (not (cons? v))))"
     " (fn! lambda?  (v) (= (typeof v) 'lambda))"
     " (fn! fn?      (v) (= (typeof v) 'function))"
     " (fn! macro?   (v) (= (typeof v) 'macro))"
-
     " (fn! var? (var)"
     "   (and (symbol? var) (notnil? (variable-definition var))))"
-
     " (fn! const? (var)"
     "   (if (not (var? var)) (return NIL))"
     "   (= 'CONSTANT (third (variable-definition var))))"
@@ -39,13 +37,17 @@ const char *std_lib =
     //" (fn! _EQUAL2 (a b)"
     //"   (= (stringify a) (stringify b)))"
 
-
     /*File Management*/
     " (fn! load-file (f) (eval (read (slurp-file f))))"
 
     /*Math*/
+    //" (fn! + (&list) (foldl _PLUS2     0 list))"
+    //" (fn! - (&list) (foldl _MINUS2    0 list))"
+    //" (fn! * (&list) (foldl _MULTIPLY2 1 list))"
+    //" (fn! / (&list) (foldl _DIVIDE2   1 list))"
     " (fn! zero? (v) (or (= v 0) (= v 0.0)))"
     " (fn! abs (v) (if (< v 0) (* -1 v) v))"
+    " (fn! % (n a) (if (> n a) (% (- n a) a) a))"
     //" (fn! even? (v) )"
     //" (fn! odd?  (v) )"
 
@@ -72,7 +74,7 @@ const char *std_lib =
     " (fn! eighth  (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr l)))))))))"
     " (fn! ninth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr l))))))))))"
     " (fn! tenth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr "
-    "l)))))))))))"
+    " l)))))))))))"
 
     " (fn! cddr (l) (cdr (cdr l)))"
     " (fn! cdar (l) (cdr (car l)))"
@@ -91,14 +93,17 @@ const char *std_lib =
     " (fn! not (x)"
     "  (if (nil? x) T NIL))"
 
+    //" (macro! quote (e) e)"
+    " (fn! list (&vars) vars)"
+
     " (macro! setq! (v x)"
     "   ['set! 'v x])"
 
-    " (macro! when (test &body)"
-    "  (if test (progn body)))"
-
-    " (macro! unless (test &body)"
-    "  (if test NIL (progn body)))"
+    //" (macro! when (test &body)"
+    //"  (if test (progn body)))"
+    //
+    //" (macro! unless (test &body)"
+    //"  (if test NIL (progn body)))"
 
     " (fn! put (v l)"
     "  \"Join value onto front of list\""
@@ -107,7 +112,6 @@ const char *std_lib =
     " (fn! apply (fn list)"
     "   \"apply function to list\""
     "   (eval (put fn list)))"
-
 
     " (fn! len (l)"
     "  \"calculate length of list\""
@@ -145,13 +149,6 @@ const char *std_lib =
     "     (if (eq (caar list) value)"
     "       (car list)"
     "       (assoc value (cdr list)))))"
-
-    " (fn! reduce (fn init list)"
-    "   \"reduce list by applying fn starting with init\""
-    "   (if (nil? list)"
-    "     init"
-    "     (reduce fn (fn init (first list)) (rest list))"
-    " ))"
 
     " (fn! format (&args)"
     "   \"stringify and concatenate arguments to single string\""
@@ -207,28 +204,39 @@ const char *std_lib =
     "     NIL"
     "     (put ((variable-value 'fn) (first lst)) (map fn (rest lst)))))"
 
+    //https://lwh.jp/lisp/quasiquotation.html
+    " (macro! (quasiquote x)"
+    "   (if (cons? x)"
+    "     (if (= (car x) 'unquote)"
+    "       (cadr x)"
+    "       (if (= (caar x) 'unquote-splicing)"
+    "         (list 'append"
+    "               (cadr (car x))"
+    "               (list 'quasiquote (cdr x)))"
+    "         (list 'cons"
+    "               (list 'quasiquote (car x))"
+    "               (list 'quasiquote (cdr x)))))"
+    "     (list 'quote x)))"
 
-    //" (fn! reduce (fn start lst)"
-    //"   \"evaluate fn incrementally along lst using start value\""
-    //"   (write start) (write lst)"
-    //"   (if (nil? lst)"
-    //"     start"
-    //"     (reduce fn ((variable-value 'fn) (first lst)) (rest lst))))"
+    " (fn! foldl (fn init list)"
+    "  \"fold a list using fn and init value\""
+    "   (if list"
+    "   (foldl fn"
+    "     (fn init (first list))"
+    "     (rest list))"
+    "   init))"
 
+    " (fn! foldr (fn init list)"
+    "  \"reverse fold a list using fn and init value\""
+    "   (if (nil? list)"
+    "     (fn (first list)"
+    "         (foldr fn init (rest list)))"
+    "   init))"
 
+    " (fn! reverse (list)"
+    "  \"reverse a list\""
+    "   (foldl (lambda (a x) (cons x a)) nil list))"
 
-    //" (fn! reduce (f start lst)"
-    //"   \"evaluate fn incrementally along lst using start value\""
-    ////"   (write fn) (write start) (write lst)"
-    //"     )"
-
-/*
-(fun {foldl f z l} {
-  if (== l nil)
-    {z}
-    {foldl f (f z (fst l)) (tail l)}
-})
-*/
 
     " 'std)";
 }

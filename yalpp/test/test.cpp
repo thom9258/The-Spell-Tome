@@ -307,11 +307,10 @@ test_ipreverse(void)
 void
 test_simple_eval(void)
 {
+    yal::Expr* program;
     yal::Environment e;
-    e.load_core();
     e.load_std();
 
-    yal::Expr* program;
 
     program = e.symbol("PI2");
     TL_TEST(eval_test(&e, program, "6.28318"));
@@ -337,7 +336,7 @@ void
 test_lex_types(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
 
     TL_TEST(lex_type_test(&e, "myvar", yal::TYPE_SYMBOL));
     TL_TEST(lex_type_test(&e, "my/other-var_", yal::TYPE_SYMBOL));
@@ -357,7 +356,7 @@ void
 test_read(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
     TL_TEST(read_test(&e, "myvar"));
     TL_TEST(read_test(&e, "my/other-var_"));
     TL_TEST(read_test(&e, "2"));
@@ -397,7 +396,7 @@ void
 test_buildin_list_creation(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
     TL_TEST(repl_test(&e, "(quote (foo bar (quote (baz))))", "(foo bar (quote (baz)))"));
     TL_TEST(repl_test(&e, "'(foo bar '(baz))", "(foo bar (quote (baz)))"));
     TL_TEST(repl_test(&e, "(quote (1 2 3 4))", "(1 2 3 4)"));
@@ -430,7 +429,7 @@ void
 test_buildin_list_management(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
     TL_TEST(repl_test(&e,
                       "(put 0 (list 1 2 3))",
                       "(0 1 2 3)"));
@@ -449,7 +448,7 @@ void
 test_buildin_range(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
     TL_TEST(repl_test(&e,
                        "(range 2 5)",
                        "(2 3 4 5)"));
@@ -472,7 +471,7 @@ test_buildin_accessors(void)
 {
 
     yal::Environment e;
-    e.load_core();
+    e.load_std();
     TL_TEST(repl_test(&e,
                        "(car '(1 2 3 4))",
                        "1"));
@@ -489,7 +488,7 @@ test_buildin_math(void)
 {
 
     yal::Environment e;
-    e.load_core();
+    e.load_std();
 
     TL_TEST(repl_test(&e, "(+)", "0"));
     TL_TEST(repl_test(&e, "(-)", "0"));
@@ -549,7 +548,7 @@ void
 test_conditionals(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
 
     TL_TEST(repl_test(&e, "(if (= 2 2) 4)", "4"));
     TL_TEST(repl_test(&e, "(if (= 2 2) 4 0)", "4"));
@@ -592,7 +591,7 @@ void
 test_variables(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
 
     TL_TEST(repl_test(&e, "(local! player-name \"player1\")", "player-name"));
     TL_TEST(repl_test(&e, "(local! health (+ 2 2))", "health"));
@@ -694,7 +693,6 @@ void
 test_predicates(void)
 {
     yal::Environment e;
-    e.load_core();
     e.load_std();
 
     TL_TEST(repl_test(&e, "(typeof 2)", "real"));
@@ -729,6 +727,11 @@ test_predicates(void)
     TL_TEST(repl_test(&e, "(list? 'NIL)", "T"));
     //TL_TEST(repl_test(&e, "(cons? '())", "NIL"));
     //TL_TEST(repl_test(&e, "(cons? 'NIL)", "NIL"));
+
+    TL_TEST(repl_test(&e, "(atom? 2.43)", "T"));
+    TL_TEST(repl_test(&e, "(atom? '(1 2 3))", "NIL"));
+    TL_TEST(repl_test(&e, "(atom? 'NIL)", "T"));
+
 
     TL_TEST(repl_test(&e, "(global! myvar '(1 2))", "myvar"));
 
@@ -788,7 +791,7 @@ void
 test_lambda(void)
 {
     yal::Environment e;
-    e.load_core();
+    e.load_std();
 
     TL_TEST(repl_test(&e, "(lambda (a) a)", "#<lambda>"));
     TL_TEST(repl_test(&e, "((lambda (a) a) 12)", "12"));
@@ -929,7 +932,6 @@ void
 test_full_circle(void)
 {
     yal::Environment e;
-    e.load_core();
     e.load_std();
 
     /*NOTE: I added a \n at the end here but it should not be there*/
@@ -953,7 +955,6 @@ void
 test_load_libraries(void)
 {
     yal::Environment e;
-    e.load_core();
     e.load_std();
 
     TL_TEST(repl_test(&e, "(load-file \"../math.yal\")", "math"));
@@ -995,12 +996,6 @@ test_std(void)
     TL_TEST(repl_test(&e, "(apply '- '(5 2))", "3"));
     TL_TEST(repl_test(&e, "(apply '+ (range 1 10))", "55"));
     TL_TEST(repl_test(&e, "(apply (lambda (a b) (+ a (* a b))) '(2 3))", "8"));
-
-    //TL_TEST(repl_test(&e, "(funcall '+ 1 2 3)", "6"));
-    //TL_TEST(repl_test(&e, "(funcall 'first (1 2 3))", "1"));
-
-    //TL_TEST(repl_test(&e, "(reduce '+ 0 '(1 2 3))", "6"));
-    //TL_TEST(repl_test(&e, "(reduce '+ 4 '(1 2 3))", "10"));
 
     TL_TEST(repl_test(&e, "(put 1 [2 3 4])", "(1 2 3 4)"));
     TL_TEST(repl_test(&e, "(put '(1 2) '((2 3) (3 4)))", "((1 2) (2 3) (3 4))"));
@@ -1152,21 +1147,38 @@ test_std_list_stuff(void)
 }
 
 void
-test_std_reduce(void)
+test_funcall(void)
 {
     yal::Environment e;
     e.load_std();
 
     TL_TEST(repl_test(&e, 
-                      " (fn! reduce (fn start lst)"
-                      "   \"evaluate fn incrementally along lst using start value\""
-                      "   (if (nil? lst)"
-                      "     start"
-                      "     (reduce fn ((variable-value 'fn) (first lst)) (rest lst))))"
-                      , "reduce"));
+                      " (macro! funcall (fn &lst)"
+                      "   \"apply function to list\""
+                      //"   ['put ['variable-value fn] lst])"
+                      "   [fn lst])"
+                      //"   (put fn lst))"
+                      , "funcall"));
 
-    TL_TEST(repl_test(&e, "(reduce '+ 0 '(1 2 3 4 5))", "15"));
-    TL_TEST(repl_test(&e, "(reduce '* 1 '(3 8))", "24"));
+    TL_TEST(repl_test(&e, "(macro-expand '(funcall + 1 2 3))", "6"));
+
+    TL_TEST(repl_test(&e, "(funcall + 1 2 3)", "6"));
+    TL_TEST(repl_test(&e, "(funcall first '(1 2 3))", "1"));
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
+test_foldl_foldr(void)
+{
+    yal::Environment e;
+    e.load_std();
+
+    TL_TEST(repl_test(&e, "(foldl + 0 '(1 2 3))", "6"));
+    TL_TEST(repl_test(&e, "(foldl + 4 '(1 2 3))", "10"));
+    TL_TEST(repl_test(&e, "(foldl * 1 '(3 8))", "24"));
+
+    TL_TEST(repl_test(&e, "(reverse '(1 2 3))", "(3 2 1)"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -1194,16 +1206,23 @@ test_macros(void)
 
     TL_TEST(repl_test(&e, "(eval (macro-expand '(setq! v1 7)))", "7"));
     TL_TEST(repl_test(&e, "v1", "7"));
+}
 
-    //TL_TEST(repl_test(&e,
-    //                  "(macro! scope (&body)"
-    //                  "  ['lambda '() body])",
-    //                  "scope"));
-    //
-    //TL_TEST(repl_test(&e, "(scope (+ 2 2))", "4"));
-    //TL_TEST(repl_test(&e, "(macro-expand '(scope (+ 2 2)))", "(lambda NIL (progn ((+ 2 2) (* 3.5 2))))"));
+void
+test_scope(void)
+{
+    yal::Environment e;
+    e.load_std();
+    TL_TEST(repl_test(&e,
+                      "(macro! scope (&body)"
+                      "  ['lambda '() ['progn body]])",
+                      "scope"));
+    
+    TL_TEST(repl_test(&e, "(eval (scope (+ 2 2)))", "4"));
+    TL_TEST(repl_test(&e, "(macro-expand '(scope (+ 2 2)))", "(lambda NIL (progn ((+ 2 2))))"));
+    TL_TEST(repl_test(&e, "(eval (macro-expand '(scope (+ 2 2))))", "4"));
 
-
+    TL_TEST(repl_test(&e, "((lambda (b) (progn b)) '(+ 2 2))", "4"));
 
     //TL_TEST(repl_test(&e,
     //                  "(macro! set2! (a b val)"
@@ -1234,39 +1253,44 @@ main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-    //TL(test_sizes());
-    //TL(test_types_creation());
-    //TL(test_read());
-    //TL(test_nilp());
-    //TL(test_len());
-    //TL(test_assoc());
-    //TL(test_globals());
-    //TL(test_ipreverse());
-    //TL(test_simple_eval());
-    //TL(test_lex_types());
-    //TL(test_buildin_range());
-    //TL(test_buildin_equality());
-    //TL(test_buildin_accessors());
-    //TL(test_buildin_list_creation());
-    //TL(test_buildin_math());
-    //TL(test_conditionals());
-    //TL(test_variables());
-    //TL(test_lambda());
-    //TL(test_fn());
-    //TL(test_try_catch_throw());
-    //TL(test_full_circle());
-    //TL(test_load_libraries());
-    //TL(test_functions_and_recursion());
-    //TL(test_predicates());
-    //TL(test_std());
-    //TL(test_setnth());
-    //TL(test_variable_definition());
+    TL(test_sizes());
+    TL(test_types_creation());
+    TL(test_read());
+    TL(test_nilp());
+    TL(test_len());
+    TL(test_assoc());
+    TL(test_globals());
+    TL(test_ipreverse());
+    TL(test_simple_eval());
+    TL(test_lex_types());
+    TL(test_buildin_range());
+    TL(test_buildin_equality());
+    TL(test_buildin_accessors());
+    TL(test_buildin_list_creation());
+    TL(test_buildin_math());
+    TL(test_conditionals());
+    TL(test_variables());
+    TL(test_lambda());
+    TL(test_fn());
+    TL(test_try_catch_throw());
+    TL(test_full_circle());
+    TL(test_load_libraries());
+    TL(test_functions_and_recursion());
+    TL(test_predicates());
+    TL(test_std());
+    TL(test_setnth());
+    TL(test_variable_definition());
     TL(test_set_variables());
     TL(test_std_list_stuff());
     TL(test_macros());
+    //TL(test_funcall());
+    TL(test_foldl_foldr());
+
+
+
+    /*NOT WORKING*/
     //TL(test_std_reduce());
     //TL(test_scope_management());
-
     //TL(test_tco());
 
     tl_summary();

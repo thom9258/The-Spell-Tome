@@ -128,8 +128,6 @@ std::string stringify(Expr* _e);
 namespace core {
 
 Expr* quote(VariableScope* _s, Expr* _e);
-Expr* list(VariableScope* _s, Expr* _e);
-Expr* len(VariableScope* _s, Expr* _e);
 Expr* reverse_ip(VariableScope* _s, Expr* _e);
 Expr* range(VariableScope* _s, Expr* _e);
 
@@ -170,7 +168,6 @@ Expr* deflambda(VariableScope* _s, Expr* _e);
 Expr* deffunction(VariableScope* _s, Expr* _e);
 Expr* defmacro(VariableScope* _s, Expr* _e);
 Expr* macro_expand(VariableScope* _s, Expr* _e);
-//Expr* setvar(VariableScope* _s, Expr* _e);
 Expr* setcar(VariableScope* _s, Expr* _e);
 Expr* setcdr(VariableScope* _s, Expr* _e);
 Expr* variable_definition(VariableScope* _s, Expr* _e);
@@ -498,7 +495,7 @@ void
 VariableScope::bind(const char* _fnname, Expr* _binds, Expr* _values)
 {
   /*TODO: add support for keyword binds aswell*/
-    UNUSED(_fnname);
+    //std::cout << "binding for " << _fnname << std::endl;
     std::string bindstr;
     Expr* rest = nullptr;
     //while (!is_nil(_binds) && !is_nil(_values)) {
@@ -513,7 +510,10 @@ VariableScope::bind(const char* _fnname, Expr* _binds, Expr* _values)
             }
             rest = ipreverse(rest);
             add_variable(bindstr.c_str()+1, rest);
-            return;
+            //std::cout << "&bound " << bindstr.c_str()+1 << " to " << stringify(rest) << std::endl;
+            _binds = cdr(_binds);
+            _values = nullptr;
+            break;
         }
         add_variable(car(_binds)->symbol, car(_values));
         //std::cout << "bound " << stringify(car(_binds)) << " to " << stringify(car(_values)) << std::endl;
@@ -522,7 +522,7 @@ VariableScope::bind(const char* _fnname, Expr* _binds, Expr* _values)
         _values = cdr(_values);
     }
     if (len(_binds) != 0)
-        throw ProgramError(_fnname, "invalid amount of inputs given! could not bind", _binds);
+        throw ProgramError(_fnname, "leftover arg field, could not bind", _binds);
     if (len(_values) != 0)
         throw ProgramError(_fnname, "too many inputs given! could not bind", _values);
 
@@ -770,6 +770,24 @@ Environment::lex(std::list<std::string>& _tokens)
         program = list({symbol("quote"), lex(_tokens)});
         return program;
     }
+    if (token == "`") {
+        std::cout << "found ` quasiquote"  << std::endl;
+        _tokens.pop_front();
+        program = list({symbol("quasiquote"), lex(_tokens)});
+        return program;
+    }
+    if (token == ",") {
+        std::cout << "found , unquote"  << std::endl;
+        _tokens.pop_front();
+        program = list({symbol("unquote"), lex(_tokens)});
+        return program;
+    }
+    if (token == ",@") {
+        std::cout << "found ,@ unquote-splicing"  << std::endl;
+        _tokens.pop_front();
+        program = list({symbol("unquote-splicing"), lex(_tokens)});
+        return program;
+    }
     //std::cout << "found value"  << std::endl;
     program = lex_value(token);
     _tokens.pop_front();
@@ -887,7 +905,7 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         _e->type == TYPE_SMALLSTRING)
         return _e;
 
-    if (_e->type ==  TYPE_CONS) {
+    if (_e->type == TYPE_CONS) {
         Expr* fn = nullptr;
         Expr* args = nullptr;
         fn = car(_e);
@@ -897,25 +915,32 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         if (fn->type == TYPE_CONS)
             fn = scoped_eval(_scope, fn);
 
-        /*Evaluate as lambda*/
+        if (fn->type == TYPE_BUILDIN)
+            return fn->buildin(_scope, args);
         if (fn->type == TYPE_LAMBDA)
             return eval_fn("lambda", fn, args);
+        if (fn->type == TYPE_FUNCTION)
+            return eval_fn(fn->symbol, fn, args);
+        if (fn->type == TYPE_MACRO)
+            return scoped_eval(_scope,
+                               _macro_expander(_scope, fn->symbol, fn, args));
 
         /*Evaluate as buildin*/
+        Expr* callable = nullptr;
         if (fn->type == TYPE_SYMBOL) {
-            Expr* callable = nullptr;
             callable = second(_scope->variable_get(fn->symbol));
-            if (!is_nil(callable)) {
-                if (callable->type == TYPE_BUILDIN)
-                    return callable->buildin(_scope, args);
-                if (callable->type == TYPE_FUNCTION)
-                    return eval_fn(fn->symbol, callable, args);
-                if (callable->type == TYPE_MACRO)
-                    return scoped_eval(_scope,
-                                       _macro_expander(_scope, fn->symbol, callable, args));
-            }
         }
-        //std::cout << "fn does not exist: " << fn->symbol << std::endl;
+        if (!is_nil(callable)) {
+            if (callable->type == TYPE_BUILDIN)
+                return callable->buildin(_scope, args);
+            if (fn->type == TYPE_LAMBDA)
+                return eval_fn("lambda", fn, args);
+            if (callable->type == TYPE_FUNCTION)
+                return eval_fn(fn->symbol, callable, args);
+            if (callable->type == TYPE_MACRO)
+                return scoped_eval(_scope,
+                                   _macro_expander(_scope, fn->symbol, callable, args));
+        }
         throw ProgramError("eval", "could not find function called", fn);
     }
 
@@ -959,8 +984,6 @@ Environment::load_core(void)
         add_buildin("global!", core::defglobal);
         add_buildin("local!", core::deflocal);
         add_buildin("variable-definition", core::variable_definition);
-        /*TODO: set! can be replaced by interpreted fn now*/
-        //add_buildin("set!", core::setvar);
         add_buildin("setcar!", core::setcar);
         add_buildin("setcdr!", core::setcdr);
         add_buildin("fn!", core::deffunction);
@@ -968,18 +991,22 @@ Environment::load_core(void)
         add_buildin("macro-expand", core::macro_expand);
         add_buildin("lambda", core::deflambda);
         add_buildin("quote", core::quote);
-        add_buildin("list", core::list);
         add_buildin("cons", core::cons);
         add_buildin("range", core::range);
         add_buildin("reverse!", core::reverse_ip);
         add_buildin("car", core::car);
         add_buildin("cdr", core::cdr);
+        //add_buildin("_PLUS2", core::plus);
+        //add_buildin("_MINUS2", core::minus);
+        //add_buildin("_MULTIPLY2", core::multiply);
+        //add_buildin("_DIVIDE2", core::divide);
         add_buildin("+", core::plus);
         add_buildin("-", core::minus);
         add_buildin("*", core::multiply);
         add_buildin("/", core::divide);
         add_buildin("=", core::mathequal);
         add_buildin("<", core::lessthan);
+        /*TODO: greaterthan is just the opposite of lessthan*/
         add_buildin(">", core::greaterthan);
         add_buildin("eq", core::eq);
         add_buildin("equal", core::equal);
@@ -1315,12 +1342,6 @@ core::quote(VariableScope* _s, Expr* _e)
 }
 
 Expr*
-core::list(VariableScope* _s, Expr* _e)
-{
-    return _s->env()->list_eval(_s, _e);
-}
-
-Expr*
 core::cons(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
@@ -1363,13 +1384,6 @@ core::reverse_ip(VariableScope* _s, Expr* _e)
     if (len(args) != 1)
         return nullptr;
     return ipreverse(first(args));
-}
-
-Expr*
-core::len(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    return _s->env()->real(len(args));
 }
 
 Expr*
@@ -1957,23 +1971,6 @@ core::deflocal(VariableScope* _s, Expr* _e)
     _s->add_variable(first(_e)->symbol, val);
     return first(_e);
 }
-
-//Expr*
-//core::setvar(VariableScope* _s, Expr* _e)
-//{
-//    Expr* var = nullptr;
-//    if (first(_e)->type != TYPE_SYMBOL)
-//        throw ProgramError("set!", "Expected symbol name to set");
-//    if (len(_e) != 2)
-//        throw ProgramError("set!", "Expected value to set");
-//    var = _s->variable_get(first(_e)->symbol);
-//    if (is_nil(var))
-//        throw ProgramError("set!", "variable to set does not exist");
-//    if (_s->is_var_const(var))
-//        throw ProgramError("set!", "Cannot set constant symbol");
-//    cdr(var)->cons.car = _s->env()->scoped_eval(_s, second(_e));
-//    return second(var);
-//}
 
 Expr*
 core::setcar(VariableScope* _s, Expr* _e)
