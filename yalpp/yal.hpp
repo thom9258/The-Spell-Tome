@@ -92,9 +92,9 @@ public:
     Expr* thrown(void);
 };
 
-Throwable NotImplemented(const char *_fn);
-Throwable InternalError(const char *_msg);
-Throwable ProgramError(const char *_fn, const char *_msg, Expr *_specification);
+Throwable NotImplemented(const std::string& _fn);
+Throwable InternalError(const std::string& _msg);
+Throwable ProgramError(const std::string& _fn, const std::string& _msg, Expr *_specification);
 Throwable UserThrow(Expr* _thrown);
 Throwable UserReturn(Expr* _returned);
 
@@ -201,18 +201,18 @@ public:
     bool is_var_const(Expr* _var);
     Expr* variable_get(const std::string& _name);
     Expr* variable_get_this_scope(const std::string& _name);
-    int variables_len(void);
     Expr* variables(void);
-	bool add_constant(const char* _name, Expr* _v);
-    bool add_global(const char* _name, Expr* _v);
-	bool add_buildin(const char* _name, const BuildinFn _fn);
-    bool add_variable(const char* _name, Expr* _v);
-    void bind(const char* _fnname, Expr* _binds, Expr* _values);
+	bool add_constant(const std::string& _name, Expr* _v);
+    bool add_global(const std::string& _name, Expr* _v);
+	bool add_buildin(const std::string& _name, const BuildinFn _fn);
+    bool add_local(const std::string& _name, Expr* _v);
+    void bind(const std::string& _fnname, Expr* _binds, Expr* _values);
 
 private:
     VariableScope* m_outer = nullptr;
     Environment* m_env;
-    Expr* m_variables = nullptr;
+    //Expr* m_variables = nullptr;
+    std::unordered_map<std::string, Expr*> m_variables;
 };
 
 class Environment {
@@ -248,10 +248,10 @@ public:
     /*Library creation*/
     bool load_core(void);
     bool load_std(void);
-	bool add_constant(const char* _name, Expr* _v);
-    bool add_global(const char* _name, Expr* _v);
-	bool add_buildin(const char* _name, const BuildinFn _fn);
-    bool add_variable(const char* _name, Expr* _v);
+	bool add_constant(const std::string& _name, Expr* _v);
+    bool add_global(const std::string& _name, Expr* _v);
+	bool add_buildin(const std::string& _name, const BuildinFn _fn);
+    bool add_local(const std::string& _name, Expr* _v);
 
 private:
     GarbageCollector m_gc;
@@ -306,7 +306,7 @@ Throwable::thrown(void)
 }
 
 Throwable
-InternalError(const char *_msg)
+InternalError(const std::string& _msg)
 {
     std::stringstream ss;
     Throwable tw;
@@ -317,7 +317,7 @@ InternalError(const char *_msg)
 }
 
 Throwable
-NotImplemented(const char *_fn)
+NotImplemented(const std::string& _fn)
 {
     std::stringstream ss;
     Throwable tw;
@@ -328,7 +328,7 @@ NotImplemented(const char *_fn)
 }
 
 Throwable
-ProgramError(const char *_fn, const char *_msg, Expr *_specification) {
+ProgramError(const std::string& _fn, const std::string& _msg, Expr *_specification) {
     std::stringstream ss;
     Throwable tw;
     tw.m_type = THROWABLE_ERROR;
@@ -421,25 +421,13 @@ VariableScope::env(void)
     return m_env;
 }
 
-int
-VariableScope::variables_len(void)
-{
-    return len(m_variables);
-}
-
-Expr*
-VariableScope::variables(void)
-{
-    return m_variables;
-}
-
 Expr*
 VariableScope::variable_get(const std::string& _s)
 {
     Expr* v = nullptr;
     VariableScope* scope = this;
     while (scope != nullptr) {
-        v = assoc(env()->symbol(_s), scope->m_variables);
+        v = scope->variable_get_this_scope(_s);
         if (!is_nil(v))
             return v;
         scope = scope->m_outer;
@@ -450,45 +438,47 @@ VariableScope::variable_get(const std::string& _s)
 Expr*
 VariableScope::variable_get_this_scope(const std::string& _s)
 {
-    return assoc(env()->symbol(_s), m_variables);
+    if (m_variables.find(_s) == m_variables.end())
+        return nullptr;
+    return m_variables[_s];
 }
 
 bool
-VariableScope::add_variable(const char* _name, Expr* _v)
+VariableScope::add_local(const std::string& _name, Expr* _v)
 {
     Expr* entry;
     if (!is_nil(variable_get_this_scope(_name)))
         return false;
-    entry = env()->list({env()->symbol(_name), _v});
-    m_variables = env()->put_in_list(entry, m_variables);
+    entry = env()->list({_v});
+    m_variables.insert({_name, entry});
     return true;
 }
 
 bool
-VariableScope::add_global(const char* _name, Expr* _v)
-{
-    return global_scope()->add_variable(_name, _v);
-}
-
-bool
-VariableScope::add_constant(const char* _name, Expr* _v)
+VariableScope::add_constant(const std::string& _name, Expr* _v)
 {
     Expr* entry;
     if (!is_nil(variable_get(_name)))
         return false;
-    entry = env()->list({env()->symbol(_name), _v, env()->symbol(constvar_id)});
-    global_scope()->m_variables = env()->put_in_list(entry, global_scope()->m_variables);
+    entry = env()->list({_v, env()->symbol(constvar_id)});
+    global_scope()->m_variables.insert({_name, entry});
     return true;
 }
 
 bool
-VariableScope::add_buildin(const char* _name, const BuildinFn _fn)
+VariableScope::add_global(const std::string& _name, Expr* _v)
+{
+    return global_scope()->add_local(_name, _v);
+}
+
+bool
+VariableScope::add_buildin(const std::string& _name, const BuildinFn _fn)
 {
     return add_constant(_name, env()->buildin(_fn));
 }
 
 void
-VariableScope::bind(const char* _fnname, Expr* _binds, Expr* _values)
+VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
 {
   /*TODO: add support for keyword binds aswell*/
     //std::cout << "binding for " << _fnname << std::endl;
@@ -505,15 +495,14 @@ VariableScope::bind(const char* _fnname, Expr* _binds, Expr* _values)
                 _values = cdr(_values);
             }
             rest = ipreverse(rest);
-            add_variable(bindstr.c_str()+1, rest);
+            add_local(bindstr.c_str()+1, rest);
             //std::cout << "&bound " << bindstr.c_str()+1 << " to " << stringify(rest) << std::endl;
             _binds = cdr(_binds);
             _values = nullptr;
             break;
         }
-        add_variable(car(_binds)->symbol, car(_values));
+        add_local(car(_binds)->symbol, car(_values));
         //std::cout << "bound " << stringify(car(_binds)) << " to " << stringify(car(_values)) << std::endl;
-
         _binds = cdr(_binds);
         _values = cdr(_values);
     }
@@ -560,25 +549,25 @@ Environment::gc_info(void)
 
 
 bool
-Environment::add_variable(const char* _name, Expr* _v)
+Environment::add_local(const std::string& _name, Expr* _v)
 {
-    return m_global_scope.add_variable(_name, _v);
+    return m_global_scope.add_local(_name, _v);
 }
 
 bool
-Environment::add_global(const char* _name, Expr* _v)
+Environment::add_global(const std::string& _name, Expr* _v)
 {
     return m_global_scope.add_global(_name, _v);
 }
 
 bool
-Environment::add_constant(const char* _name, Expr* _v)
+Environment::add_constant(const std::string& _name, Expr* _v)
 {
     return m_global_scope.add_constant(_name, _v);
 }
 
 bool
-Environment::add_buildin(const char* _name, const BuildinFn _fn)
+Environment::add_buildin(const std::string& _name, const BuildinFn _fn)
 {
     return add_constant(_name, buildin(_fn));
 }
@@ -591,8 +580,7 @@ _try_get_special_token(const char* _start)
     const std::string stokens[] = {
         "(", ")", /*Lists*/
         "[", "]", /*array*/
-        "'", "`", ",", ",@", /*quoting & quasi-quoting*/
-        //".", /*dotted-lists*/
+        "'", "`", ",@", ",",  /*quoting, quasi-quoting, unquoting & unquote-splicing*/
         };
     const size_t stokens_len = sizeof(stokens) / sizeof(stokens[0]);
     /*TODO: not a cpp'y solution..*/
@@ -767,19 +755,19 @@ Environment::lex(std::list<std::string>& _tokens)
         return program;
     }
     if (token == "`") {
-        std::cout << "found ` quasiquote"  << std::endl;
+        //std::cout << "found ` quasiquote"  << std::endl;
         _tokens.pop_front();
         program = list({symbol("quasiquote"), lex(_tokens)});
         return program;
     }
     if (token == ",") {
-        std::cout << "found , unquote"  << std::endl;
+        //std::cout << "found , unquote"  << std::endl;
         _tokens.pop_front();
         program = list({symbol("unquote"), lex(_tokens)});
         return program;
     }
     if (token == ",@") {
-        std::cout << "found ,@ unquote-splicing"  << std::endl;
+        //std::cout << "found ,@ unquote-splicing"  << std::endl;
         _tokens.pop_front();
         program = list({symbol("unquote-splicing"), lex(_tokens)});
         return program;
@@ -821,12 +809,12 @@ Environment::eval(Expr* _e)
 }
 
 Expr*
-_macro_expander(VariableScope* _s, const char* _macroname, Expr* _macrofn, Expr* _macroargs) {
+_macro_expander(VariableScope* _s, const std::string& _macroname, Expr* _macrofn, Expr* _macroargs) {
     auto macro_expand = [] (auto macro_expand, VariableScope* scope, Expr* body) {
         if (is_nil(body))
             return body;
         if (body->type == TYPE_SYMBOL) {
-            Expr* sym = second(scope->variable_get_this_scope(body->symbol));
+            Expr* sym = first(scope->variable_get_this_scope(body->symbol));
             if (is_nil(sym)) {
                 return body;
             }
@@ -886,7 +874,7 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         }
         return last;
     };
-    auto eval_fn = [progn, this, _scope] (const char* name, Expr* fn, Expr* args) {
+    auto eval_fn = [progn, this, _scope] (const std::string& name, Expr* fn, Expr* args) {
         VariableScope internal = _scope->create_internal();
         args = list_eval(&internal, args);
         internal.bind(name, fn->callable.binds, args);
@@ -912,13 +900,13 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 
         var = _scope->variable_get(_e->symbol);
         if (!is_nil(var))
-            return second(var);
+            return first(var);
         throw ProgramError("eval", "could not find existing symbol called", _e);
     }
 
     /*Handle function calls*/
     if (_e->type == TYPE_CONS) {
-        Expr* name = nullptr;
+        std::string name;
         Expr* fn = nullptr;
         Expr* args = nullptr;
         fn = car(_e);
@@ -926,8 +914,11 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         if (fn->type == TYPE_CONS)
             fn = scoped_eval(_scope, fn);
         if (fn->type == TYPE_SYMBOL) {
-            name = fn;
-            fn = second(_scope->variable_get(fn->symbol));
+            name = fn->symbol;
+            fn = first(_scope->variable_get(fn->symbol));
+        }
+        else {
+            name = "lambda";
         }
         if (is_nil(fn))
             throw ProgramError("eval", "could not evaluate unknown function", first(_e));
@@ -936,13 +927,10 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
             return fn->buildin(_scope, args);
         }
         if (fn->type == TYPE_LAMBDA) {
-            if (is_nil(name))
-                return eval_fn("lambda", fn, args);
-            return eval_fn("lambda", fn, args);
+            return eval_fn(name, fn, args);
         }
         if (fn->type == TYPE_MACRO) {
-            return scoped_eval(_scope,
-                               _macro_expander(_scope, fn->symbol, fn, args));
+            return scoped_eval(_scope, _macro_expander(_scope, name, fn, args));
         }
         throw ProgramError("eval", "could not find function called", fn);
     }
@@ -1879,7 +1867,7 @@ core::_try(VariableScope* _s, Expr* _e)
         throw ProgramError("try", "arg 3 expected expression for error evaluation, not", third(_e));
 
     VariableScope internal = _s->create_internal();
-    internal.add_variable(second(_e)->symbol, err);
+    internal.add_local(second(_e)->symbol, err);
     res = _s->env()->scoped_eval(&internal, third(_e));
     return res;
 }
@@ -1906,12 +1894,17 @@ core::_return(VariableScope* _s, Expr* _e)
 Expr*
 core::variable_definition(VariableScope* _s, Expr* _e)
 {
+    Expr* var = nullptr;
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
         throw ProgramError("variable-definition", "expects single arg, but got", args);
     if (first(args)->type != TYPE_SYMBOL)
         throw ProgramError("variable-definition", "expects symbol variable, but got", first(args));
-    return _s->variable_get(first(args)->symbol);
+    
+    var = _s->variable_get(first(args)->symbol);
+    if (is_nil(var))
+        return _s->env()->nil();
+    return var;
 }
 
 Expr*
@@ -1946,7 +1939,7 @@ core::deflocal(VariableScope* _s, Expr* _e)
         throw ProgramError("local!", "expects symbol and value, got", _e);
     if (first(_e)->type != TYPE_SYMBOL)
         throw ProgramError("local!", "expects name to be type symbol, got", first(_e));
-    _s->add_variable(first(_e)->symbol, val);
+    _s->add_local(first(_e)->symbol, val);
     return first(_e);
 }
 
@@ -2021,8 +2014,8 @@ core::macro_expand(VariableScope* _s, Expr* _e)
                            "expected first arg to be a symbol pointing to a macro, not",
                            first(macro_call));
 
-    const char* macro_name = first(macro_call)->symbol;
-    Expr* macro_fn = second(_s->variable_get(first(macro_call)->symbol));
+    const std::string macro_name = first(macro_call)->symbol;
+    Expr* macro_fn = first(_s->variable_get(first(macro_call)->symbol));
     Expr* macro_args = cdr(macro_call);
     Expr* expanded = _macro_expander(_s, macro_name, macro_fn, macro_args);
     return expanded;
@@ -2057,7 +2050,7 @@ std_lib(void)
     "   (and (symbol? var) (notnil? (variable-definition var))))"
     " (fn! const? (var)"
     "   (if (not (var? var)) (return NIL))"
-    "   (= 'CONSTANT (third (variable-definition var))))"
+    "   (= 'CONSTANT (second (variable-definition var))))"
 
     /*TODO: use this one with a folding function for multiple values*/
     //" (fn! _EQUAL2 (a b)"
@@ -2132,7 +2125,7 @@ std_lib(void)
     //"  (if test NIL (progn body)))"
 
     " (fn! put (v l)"
-    "  \"Join value onto front of list\""
+    "  \"put value onto front of list\""
     "  (cons v l))"
 
     " (fn! apply (fn list)"
@@ -2199,14 +2192,14 @@ std_lib(void)
 
     " (fn! variable-value (var)"
     "   \"get value associated with variable\""
-    "   (second (variable-definition var)))"
+    "   (first (variable-definition var)))"
 
     " (fn! set! (var val)"
     "   \"change variable to become value on evaluation\""
     "   (if (not (var? var)) (throw \"set! expected symbol variable, not\" "
     "var))"
     "   (if (const? var) (throw \"set! cannot set constant\" var))"
-    "   (setnth! 1 val (variable-definition var)))"
+    "   (setnth! 0 val (variable-definition var)))"
 
     " (fn! before-n (n lst)"
     "   \"create a list containing the first n values of a given list\""
@@ -2232,7 +2225,7 @@ std_lib(void)
 
     /*https://lwh.jp/lisp/library.html*/
     " (fn! map (fn &lists)"
-    "   \"apply fn to mapped values in lists and collect results\""
+    "   \"apply fn to sequencially mapped values in lists and collect results\""
     "   (write fn) (write lists)"
     "   (if (nil? (car lists))"
     "     NIL"
@@ -2241,18 +2234,29 @@ std_lib(void)
     "                            (transform 'cdr lists))))))"
 
     //https://lwh.jp/lisp/quasiquotation.html
-    " (macro! (quasiquote x)"
+    " (macro! quasiquote (x)"
+    "   (write x)"
     "   (if (cons? x)"
     "     (if (= (car x) 'unquote)"
     "       (cadr x)"
     "       (if (= (caar x) 'unquote-splicing)"
-    "         (list 'join"
-    "               (cadr (car x))"
-    "               (list 'quasiquote (cdr x)))"
-    "         (list 'cons"
-    "               (list 'quasiquote (car x))"
-    "               (list 'quasiquote (cdr x)))))"
-    "     (list 'quote x)))"
+    "         ['join (cadr (car x)) ['quasiquote (cdr x)]]"
+    "         ['cons ['quasiquote (car x)] ['quasiquote (cdr x)]]))"
+    "     ['quote x]))"
+
+       //"(macro! quasiquote (x)"
+       //    "(if (cons? x)"
+       //        "(if (eq (car x) 'unquote)"
+       //            "(cadr x)"
+       //            "(if (eq (caar x) 'unquote-splicing)"
+       //                "(list 'append"
+       //                        "(cadr (car x))"
+       //                        "(list 'quasiquote (cdr x)))"
+       //                "(list 'cons"
+       //                        "(list 'quasiquote (car x))"
+       //                        "(list 'quasiquote (cdr x)))))"
+       //        "(list 'quote x)))"
+
 
     " (fn! foldl (fn init list)"
     "  \"fold a list using fn and init value\""
@@ -2268,6 +2272,8 @@ std_lib(void)
     "     (fn (first list)"
     "         (foldr fn init (rest list)))"
     "   init))"
+
+    " (macro! error (err) ['error err])"
 
     " (fn! join (a b)"
     "   (if (nil? a)"

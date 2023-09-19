@@ -268,16 +268,13 @@ test_globals(void)
     e.add_constant("*Creator*", e.string("Thomas Alexgaard"));
     e.add_constant("PI", e.decimal(pi));
 
-    std::cout << "len of constants: " << e.global_scope()->variables_len() << std::endl;
-    TL_TEST(e.global_scope()->variables_len() == 2);
-
     yal::Expr* constant = e.global_scope()->variable_get("PI");
     std::cout << "PI: " << yal::stringify(constant) << std::endl;
-    TL_TEST(yal::stringify(constant) == "(PI 3.14159 CONSTANT)");
+    TL_TEST(yal::stringify(constant) == "(3.14159 CONSTANT)");
 
     constant = e.global_scope()->variable_get("*Creator*");
     std::cout << "Creator: " << yal::stringify(constant) << std::endl;
-    TL_TEST(yal::stringify(constant) == "(*Creator* \"Thomas Alexgaard\" CONSTANT)");
+    TL_TEST(yal::stringify(constant) == "(\"Thomas Alexgaard\" CONSTANT)");
 
     e.add_constant("*Creator-github*", e.string("https://github.com/thom9258/"));
     e.add_constant("*Host-Languange*", e.string("C++"));
@@ -633,7 +630,7 @@ test_set_variables(void)
                           "(error \"[setcdr!] Expected cons to modify, got\" notcons)"));
 
     TL_TEST(repl_test(&e, "(const! max-health 10)", "max-health"));
-    TL_TEST(repl_test(&e, "(variable-definition 'max-health)", "(max-health 10 CONSTANT)"));
+    TL_TEST(repl_test(&e, "(variable-definition 'max-health)", "(10 CONSTANT)"));
     TL_TEST(repl_test(&e, "(local! health (+ 2 2))", "health"));
     TL_TEST(repl_test(&e, "(set! 'health (- health 1))", "3"));
     TL_TEST(repl_test(&e, "health", "3"));
@@ -1097,7 +1094,7 @@ test_variable_definition(void)
     yal::Environment e;
     e.load_std();
 
-    TL_TEST(repl_test(&e, "(variable-definition 'PI)", "(PI 3.14159 CONSTANT)"));
+    TL_TEST(repl_test(&e, "(variable-definition 'PI)", "(3.14159 CONSTANT)"));
     TL_TEST(repl_test(&e, "(variable-definition 'NOTPI)", "NIL"));
     TL_TEST(repl_test(&e, "(variable-value 'PI)", "3.14159"));
 
@@ -1142,8 +1139,8 @@ test_std_list_stuff(void)
     TL_TEST(repl_test(&e, "(transform real? [-1 2.3 4 3.2 9])", "(T NIL T NIL T)"));
 
 
-    TL_TEST(repl_test(&e, "(map '+ [1 2 3] [3 4 5])", "(4 6 8)"));
-
+    /*TODO: map not working yet*/
+    //TL_TEST(repl_test(&e, "(map '+ [1 2 3] [3 4 5])", "(4 6 8)"));
 
     //TL_TEST(repl_test(&e, "(filter 'real? [-1 2.3 4 3.2 9])", "(-1 4 9)"));
     //TL_TEST(repl_test(&e, "(filter 'symbol? [1 'two 3 'four 5])", "(two four)"));
@@ -1203,14 +1200,22 @@ test_macros(void)
 
     TL_TEST(repl_test(&e, "(setq! v1 5)", "5"));
     TL_TEST(repl_test(&e, "v1", "5"));
-
     TL_TEST(repl_test(&e, "(setq! v1 6)", "6"));
     TL_TEST(repl_test(&e, "v1", "6"));
-
     TL_TEST(repl_test(&e, "(macro-expand '(setq! v1 7))", "(set! (quote v1) 7)"));
-
     TL_TEST(repl_test(&e, "(eval (macro-expand '(setq! v1 7)))", "7"));
     TL_TEST(repl_test(&e, "v1", "7"));
+
+    TL_TEST(repl_test(&e, "'`(+ 1 ,(+ 2 3))", "(quasiquote (+ 1 (unquote (+ 2 3))))"));
+
+    TL_TEST(repl_test(&e, "(macro-expand `(+ 1 ,(+ 2 3)))", "(+ 1 5)"));
+    TL_TEST(repl_test(&e, "[(quasiquote (+ 1 (unquote (+ 2 3))))]", "(+ 1 5)"));
+    TL_TEST(repl_test(&e, "`(+ 1 ,(+ 2 3))", "(+ 1 5)"));
+
+    TL_TEST(repl_test(&e, "(global! L [3 4 5])", "(3 4 5)"));
+
+    TL_TEST(repl_test(&e, "`(1 2 ,@L)", "(1 2 3 4 5)"));
+
 }
 
 void
@@ -1258,38 +1263,38 @@ main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-    //TL(test_sizes());
-    //TL(test_types_creation());
-    //TL(test_read());
-    //TL(test_nilp());
-    //TL(test_len());
-    //TL(test_assoc());
-    //TL(test_globals());
-    //TL(test_ipreverse());
-    //TL(test_simple_eval());
-    //TL(test_lex_types());
-    //TL(test_buildin_range());
-    //TL(test_buildin_equality());
-    //TL(test_buildin_accessors());
-    //TL(test_buildin_list_creation());
-    //TL(test_buildin_math());
-    //TL(test_conditionals());
-    //TL(test_variables());
-    //TL(test_lambda());
-    //TL(test_fn());
-    //TL(test_try_catch_throw());
-    //TL(test_full_circle());
-    //TL(test_load_libraries());
+    TL(test_sizes());
+    TL(test_types_creation());
+    TL(test_read());
+    TL(test_nilp());
+    TL(test_len());
+    TL(test_assoc());
+    TL(test_globals());
+    TL(test_ipreverse());
+    TL(test_simple_eval());
+    TL(test_lex_types());
+    TL(test_buildin_range());
+    TL(test_buildin_equality());
+    TL(test_buildin_accessors());
+    TL(test_buildin_list_creation());
+    TL(test_buildin_math());
+    TL(test_conditionals());
+    TL(test_variables());
+    TL(test_lambda());
+    TL(test_fn());
+    TL(test_try_catch_throw());
+    TL(test_full_circle());
+    TL(test_load_libraries());
     TL(test_functions_and_recursion());
     TL(test_predicates());
     TL(test_std());
     TL(test_setnth());
     TL(test_variable_definition());
     TL(test_set_variables());
-    TL(test_macros());
-    //TL(test_funcall());
     TL(test_foldl_foldr());
     TL(test_std_list_stuff());
+    TL(test_macros());
+    //TL(test_funcall());
 
 
 

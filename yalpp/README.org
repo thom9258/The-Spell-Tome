@@ -44,7 +44,7 @@ This means, that core functionality is implemented in the languange itself, such
 *** Nice to have
 
 - [ ] Redefine variables to contain variable-value and variable-function
-- [ ] Use a hash map for O(1) access of variables instead of iteration using assoc
+- [X] Use a hash map for O(1) access of variables instead of iteration using assoc
 - [X] List manioulation such as split, and map transforms for lists
 - [.] Keywords and stricter error checking for function binds and checking of correct input len
 - [ ] let and flet scopes
