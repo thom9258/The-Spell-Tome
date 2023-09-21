@@ -997,7 +997,6 @@ Environment::load_core(void)
         add_buildin("macro-expand", core::macro_expand);
         add_buildin("lambda", core::deflambda);
         add_buildin("quote", core::quote);
-        //add_buildin("error", core::quote);
         add_buildin("cons", core::cons);
         add_buildin("range", core::range);
         add_buildin("reverse!", core::reverse_ip);
@@ -1013,7 +1012,6 @@ Environment::load_core(void)
         add_buildin("/", core::divide);
         add_buildin("=", core::mathequal);
         add_buildin("<", core::lessthan);
-        /*TODO: greaterthan is just the opposite of lessthan*/
         add_buildin(">", core::greaterthan);
         add_buildin("eq", core::eq);
         add_buildin("equal", core::equal);
@@ -1031,13 +1029,11 @@ Environment::load_core(void)
         add_buildin("write", core::write);
         add_buildin("newline", core::newline);
         add_buildin("stringify", core::stringify);
-        add_buildin("_concat2", core::concat2);
-
+        add_buildin("_CONCAT2", core::concat2);
         add_constant("real-max", real(std::numeric_limits<int>::max()));
         add_constant("real-min", real(std::numeric_limits<int>::min()));
         add_constant("decimal-max", decimal(std::numeric_limits<float>::max()));
         add_constant("decimal-min", decimal(std::numeric_limits<float>::min()));
-
         add_buildin("cos", core::cos);
         add_buildin("cosh", core::cosh);
         add_buildin("acos", core::acos);
@@ -1047,16 +1043,13 @@ Environment::load_core(void)
         add_buildin("tan", core::tan);
         add_buildin("tanh", core::tanh);
         add_buildin("atan", core::atan);
-
         add_buildin("floor", core::floor);
         add_buildin("ceil", core::ceil);
         add_buildin("pow", core::pow);
         add_buildin("sqrt", core::sqrt);
-
         add_buildin("log", core::log);
         add_buildin("log10", core::log10);
         add_buildin("exp", core::exp);
-
         add_buildin("time", core::get_time);
     }
     catch (std::exception& e) {
@@ -2718,7 +2711,7 @@ std_lib(void)
     /* =======================================================================
        STRING MANAGEMENT
     ======================================================================= */
-    " (fn! concat (&list) (foldl _concat2 \"\" list))"
+    " (fn! concat (&list) (foldl _CONCAT2 \"\" list))"
 
     /* =======================================================================
        MACRO-HELPERS

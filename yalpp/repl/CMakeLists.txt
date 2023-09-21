@@ -9,5 +9,5 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include_directories(/usr/include/readline)
 set(CMAKE_CXX_FLAGS "-Wall -lreadline -Wall -Wextra -Werror -ggdb")
 
-add_executable(yal main.cpp)
+add_executable(yal yalrepl.cpp)
 target_link_libraries(yal readline)
