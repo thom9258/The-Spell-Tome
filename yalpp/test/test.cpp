@@ -1287,6 +1287,29 @@ test_extended_math(void)
     TL_TEST(repl_test(&e, "(cos 0.3)", "0.955337"));
     TL_TEST(repl_test(&e, "(sin 0.3)", "0.29552"));
     TL_TEST(repl_test(&e, "(tan 0.3)", "0.309336"));
+
+    TL_TEST(repl_test(&e, "(sqrt 5)", "2.23607"));
+
+    TL_TEST(repl_test(&e, "(floor 7)", "7"));
+    TL_TEST(repl_test(&e, "(ceil 7)", "7"));
+
+    TL_TEST(repl_test(&e, "(floor 7.2)", "7"));
+    TL_TEST(repl_test(&e, "(ceil 7.2)", "8"));
+
+    TL_TEST(repl_test(&e, "(floor 7.8)", "7"));
+    TL_TEST(repl_test(&e, "(ceil 7.8)", "8"));
+    
+    TL_TEST(repl_test(&e, "(sum-of-squares 2 0.3 11 4)", "141.09"));
+
+
+    TL_TEST(repl_test(&e, "(min 2 4.3)", "2"));
+    TL_TEST(repl_test(&e, "(max 2 4.3)", "4.3"));
+    TL_TEST(repl_test(&e, "(min 7.2 1)", "1"));
+    TL_TEST(repl_test(&e, "(max 7.2 1)", "7.2"));
+
+    TL_TEST(repl_test(&e, "(clamp 4 -2 2)", "2"));
+    TL_TEST(repl_test(&e, "(clamp 1 -2 2)", "1"));
+    TL_TEST(repl_test(&e, "(clamp -6 -2 2)", "-2"));
 }
 
 int

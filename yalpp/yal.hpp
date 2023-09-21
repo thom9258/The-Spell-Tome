@@ -202,10 +202,6 @@ Expr* exp(VariableScope* _s, Expr* _e);
 
 Expr* get_time(VariableScope* _s, Expr* _e);
 
-Expr* termread_real(VariableScope* _s, Expr* _e);
-Expr* termread_decimal(VariableScope* _s, Expr* _e);
-Expr* termread_line(VariableScope* _s, Expr* _e);
-
 }; /*namespace core*/
 
 const char* std_lib(void);
@@ -1062,10 +1058,6 @@ Environment::load_core(void)
         add_buildin("exp", core::exp);
 
         add_buildin("time", core::get_time);
-
-        add_buildin("read-real", core::termread_real);
-        add_buildin("read-decimal", core::termread_decimal);
-        add_buildin("read-line", core::termread_line);
     }
     catch (std::exception& e) {
         std::cout << "something wrong with buildins!" << std::endl
@@ -2363,8 +2355,8 @@ core::sqrt(VariableScope* _s, Expr* _e)
     if (len(args) != 1 || !is_val(first(args)))
         throw ProgramError("sqrt", "expected 1 value arg, got", args);
     if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->real(std::sqrt(first(args)->decimal));
-    return _s->env()->real(std::sqrt(first(args)->real));
+        return _s->env()->decimal(std::sqrt(first(args)->decimal));
+    return _s->env()->decimal(std::sqrt(first(args)->real));
 }
     
 Expr*
@@ -2439,35 +2431,6 @@ core::get_time(VariableScope *_s, Expr *_e)
 }
 
 
-Expr*
-core::termread_real(VariableScope* _s, Expr* _e)
-{
-  if (len(_e) != 0)
-      throw ProgramError("termread-real", "expects no arguments, got", _e);
-  int real = 0;
-  std::cin >> real;
-  return _s->env()->real(real);
-}
-
-Expr* core::termread_decimal(VariableScope* _s, Expr* _e)
-{
-  if (len(_e) != 0)
-      throw ProgramError("termread-decimal", "expects no arguments, got", _e);
-  float decimal = 0;
-  std::cin >> decimal;
-  return _s->env()->decimal(decimal);
-}
-
-Expr* core::termread_line(VariableScope* _s, Expr* _e)
-{
-  if (len(_e) != 0)
-      throw ProgramError("termread-line", "expects no arguments, got", _e);
-  std::string line = "";
-  std::getline (std::cin, line);
-  //std::cin >> line;
-  return _s->env()->string(line);
-}
-
 const char*
 std_lib(void)
 {
@@ -2534,6 +2497,10 @@ std_lib(void)
     //" (fn! * (&list) (foldl _MULTIPLY2 1 list))"
     //" (fn! / (&list) (foldl _DIVIDE2   1 list))"
 
+    " (fn! min (a b) (if (< a b) a b))"
+    " (fn! max (a b) (if (< a b) b a))"
+    " (fn! clamp (val low high) (max low (min val high)))"
+
     " (fn! abs (v) (if (< v 0) (* -1 v) v))"
     " (fn! % (n a) (if (> n a) (% (- n a) a) a))"
     " (fn! zero? (v) (or (= v 0) (= v 0.0)))"
@@ -2541,6 +2508,10 @@ std_lib(void)
     " (fn! odd? (v) (= (% v 2) 1))"
     " (fn! square (v) (* v v))"
     " (fn! cube (v) (* v v v))"
+
+    " (fn! sum-of-squares (&values)"
+       "\"Calculate the sum of squares of all values provided, eg: v1^2 + v2^2 + ... + vN^2\""
+    "   (apply + (transform square values)))"
 
     " (fn! factorial (v)"
     "   (if (= v 0) 1 (* v (factorial (- v 1)))))"
