@@ -1,5 +1,7 @@
+#include <cmath>
 #include <iostream>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <initializer_list>
 #include <algorithm>
@@ -10,6 +12,7 @@
 #include <functional>
 #include <cassert>
 #include <math.h>
+#include <chrono>
 
 #include <unordered_map>
 //https://www.educative.io/answers/what-is-a-hash-map-in-cpp
@@ -115,8 +118,8 @@ Expr* assoc(Expr* _key, Expr* _list);
 Expr* ipreverse(Expr* _list);
 
 char* to_cstr(const std::string& _s);
-std::stringstream stream(Expr* _e);
-std::string stringify(Expr* _e);
+std::stringstream stream(Expr* _e, bool _wrap_quotes);
+std::string stringify(Expr* _e, bool _wrap_quotes=true);
 
 
 namespace core {
@@ -128,6 +131,11 @@ Expr* range(VariableScope* _s, Expr* _e);
 Expr* car(VariableScope* _s, Expr* _e);
 Expr* cdr(VariableScope* _s, Expr* _e);
 Expr* cons(VariableScope* _s, Expr* _e);
+
+Expr* plus2(VariableScope* _s, Expr* _e);
+Expr* minus2(VariableScope* _s, Expr* _e);
+Expr* multiply2(VariableScope* _s, Expr* _e);
+Expr* divide2(VariableScope* _s, Expr* _e);
 
 Expr* plus(VariableScope* _s, Expr* _e);
 Expr* minus(VariableScope* _s, Expr* _e);
@@ -143,16 +151,13 @@ Expr* is_nil(VariableScope* _s, Expr* _e);
 Expr* _or(VariableScope* _s, Expr* _e);
 Expr* _and(VariableScope* _s, Expr* _e);
 
-// more math! https://www.w3schools.com/cpp/cpp_math.asp
-//Expr* cos(VariableScope* _s, Expr* _e);
-//Expr* sin(VariableScope* _s, Expr* _e);
-//Expr* sqrt(VariableScope* _s, Expr* _e);
-
 Expr* slurp_file(VariableScope* _s, Expr* _e);
 Expr* read(VariableScope* _s, Expr* _e);
 Expr* eval(VariableScope* _s, Expr* _e);
 Expr* write(VariableScope* _s, Expr* _e);
+Expr* newline(VariableScope* _s, Expr* _e);
 Expr* stringify(VariableScope* _s, Expr* _e);
+Expr* concat2(VariableScope* _s, Expr* _e);
 
 Expr* defconst(VariableScope* _s, Expr* _e);
 Expr* defglobal(VariableScope* _s, Expr* _e);
@@ -172,7 +177,36 @@ Expr* _return(VariableScope* _s, Expr* _e);
 
 Expr* _if(VariableScope* _s, Expr* _e);
 Expr* _typeof(VariableScope* _s, Expr* _e);
-};
+
+/*NOTE: A lot of these can be calculated using the above buildins, but are
+        pulled from c++ stl for convenience.
+*/
+Expr* cos(VariableScope* _s, Expr* _e);
+Expr* sin(VariableScope* _s, Expr* _e);
+Expr* tan(VariableScope* _s, Expr* _e);
+Expr* acos(VariableScope* _s, Expr* _e);
+Expr* asin(VariableScope* _s, Expr* _e);
+Expr* atan(VariableScope* _s, Expr* _e);
+Expr* cosh(VariableScope* _s, Expr* _e);
+Expr* sinh(VariableScope* _s, Expr* _e);
+Expr* tanh(VariableScope* _s, Expr* _e);
+
+Expr* floor(VariableScope* _s, Expr* _e);
+Expr* ceil(VariableScope* _s, Expr* _e);
+
+Expr* pow(VariableScope* _s, Expr* _e);
+Expr* sqrt(VariableScope* _s, Expr* _e);
+Expr* log(VariableScope* _s, Expr* _e);
+Expr* log10(VariableScope* _s, Expr* _e);
+Expr* exp(VariableScope* _s, Expr* _e);
+
+Expr* get_time(VariableScope* _s, Expr* _e);
+
+Expr* termread_real(VariableScope* _s, Expr* _e);
+Expr* termread_decimal(VariableScope* _s, Expr* _e);
+Expr* termread_line(VariableScope* _s, Expr* _e);
+
+}; /*namespace core*/
 
 const char* std_lib(void);
 
@@ -253,7 +287,11 @@ public:
 	bool add_buildin(const std::string& _name, const BuildinFn _fn);
     bool add_local(const std::string& _name, Expr* _v);
 
+    const std::stringstream& outbuffer_put(const std::string& _put);
+    std::string outbuffer_getreset();
+
 private:
+    std::stringstream m_outbuffer;
     GarbageCollector m_gc;
     VariableScope m_global_scope;
     Expr* lex_value(std::string& _token);
@@ -480,8 +518,11 @@ VariableScope::add_buildin(const std::string& _name, const BuildinFn _fn)
 void
 VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
 {
-  /*TODO: add support for keyword binds aswell*/
+    /*TODO: add support for keyword binds aswell*/
     //std::cout << "binding for " << _fnname << std::endl;
+    //std::cout << "    binding    " << stringify(_binds) << std::endl;
+    //std::cout << "    binding to " << stringify(_values) << std::endl;
+
     std::string bindstr;
     Expr* rest = nullptr;
     //while (!is_nil(_binds) && !is_nil(_values)) {
@@ -506,11 +547,10 @@ VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
         _binds = cdr(_binds);
         _values = cdr(_values);
     }
-    if (len(_binds) != 0)
-        throw ProgramError(_fnname, "leftover arg field, could not bind", _binds);
-    if (len(_values) != 0)
+    //if (len(_binds) != 0)
+    //throw ProgramError(_fnname, "leftover arg field, could not bind", _binds);
+    if (len(_values) > 0)
         throw ProgramError(_fnname, "too many inputs given! could not bind", _values);
-
 }
 
 bool
@@ -749,30 +789,25 @@ Environment::lex(std::list<std::string>& _tokens)
         return ipreverse(program);
     }
     if (token == "'") {
-        //std::cout << "found '"  << std::endl;
         _tokens.pop_front();
         program = list({symbol("quote"), lex(_tokens)});
         return program;
     }
     if (token == "`") {
-        //std::cout << "found ` quasiquote"  << std::endl;
         _tokens.pop_front();
         program = list({symbol("quasiquote"), lex(_tokens)});
         return program;
     }
     if (token == ",") {
-        //std::cout << "found , unquote"  << std::endl;
         _tokens.pop_front();
         program = list({symbol("unquote"), lex(_tokens)});
         return program;
     }
     if (token == ",@") {
-        //std::cout << "found ,@ unquote-splicing"  << std::endl;
         _tokens.pop_front();
         program = list({symbol("unquote-splicing"), lex(_tokens)});
         return program;
     }
-    //std::cout << "found value"  << std::endl;
     program = lex_value(token);
     _tokens.pop_front();
     return program;
@@ -787,7 +822,6 @@ Environment::read(const std::string& _program)
     if (tokens.empty())
         return nullptr;
     lexed = lex(tokens);
-    //std::cout << "lexed:   " << stringify(lexed) << std::endl;
     return lexed;
 }
 
@@ -897,11 +931,11 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
             return nil();
         if (_e->symbol == std::string("t") || _e->symbol == std::string("T"))
             return t();
-
         var = _scope->variable_get(_e->symbol);
         if (!is_nil(var))
             return first(var);
         throw ProgramError("eval", "could not find existing symbol called", _e);
+        //return nil();
     }
 
     /*Handle function calls*/
@@ -967,11 +1001,16 @@ Environment::load_core(void)
         add_buildin("macro-expand", core::macro_expand);
         add_buildin("lambda", core::deflambda);
         add_buildin("quote", core::quote);
+        //add_buildin("error", core::quote);
         add_buildin("cons", core::cons);
         add_buildin("range", core::range);
         add_buildin("reverse!", core::reverse_ip);
         add_buildin("car", core::car);
         add_buildin("cdr", core::cdr);
+        //add_buildin("_PLUS2", core::plus2);
+        //add_buildin("_MINUS2", core::minus2);
+        //add_buildin("_MULTIPLY2", core::multiply2);
+        //add_buildin("_DIVIDE2", core::divide2);
         add_buildin("+", core::plus);
         add_buildin("-", core::minus);
         add_buildin("*", core::multiply);
@@ -994,7 +1033,39 @@ Environment::load_core(void)
         add_buildin("read", core::read);
         add_buildin("eval", core::eval);
         add_buildin("write", core::write);
+        add_buildin("newline", core::newline);
         add_buildin("stringify", core::stringify);
+        add_buildin("_concat2", core::concat2);
+
+        add_constant("real-max", real(std::numeric_limits<int>::max()));
+        add_constant("real-min", real(std::numeric_limits<int>::min()));
+        add_constant("decimal-max", decimal(std::numeric_limits<float>::max()));
+        add_constant("decimal-min", decimal(std::numeric_limits<float>::min()));
+
+        add_buildin("cos", core::cos);
+        add_buildin("cosh", core::cosh);
+        add_buildin("acos", core::acos);
+        add_buildin("sin", core::sin);
+        add_buildin("sinh", core::sinh);
+        add_buildin("asin", core::asin);
+        add_buildin("tan", core::tan);
+        add_buildin("tanh", core::tanh);
+        add_buildin("atan", core::atan);
+
+        add_buildin("floor", core::floor);
+        add_buildin("ceil", core::ceil);
+        add_buildin("pow", core::pow);
+        add_buildin("sqrt", core::sqrt);
+
+        add_buildin("log", core::log);
+        add_buildin("log10", core::log10);
+        add_buildin("exp", core::exp);
+
+        add_buildin("time", core::get_time);
+
+        add_buildin("read-real", core::termread_real);
+        add_buildin("read-decimal", core::termread_decimal);
+        add_buildin("read-line", core::termread_line);
     }
     catch (std::exception& e) {
         std::cout << "something wrong with buildins!" << std::endl
@@ -1007,7 +1078,6 @@ Environment::load_core(void)
 bool
 Environment::load_std(void)
 {
-    //std::cout << "std: " << stringify(eval(read(std_lib))) << std::endl;
     load_core();
     eval(read(" (fn! progn (&body)"
               "   \"evaluate body and return last result\""
@@ -1112,6 +1182,23 @@ Expr*
 Environment::put_in_list(Expr* _val, Expr* _list)
 {
     return cons(_val, _list);
+}
+
+
+const std::stringstream&
+Environment::outbuffer_put(const std::string& _put)
+{
+    m_outbuffer << _put;
+    return m_outbuffer;
+}
+
+std::string
+Environment::outbuffer_getreset()
+{
+    std::string out = m_outbuffer.str();
+    m_outbuffer.str("");
+    m_outbuffer.clear();
+    return out;
 }
 
 char*
@@ -1243,16 +1330,16 @@ Expr* fourth(Expr* _e)
 { return car(cdr(cdr(cdr(_e)))); }
 
 std::stringstream
-stream(Expr* _e)
+stream(Expr* _e, bool _wrap_quotes)
 {
-    auto stream_value = [] (Expr* e) {
+    auto stream_value = [_wrap_quotes] (Expr* e) {
         std::stringstream ss;
         if (is_nil(e)) {
             ss << "NIL";
             return ss;
         }
         switch (e->type) {
-        case TYPE_CONS:        ss << "(" << stream(e).str() << ")"; break;
+        case TYPE_CONS:        ss << "(" << stream(e, _wrap_quotes).str() << ")"; break;
         case TYPE_LAMBDA:      ss << "#<lambda>";                   break;
         case TYPE_MACRO:       ss << "#<macro>";                    break;
             //case TYPE_FUNCTION:    ss << "#<function>";                 break;
@@ -1260,7 +1347,12 @@ stream(Expr* _e)
         case TYPE_REAL:        ss << e->real;                       break;
         case TYPE_DECIMAL:     ss << e->decimal;                    break;
         case TYPE_SYMBOL:      ss << e->symbol;                     break;
-        case TYPE_STRING:      ss << "\"" << e->string << "\"";     break;
+        case TYPE_STRING:      
+            if (_wrap_quotes)
+                ss << "\"" << e->string << "\"";
+            else
+              ss << e->string;
+            break;
         default:
             ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
         };
@@ -1276,15 +1368,15 @@ stream(Expr* _e)
         return stream_value(_e);
 
     if (is_dotted(_e)) {
-        ss << "(" << stream(car(_e)).str() << " . "
-           << stream(cdr(_e)).str() << ")";
+        ss << "(" << stream(car(_e), _wrap_quotes).str() << " . "
+           << stream(cdr(_e), _wrap_quotes).str() << ")";
         return ss;
     }
     ss << "(";
-    ss << stream(car(curr)).str();
+    ss << stream(car(curr), _wrap_quotes).str();
     curr = cdr(curr);
     while (!is_nil(curr)) {
-        ss << " " << stream(car(curr)).str();
+        ss << " " << stream(car(curr), _wrap_quotes).str();
         curr = cdr(curr);
     }
     ss << ")";
@@ -1292,9 +1384,9 @@ stream(Expr* _e)
 }
 
 std::string
-stringify(Expr* _e)
+stringify(Expr* _e, bool _wrap_quotes)
 {
-    std::stringstream ss = stream(_e);
+    std::stringstream ss = stream(_e, _wrap_quotes);
     if (ss.rdbuf()->in_avail() == 0)
         return "";
     return ss.str();
@@ -1326,7 +1418,6 @@ core::car(VariableScope* _s, Expr* _e)
     if (len(_e) != 1)
         throw ProgramError("car", "expected 1 argument, got", args);
     out = car(first(args));
-    //std::cout << "car returns " << stringify(out) << std::endl;
     if (is_nil(out))
         return _s->env()->nil();
     return car(first(args));
@@ -1352,6 +1443,110 @@ core::reverse_ip(VariableScope* _s, Expr* _e)
     if (len(args) != 1)
         return nullptr;
     return ipreverse(first(args));
+}
+
+Expr*
+core::plus2(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
+
+    if (len(args) == 0)
+        return _s->env()->real(0);
+    if (len(args) == 1)
+        return a;
+    if (!is_val(a))
+        throw ProgramError("+", "cannot do math on non-value ", a);
+    if (!is_val(b))
+        throw ProgramError("+", "cannot do math on non-value ", b);
+
+    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(a->decimal + b->decimal);
+    else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(a->real + b->decimal);
+    else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
+        return  _s->env()->decimal(a->decimal + b->real);
+    return _s->env()->real(a->real + b->real);
+}
+
+Expr*
+core::minus2(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
+
+    if (len(args) == 0)
+        return _s->env()->real(0);
+    if (len(args) == 1) {
+        if (a->type == TYPE_REAL)
+            return _s->env()->real(a->real * -1);
+        if (a->type == TYPE_DECIMAL)
+            return _s->env()->decimal(a->decimal * -1);
+    }
+    if (!is_val(a))
+        throw ProgramError("-", "cannot do math on non-value ", a);
+    if (!is_val(b))
+        throw ProgramError("-", "cannot do math on non-value ", b);
+
+    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(a->decimal - b->decimal);
+    else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(a->real - b->decimal);
+    else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
+        return  _s->env()->decimal(a->decimal - b->real);
+    return _s->env()->real(a->real - b->real);
+}
+
+Expr*
+core::multiply2(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
+
+    if (len(args) == 1)
+        return _s->env()->real(0);
+    if (len(args) == 1)
+        return a;
+    if (!is_val(a))
+        throw ProgramError("*", "cannot do math on non-value ", a);
+    if (!is_val(b))
+        throw ProgramError("*", "cannot do math on non-value ", b);
+
+    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(a->decimal * b->decimal);
+    else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(a->real * b->decimal);
+    else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
+        return  _s->env()->decimal(a->decimal * b->real);
+    return _s->env()->real(a->real * b->real);
+}
+
+Expr*
+core::divide2(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
+
+    if (len(args) == 1)
+        return _s->env()->real(0);
+    if (len(args) == 1)
+        return a;
+    if (!is_val(a))
+        throw ProgramError("/", "cannot do math on non-value ", a);
+    if (!is_val(b))
+        throw ProgramError("/", "cannot do math on non-value ", b);
+
+    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(a->decimal / b->decimal);
+    else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(a->real / b->decimal);
+    else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
+        return  _s->env()->decimal(a->decimal / b->real);
+    return _s->env()->real(a->real / b->real);
 }
 
 Expr*
@@ -1458,8 +1653,6 @@ core::divide(VariableScope* _s, Expr* _e)
     Expr* curr = args;
 
     auto DIV2 = [_s] (Expr* _a, Expr* _b) {
-        //std::cout << "a = " << stringify(_a) << " , "
-        //          << "b = " << stringify(_b) << std::endl;
         if ((_a->type == TYPE_DECIMAL && _a->decimal == 0) ||
             (_a->type == TYPE_REAL && _a->real == 0)        )
             return _s->env()->decimal(0);
@@ -1756,13 +1949,21 @@ Expr*
 core::write(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
-    if (len(args) != 1)
+    if (len(args) < 1)
         std::cout << "NIL" << std::endl;
-    /*TODO: Replace cout with a astringstream in environment, and explicitly
-            cout the env stream to cout.
-    */
-    std::cout << stringify(first(args)) << std::endl;
+    if (len(args) > 1)
+        throw ProgramError("write", "expects single argument to write, not", args);
+    _s->env()->outbuffer_put(stringify(first(args)));
     return first(args);
+}
+
+Expr*
+core::newline(VariableScope* _s, Expr* _e)
+{
+    if (len(_e) != 0)
+        throw ProgramError("newline", "expects no args, got", _e);
+    _s->env()->outbuffer_put("\n");
+    return _s->env()->nil();
 }
 
 Expr*
@@ -1774,6 +1975,20 @@ core::stringify(VariableScope* _s, Expr* _e)
         throw ProgramError("stringify", "expects only 1 argument, got", args);
     ss << stringify(first(args));
     return _s->env()->string(ss.str());
+}
+
+Expr*
+core::concat2(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) == 0)
+        return _s->env()->string("");
+    if (len(args) == 1)
+        return _s->env()->string(stringify(first(args), false));
+    if (len(args) == 2)
+        return _s->env()->string(stringify(first(args), false) + stringify(second(args), false));
+    throw ProgramError("concat", "can only concatenate up to 2 args, not", args);
+   
 }
 
 Expr*
@@ -1878,7 +2093,6 @@ core::_throw(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     throw UserThrow(_s->env()->put_in_list(_s->env()->symbol("error"), args));
-    return nullptr;
 }
 
 Expr*
@@ -2021,19 +2235,253 @@ core::macro_expand(VariableScope* _s, Expr* _e)
     return expanded;
 }
 
+Expr*
+core::cos(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("cos", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::cos(first(args)->decimal));
+    return _s->env()->decimal(std::cos(first(args)->real));
+}
+
+Expr*
+core::sin(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("sin", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::sin(first(args)->decimal));
+    return _s->env()->decimal(std::sin(first(args)->real));
+}
+
+Expr*
+core::tan(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("tan", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::tan(first(args)->decimal));
+    return _s->env()->decimal(std::tan(first(args)->real));
+}
+
+Expr*
+core::acos(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("acos", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::acos(first(args)->decimal));
+    return _s->env()->decimal(std::acos(first(args)->real));
+}
+    
+Expr*
+core::asin(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("asin", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::asin(first(args)->decimal));
+    return _s->env()->decimal(std::asin(first(args)->real));
+}
+    
+Expr*
+core::atan(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("atan", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::atan(first(args)->decimal));
+    return _s->env()->decimal(std::atan(first(args)->real));
+}
+    
+Expr*
+core::cosh(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("cosh", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::cosh(first(args)->decimal));
+    return _s->env()->decimal(std::cosh(first(args)->real));
+}
+    
+Expr*
+core::sinh(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("sinh", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::sinh(first(args)->decimal));
+    return _s->env()->decimal(std::sinh(first(args)->real));
+}
+    
+Expr*
+core::tanh(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("tanh", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::tanh(first(args)->decimal));
+    return _s->env()->decimal(std::tanh(first(args)->real));
+}
+    
+Expr*
+core::floor(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("floor", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->real(std::floor(first(args)->decimal));
+    return _s->env()->real(std::floor(first(args)->real));
+}
+    
+Expr*
+core::ceil(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("ceil", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->real(std::ceil(first(args)->decimal));
+    return _s->env()->real(std::ceil(first(args)->real));
+}
+
+Expr*
+core::sqrt(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("sqrt", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->real(std::sqrt(first(args)->decimal));
+    return _s->env()->real(std::sqrt(first(args)->real));
+}
+    
+Expr*
+core::log(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("log", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->real(std::log(first(args)->decimal));
+    return _s->env()->real(std::log(first(args)->real));
+}
+    
+Expr*
+core::log10(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("log10", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->real(std::log10(first(args)->decimal));
+    return _s->env()->real(std::log10(first(args)->real));
+}
+
+Expr*
+core::exp(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) != 1 || !is_val(first(args)))
+        throw ProgramError("exp", "expected 1 value arg, got", args);
+    if (first(args)->type == TYPE_DECIMAL)
+        return _s->env()->real(std::exp(first(args)->decimal));
+    return _s->env()->real(std::exp(first(args)->real));
+}
+    
+Expr*
+core::pow(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
+    if (len(args) != 2 || !is_val(a) || !is_val(b))
+        throw ProgramError("pow", "expected 2 value args, got", args);
+    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::pow(a->decimal, b->decimal));
+    if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
+        return _s->env()->decimal(std::pow(a->real, b->decimal));
+    if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
+        return _s->env()->decimal(std::pow(a->decimal, b->real));
+    return _s->env()->decimal(std::pow(a->real, b->real));
+}
+
+Expr*
+core::get_time(VariableScope *_s, Expr *_e)
+{
+  if (len(_e) != 0)
+      throw ProgramError("time", "expects no arguments, got", _e);
+
+  using namespace std::chrono;
+  const auto c = std::chrono::system_clock::now();
+  long h = std::chrono::duration_cast<std::chrono::hours>(c.time_since_epoch()).count();
+  long m = std::chrono::duration_cast<std::chrono::minutes>(c.time_since_epoch()).count();
+  long s = std::chrono::duration_cast<std::chrono::seconds>(c.time_since_epoch()).count();
+  long ms = std::chrono::duration_cast<std::chrono::milliseconds>(c.time_since_epoch()).count();
+
+  return _s->env()->list({
+          _s->env()->real(h),
+          _s->env()->real(m % 60),
+          _s->env()->real(s % 60),
+          _s->env()->real(ms % 1000),
+      });
+}
+
+
+Expr*
+core::termread_real(VariableScope* _s, Expr* _e)
+{
+  if (len(_e) != 0)
+      throw ProgramError("termread-real", "expects no arguments, got", _e);
+  int real = 0;
+  std::cin >> real;
+  return _s->env()->real(real);
+}
+
+Expr* core::termread_decimal(VariableScope* _s, Expr* _e)
+{
+  if (len(_e) != 0)
+      throw ProgramError("termread-decimal", "expects no arguments, got", _e);
+  float decimal = 0;
+  std::cin >> decimal;
+  return _s->env()->decimal(decimal);
+}
+
+Expr* core::termread_line(VariableScope* _s, Expr* _e)
+{
+  if (len(_e) != 0)
+      throw ProgramError("termread-line", "expects no arguments, got", _e);
+  std::string line = "";
+  std::getline (std::cin, line);
+  //std::cin >> line;
+  return _s->env()->string(line);
+}
+
 const char*
 std_lib(void)
 {
    return "(progn "
-    /*Info*/
+    /* =======================================================================
+      TOOL INFO
+    ======================================================================= */
     " (const! *creator* \"Thomas Alexgaard\")"
-    " (const! *creator-git* \"https://github.com/thom9258/\")"
+       //" (const! *creator-git* \"https://github.com/thom9258/\")"
     " (const! *host* \"C++\")"
-    " (const! *version* '(0 0 1))"
 
-    " (fn! list (&items) items)"
-
-    /*Predicates*/
+    /* =======================================================================
+      PREDICATES
+    ======================================================================= */
     " (fn! notnil?  (v) (not (nil? v)))"
     " (fn! real?    (v) (= (typeof v) 'real))"
     " (fn! decimal? (v) (= (typeof v) 'decimal))"
@@ -2043,8 +2491,8 @@ std_lib(void)
     " (fn! cons?    (v) (= (typeof v) 'cons))"
     " (fn! list?    (v) (or (nil? v) (= (typeof v) 'cons)))"
     " (fn! atom?    (v) (or (nil? v) (not (cons? v))))"
-    " (fn! lambda?  (v) (= (typeof v) 'lambda))"
-    " (fn! fn?      (v) (= (typeof v) 'function))"
+    " (fn! buildin? (v) (= (typeof v) 'buildin))"
+    " (fn! fn?      (v) (or (buildin? v) (= (typeof v) 'lambda)))"
     " (fn! macro?   (v) (= (typeof v) 'macro))"
     " (fn! var? (var)"
     "   (and (symbol? var) (notnil? (variable-definition var))))"
@@ -2052,24 +2500,27 @@ std_lib(void)
     "   (if (not (var? var)) (return NIL))"
     "   (= 'CONSTANT (second (variable-definition var))))"
 
-    /*TODO: use this one with a folding function for multiple values*/
-    //" (fn! _EQUAL2 (a b)"
-    //"   (= (stringify a) (stringify b)))"
+    " (fn! not (x)"
+    "  (if (nil? x) T NIL))"
 
-    /*File Management*/
+    /* =======================================================================
+      OPERATING SYSTEM INTERACTION
+    ======================================================================= */
     " (fn! load-file (f) (eval (read (slurp-file f))))"
 
-    /*Math*/
-    //" (fn! + (&list) (foldl _PLUS2     0 list))"
-    //" (fn! - (&list) (foldl _MINUS2    0 list))"
-    //" (fn! * (&list) (foldl _MULTIPLY2 1 list))"
-    //" (fn! / (&list) (foldl _DIVIDE2   1 list))"
-    " (fn! zero? (v) (or (= v 0) (= v 0.0)))"
-    " (fn! abs (v) (if (< v 0) (* -1 v) v))"
-    " (fn! % (n a) (if (> n a) (% (- n a) a) a))"
-    //" (fn! even? (v) )"
-    //" (fn! odd?  (v) )"
+    " (fn! time-hours (t) (first t))"
+    " (fn! time-minutes (t) (second t))"
+    " (fn! time-seconds (t) (third t))"
+    " (fn! time-milliseconds (t) (fourth t))"
 
+    " (fn! print (&outs)"
+    "   (write (apply 'concat outs)))"
+    " (fn! println (&outs)"
+    "   (prog1 (write (apply 'concat outs)) (newline)))"
+
+    /* =======================================================================
+       MATH
+    ======================================================================= */
     " (const! PI         3.141592)"
     " (const! PI2        (* PI 2))"
     " (const! PI/2       (/ PI 2))"
@@ -2078,7 +2529,152 @@ std_lib(void)
     " (const! E          2.71828)"
     " (const! E-constant 0.57721)"
 
-    /*List Management*/
+    //" (fn! + (&list) (foldl _PLUS2     0 list))"
+    //" (fn! - (&list) (foldl _MINUS2    0 list))"
+    //" (fn! * (&list) (foldl _MULTIPLY2 1 list))"
+    //" (fn! / (&list) (foldl _DIVIDE2   1 list))"
+
+    " (fn! abs (v) (if (< v 0) (* -1 v) v))"
+    " (fn! % (n a) (if (> n a) (% (- n a) a) a))"
+    " (fn! zero? (v) (or (= v 0) (= v 0.0)))"
+    " (fn! even? (v) (= (% v 2) 0))"
+    " (fn! odd? (v) (= (% v 2) 1))"
+    " (fn! square (v) (* v v))"
+    " (fn! cube (v) (* v v v))"
+
+    " (fn! factorial (v)"
+    "   (if (= v 0) 1 (* v (factorial (- v 1)))))"
+
+    " (fn! bin-coeff (n k)"
+    "   (/ (factorial n) (factorial (- n k)) (factorial k)))"
+
+    " (fn! fib (n)"
+    "   (if (< n 2)"
+    "     n"
+    "     (+ (fib (- n 1)) (fib (- n 2)))))"
+
+    /* =======================================================================
+       EVALUATION
+    ======================================================================= */
+    " (fn! prog1 (&body)"
+    "   \"evaluate body and return first result\""
+    "   (if (nil? body) NIL (first body)))"
+
+    " (fn! prog2 (&body)"
+    "   \"evaluate body and return second result\""
+    "   (if (nil? body) NIL (second body)))"
+
+    " (fn! prog3 (&body)"
+    "   \"evaluate body and return third result\""
+    "   (if (nil? body) NIL (third body)))"
+
+    //" (macro! when (test &body)"
+    //"  (if test (progn body)))"
+
+    //" (macro! unless (test &body)"
+    //"  (if test NIL (progn body)))"
+
+    " (fn! apply (fn list)"
+    "   \"apply function to list\""
+    "   (eval (put fn list)))"
+
+    /* =======================================================================
+       LISTS
+    ======================================================================= */
+   " (fn! list (&vars) vars)"
+
+    " (fn! put (v l)"
+    "  \"put value onto front of list\""
+    "  (cons v l))"
+
+    " (fn! len (l)"
+    "  \"calculate length of list\""
+    "  (if (nil? l)"
+    "    0"
+    "    (+ 1 (len (rest l)))))"
+
+    /*TODO: Reimplement this with cond instead of if*/
+    " (fn! contains (value list)"
+    "   \"check if value is in list\""
+    "   (if (nil? list)"
+    "     NIL"
+    "     (if (eq (car list) value)"
+    "       T"
+    "       (contains value (cdr list)))))"
+
+    " (fn! assoc (value list)"
+    "   \"check if value is in list\""
+    "   (if (nil? list)"
+    "     NIL"
+    "     (if (eq (caar list) value)"
+    "       (car list)"
+    "       (assoc value (cdr list)))))"
+
+    " (fn! recurse (n)"
+    "   \"create recursion calls n times (used to test "
+    "tail-call-optimization)\""
+    "   (if (> n 0) (recurse (- n 1)) 'did-we-blow-up?))"
+
+    " (fn! before-n (n lst)"
+    "   \"create a list containing the first n values of a given list\""
+    "   (if (= n 0)"
+    "     NIL"
+    "     (put (first lst) (before-n (- n 1) (rest lst)))))"
+
+    " (fn! after-n (n lst)"
+    "   \"create a list containing the last n values of a given list\""
+    "   (if (= n 0)"
+    "     lst"
+    "     (after-n (- n 1) (rest lst))))"
+
+    " (fn! split (n lst)"
+    "   \"create 2 lists split at n\""
+    "   [(before-n n lst) (after-n n lst)])"
+
+    " (fn! transform (fn lst)"
+    "   \"apply fn to all value in lst and collect results\""
+    "   (if (nil? lst)"
+    "     NIL"
+    "     (put ((variable-value 'fn) (first lst)) (transform fn (rest lst)))))"
+
+    /*https://lwh.jp/lisp/library.html*/
+    " (fn! map (fn &lists)"
+    "   \"apply fn to sequencially mapped values in lists and collect results\""
+    "   (throw \"map does not work yet\")"   
+       //"   (write fn) (write lists)"
+    "   (if (nil? (car lists))"
+    "     NIL"
+    "     (cons (apply fn (transform 'car lists))"
+    "           (apply 'map (cons fn"
+    "                            (transform 'cdr lists))))))"
+
+    " (fn! foldl (fn init list)"
+    "  \"fold a list using fn and init value\""
+    "   (if list"
+    "   (foldl fn"
+    "     (fn init (first list))"
+    "     (rest list))"
+    "   init))"
+
+    " (fn! foldr (fn init list)"
+    "  \"reverse fold a list using fn and init value\""
+    "   (if (nil? list)"
+    "     (fn (first list)"
+    "         (foldr fn init (rest list)))"
+    "   init))"
+
+    " (fn! join (a b)"
+    "   (if (nil? a)"
+    "     b"
+    "     (cons (first a) (join (rest a) b))))"
+
+    " (fn! reverse (list)"
+    "  \"reverse a list\""
+    "   (foldl (lambda (a x) (cons x a)) nil list))"
+
+    /* =======================================================================
+       ACCESSORS
+    ======================================================================= */
     " (fn! head  (l) (car l))"
     " (fn! tail  (l) (cdr l))"
     " (fn! first (l) (car l))"
@@ -2109,35 +2705,6 @@ std_lib(void)
     " (fn! cdadr (l) (cdr (car (cdr l))))"
     " (fn! cdaar (l) (cdr (car (car l))))"
 
-    " (fn! not (x)"
-    "  (if (nil? x) T NIL))"
-
-    //" (macro! quote (e) e)"
-    " (fn! list (&vars) vars)"
-
-    " (macro! setq! (v x)"
-    "   ['set! 'v x])"
-
-    //" (macro! when (test &body)"
-    //"  (if test (progn body)))"
-    //
-    //" (macro! unless (test &body)"
-    //"  (if test NIL (progn body)))"
-
-    " (fn! put (v l)"
-    "  \"put value onto front of list\""
-    "  (cons v l))"
-
-    " (fn! apply (fn list)"
-    "   \"apply function to list\""
-    "   (eval (put fn list)))"
-
-    " (fn! len (l)"
-    "  \"calculate length of list\""
-    "  (if (nil? l)"
-    "    0"
-    "    (+ 1 (len (rest l)))))"
-
     " (fn! nthcdr (n list)"
     "  \"get list subset starting from n\""
     "  (if (> 1 n)"
@@ -2152,36 +2719,11 @@ std_lib(void)
     "  \"get last value of list\""
     "  (nth (- (len list) 1) list))"
 
-    /*TODO: Reimplement this with cond instead of if*/
-    " (fn! contains (value list)"
-    "   \"check if value is in list\""
-    "   (if (nil? list)"
-    "     NIL"
-    "     (if (eq (car list) value)"
-    "       T"
-    "       (contains value (cdr list)))))"
-
-    " (fn! assoc (value list)"
-    "   \"check if value is in list\""
-    "   (if (nil? list)"
-    "     NIL"
-    "     (if (eq (caar list) value)"
-    "       (car list)"
-    "       (assoc value (cdr list)))))"
-
-    " (fn! format (&args)"
-    "   \"stringify and concatenate arguments to single string\""
-    " (throw \"format not implemented\"))"
-
-    " (fn! print (&args)"
-    "   \"print formatted string\""
-    "   (throw \"print not implemented\")"
-    "   (write (format args)))"
-
-    " (fn! recurse (n)"
-    "   \"create recursion calls n times (used to test "
-    "tail-call-optimization)\""
-    "   (if (> n 0) (recurse (- n 1)) 'did-we-blow-up?))"
+    /* =======================================================================
+       VARIABLES
+    ======================================================================= */
+    " (macro! setq! (v x)"
+    "   ['set! 'v x])"
 
     " (fn! setnth! (n val list)"
     "   \"set the nth value of a list\""
@@ -2196,52 +2738,36 @@ std_lib(void)
 
     " (fn! set! (var val)"
     "   \"change variable to become value on evaluation\""
-    "   (if (not (var? var)) (throw \"set! expected symbol variable, not\" "
-    "var))"
+    "   (if (not (var? var))"
+    "     (throw \"set! expected symbol variable, not\" var))"
     "   (if (const? var) (throw \"set! cannot set constant\" var))"
     "   (setnth! 0 val (variable-definition var)))"
 
-    " (fn! before-n (n lst)"
-    "   \"create a list containing the first n values of a given list\""
-    "   (if (= n 0)"
-    "     NIL"
-    "     (put (first lst) (before-n (- n 1) (rest lst)))))"
 
-    " (fn! after-n (n lst)"
-    "   \"create a list containing the last n values of a given list\""
-    "   (if (= n 0)"
-    "     lst"
-    "     (after-n (- n 1) (rest lst))))"
+    /* =======================================================================
+       STRING MANAGEMENT
+    ======================================================================= */
+    " (fn! concat (&list) (foldl _concat2 \"\" list))"
 
-    " (fn! split (n lst)"
-    "   \"create 2 lists split at n\""
-    "   [(before-n n lst) (after-n n lst)])"
-
-    " (fn! transform (fn lst)"
-    "   \"apply fn to all value in lst and collect results\""
-    "   (if (nil? lst)"
-    "     NIL"
-    "     (put ((variable-value 'fn) (first lst)) (transform fn (rest lst)))))"
-
-    /*https://lwh.jp/lisp/library.html*/
-    " (fn! map (fn &lists)"
-    "   \"apply fn to sequencially mapped values in lists and collect results\""
-    "   (write fn) (write lists)"
-    "   (if (nil? (car lists))"
-    "     NIL"
-    "     (cons (apply fn (transform 'car lists))"
-    "           (apply 'map (cons fn"
-    "                            (transform 'cdr lists))))))"
+    /* =======================================================================
+       MACRO-HELPERS
+    ======================================================================= */
+    " (macro! unquote (x)"
+    "   (throw \"unquotes need to be wrapped inside quasiquotes\"))"
+    " (macro! unquote-splicing (x)"
+    "   (throw \"unquotes need to be wrapped inside quasiquotes\"))"
 
     //https://lwh.jp/lisp/quasiquotation.html
+    //https://blog.veitheller.de/Lets_Build_a_Quasiquoter.html
     " (macro! quasiquote (x)"
-    "   (write x)"
+       //"   (if (nil? x) ['NIL]"
     "   (if (cons? x)"
     "     (if (= (car x) 'unquote)"
     "       (cadr x)"
     "       (if (= (caar x) 'unquote-splicing)"
     "         ['join (cadr (car x)) ['quasiquote (cdr x)]]"
-    "         ['cons ['quasiquote (car x)] ['quasiquote (cdr x)]]))"
+    "         ['cons ['quasiquote (car x)]"
+    "                ['quasiquote (cdr x)]]))"
     "     ['quote x]))"
 
        //"(macro! quasiquote (x)"
@@ -2257,32 +2783,6 @@ std_lib(void)
        //                        "(list 'quasiquote (cdr x)))))"
        //        "(list 'quote x)))"
 
-
-    " (fn! foldl (fn init list)"
-    "  \"fold a list using fn and init value\""
-    "   (if list"
-    "   (foldl fn"
-    "     (fn init (first list))"
-    "     (rest list))"
-    "   init))"
-
-    " (fn! foldr (fn init list)"
-    "  \"reverse fold a list using fn and init value\""
-    "   (if (nil? list)"
-    "     (fn (first list)"
-    "         (foldr fn init (rest list)))"
-    "   init))"
-
-    " (macro! error (err) ['error err])"
-
-    " (fn! join (a b)"
-    "   (if (nil? a)"
-    "   b"
-    "   (cons (first a) (join (rest a) b))))"
-
-    " (fn! reverse (list)"
-    "  \"reverse a list\""
-    "   (foldl (lambda (a x) (cons x a)) nil list))"
 
     " 'std)";
 }

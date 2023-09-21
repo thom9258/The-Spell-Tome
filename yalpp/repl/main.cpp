@@ -35,6 +35,9 @@ main(int argc, char **argv)
         p = e.read(input);
         free(input);
         res = e.eval(p);
+        std::string outbuf = e.outbuffer_getreset();
+        if (outbuf != "")
+            std::cout << outbuf;
         std::cout << yal::stringify(res) << std::endl;
    }
 }

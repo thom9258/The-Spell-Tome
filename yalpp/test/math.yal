@@ -1,7 +1,5 @@
 (progn
 
-(fn! pow (v) (* v v))
-
 (fn! factorial (v)
   (if (= v 0)
     1

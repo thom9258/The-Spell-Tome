@@ -82,6 +82,8 @@ test_sizes(void)
     std::cout << "sizeof cons = " << conssz << std::endl; 
     std::cout << "sizeof smallsz = " << yal::smallXsz << std::endl; 
     std::cout << "sizeof type = " << enumtypesz << std::endl; 
+
+    std::cout << "sizeof iostream = " << sizeof(std::iostream) << std::endl; 
 }
 
 void
@@ -91,14 +93,14 @@ test_types_creation(void)
     yal::Expr* real = e.real(4);
     TL_TEST(real->type == yal::TYPE_REAL);
     TL_TEST(real->real == 4);
-    std::string realstr = yal::stream(real).str();
+    std::string realstr = yal::stringify(real);
     std::cout << realstr << std::endl;
     TL_TEST(realstr == "4");
 
     yal::Expr* deci = e.decimal(4.3f);
     TL_TEST(deci->type == yal::TYPE_DECIMAL);
     TL_TEST(deci->decimal == 4.3f);
-    std::string decistr = yal::stream(deci).str();
+    std::string decistr = yal::stringify(deci);
     std::cout << decistr << std::endl;
     TL_TEST(decistr == "4.3");
 
@@ -106,32 +108,32 @@ test_types_creation(void)
     TL_TEST(cns->type == yal::TYPE_CONS);
     TL_TEST(cns->cons.car == real);
     TL_TEST(cns->cons.cdr == deci);
-    std::string cnsstr = yal::stream(cns).str();
+    std::string cnsstr = yal::stringify(cns);
     std::cout << cnsstr << std::endl;
     TL_TEST(cnsstr == "(4 . 4.3)");
 
     yal::Expr* str = e.string("mystr");
     TL_TEST(str->type == yal::TYPE_STRING);
     TL_TEST(str->string == std::string("mystr"));
-    std::string strstr = yal::stream(str).str();
+    std::string strstr = yal::stringify(str);
     std::cout << strstr << std::endl;
     TL_TEST(strstr == "\"mystr\"");
 
     yal::Expr* sym = e.symbol("mysym");
     TL_TEST(sym->type == yal::TYPE_SYMBOL);
     TL_TEST(sym->symbol == std::string("mysym"));
-    std::string symstr = yal::stream(sym).str();
+    std::string symstr = yal::stringify(sym);
     std::cout << symstr << std::endl;
     TL_TEST(symstr == "mysym");
 
     yal::Expr* lst = e.list({e.symbol("*"), e.real(2), e.decimal(3.14)});
     TL_TEST(lst->type == yal::TYPE_CONS);
-    std::string lststr = yal::stream(lst).str();
+    std::string lststr = yal::stringify(lst);
     std::cout << lststr << std::endl;
     TL_TEST(lststr == std::string("(* 2 3.14)"));
 
     yal::Expr* lst2 = e.list({e.symbol("+"), e.real(5), e.list({e.symbol("*"), e.real(4), e.decimal(2.5)})});
-    std::string lst2str = yal::stream(lst2).str();
+    std::string lst2str = yal::stringify(lst2);
     std::cout << lst2str << std::endl;
     TL_TEST(lst2str == std::string("(+ 5 (* 4 2.5))"));
 
@@ -642,7 +644,7 @@ test_set_variables(void)
                           "(error \"set! cannot set constant\" PI)"));
     /*TODO: how do we allow setting something to nil but only when explicitly supplied as input?*/
     TL_TEST(repl_test(&e, "(set! 'health)", "NIL"));
-    TL_TEST(repl_test(&e, "health", "NIL"));
+    TL_TEST(repl_test(&e, "health", "9"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -700,6 +702,9 @@ test_predicates(void)
 
     TL_TEST(repl_test(&e, "(nil? 2)", "NIL"));
     TL_TEST(repl_test(&e, "(nil? 'NIL)", "T"));
+    TL_TEST(repl_test(&e, "(nil? NIL)", "T"));
+    TL_TEST(repl_test(&e, "(nil? ())", "T"));
+    TL_TEST(repl_test(&e, "(nil?)", "T"));
 
     TL_TEST(repl_test(&e, "(real? 2)", "T"));
     TL_TEST(repl_test(&e, "(real? 'mysym)", "NIL"));
@@ -956,7 +961,10 @@ test_load_libraries(void)
 
     TL_TEST(repl_test(&e, "(load-file \"../math.yal\")", "math"));
 
-    TL_TEST(repl_test(&e, "(pow 2)", "4"));
+    TL_TEST(repl_test(&e, "(square 2)", "4"));
+    TL_TEST(repl_test(&e, "(cube 2)", "8"));
+    TL_TEST(repl_test(&e, "(pow 2 2)", "4"));
+    TL_TEST(repl_test(&e, "(pow 2 8)", "256"));
 
     TL_TEST(repl_test(&e,
                        "(factorial 5)",
@@ -1205,15 +1213,24 @@ test_macros(void)
     TL_TEST(repl_test(&e, "(macro-expand '(setq! v1 7))", "(set! (quote v1) 7)"));
     TL_TEST(repl_test(&e, "(eval (macro-expand '(setq! v1 7)))", "7"));
     TL_TEST(repl_test(&e, "v1", "7"));
+}
+
+void
+test_quasiquote(void)
+{
+    yal::Environment e;
+    e.load_std();
+
+    TL_TEST(repl_test(&e, "`(+ 1 2)", "(+ 1 2)"));
 
     TL_TEST(repl_test(&e, "'`(+ 1 ,(+ 2 3))", "(quasiquote (+ 1 (unquote (+ 2 3))))"));
 
-    TL_TEST(repl_test(&e, "(macro-expand `(+ 1 ,(+ 2 3)))", "(+ 1 5)"));
-    TL_TEST(repl_test(&e, "[(quasiquote (+ 1 (unquote (+ 2 3))))]", "(+ 1 5)"));
     TL_TEST(repl_test(&e, "`(+ 1 ,(+ 2 3))", "(+ 1 5)"));
 
-    TL_TEST(repl_test(&e, "(global! L [3 4 5])", "(3 4 5)"));
+    TL_TEST(repl_test(&e, "(macro-expand '`(+ 1 ,(+ 2 3)))", "(+ 1 5)"));
+    TL_TEST(repl_test(&e, "[(quasiquote (+ 1 (unquote (+ 2 3))))]", "(+ 1 5)"));
 
+    TL_TEST(repl_test(&e, "(global! L [3 4 5])", "(3 4 5)"));
     TL_TEST(repl_test(&e, "`(1 2 ,@L)", "(1 2 3 4 5)"));
 
 }
@@ -1257,6 +1274,21 @@ test_scope(void)
     std::cout << e.gc_info() << std::endl;
 }
 
+void
+test_extended_math(void)
+{
+    yal::Environment e;
+    e.load_std();
+
+    TL_TEST(repl_test(&e, "(cos 1)", "0.540302"));
+    TL_TEST(repl_test(&e, "(sin 1)", "0.841471"));
+    TL_TEST(repl_test(&e, "(tan 1)", "1.55741"));
+
+    TL_TEST(repl_test(&e, "(cos 0.3)", "0.955337"));
+    TL_TEST(repl_test(&e, "(sin 0.3)", "0.29552"));
+    TL_TEST(repl_test(&e, "(tan 0.3)", "0.309336"));
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1293,10 +1325,12 @@ main(int argc, char **argv)
     TL(test_set_variables());
     TL(test_foldl_foldr());
     TL(test_std_list_stuff());
+    TL(test_extended_math());
     TL(test_macros());
+
+
+    TL(test_quasiquote());
     //TL(test_funcall());
-
-
 
     /*NOT WORKING*/
     //TL(test_std_reduce());
