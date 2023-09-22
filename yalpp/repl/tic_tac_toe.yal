@@ -17,6 +17,21 @@
            (prog2 (println "input 0-2 please..") (get-move move))
            inp))
 
+   (fn! get (x y)
+     (nth x (nth y board)))
+
+  (fn! player-won? ()
+    (local! v (first tokens))
+    (if (and (= (get 0 0) v) (and (= (get 0 1) v) (= (get 0 2) v))) (return T))
+    (if (and (= (get 1 0) v) (and (= (get 1 1) v) (= (get 1 2) v))) (return T))
+    (if (and (= (get 2 0) v) (and (= (get 2 1) v) (= (get 2 2) v))) (return T))
+    (if (and (= (get 0 0) v) (and (= (get 1 0) v) (= (get 2 0) v))) (return T))
+    (if (and (= (get 0 1) v) (and (= (get 1 1) v) (= (get 2 1) v))) (return T))
+    (if (and (= (get 0 2) v) (and (= (get 1 2) v) (= (get 2 2) v))) (return T))
+    (if (and (= (get 0 0) v) (and (= (get 1 1) v) (= (get 2 2) v))) (return T))
+    (if (and (= (get 0 2) v) (and (= (get 1 1) v) (= (get 2 0) v))) (return T))
+    NIL)
+
   (fn! player-turn ()
        (println (first players) "'s turn, place " (first tokens))
        (board-print)
@@ -24,10 +39,14 @@
        (local! col (get-move "col"))
        (println "placing at " row " " col)
        (setnth! row (first tokens) (nth col board))
+       (if (player-won?)
+           (progn (println (first players) " won!") (board-print) (return)))
        (setq! players (reverse! players))
        (setq! tokens (reverse! tokens))
        (setq! turns (+ turns 1))
-       (if (> turns 10) 'end (player-turn))) 
+       (if (> turns 9)
+           "game was a tie..."
+           (player-turn)))
 
   (fn! setup-game ()
        (print "player 1 name: ")
@@ -39,6 +58,4 @@
   (fn! play ()
        (setup-game)
        (player-turn))
-
-  (play)
 )
