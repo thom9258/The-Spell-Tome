@@ -1,0 +1,44 @@
+(progn
+  (global! turns 0)
+  (global! players [1 2])
+  (global! tokens ["x" "o"])
+  (global! board '(("-" "-" "-") ("-" "-" "-") ("-" "-" "-")))
+
+  (fn! board-print-row (row)
+       (println " " (first row) " | " (second row) " | " (third row) " "))
+
+  (fn! board-print () 
+       (transform board-print-row board))
+
+  (fn! get-move (move) 
+       (print move ": ")
+       (local! inp (read-real))
+       (if (not (contains inp [0 1 2]))
+           (prog2 (println "input 0-2 please..") (get-move move))
+           inp))
+
+  (fn! player-turn ()
+       (println (first players) "'s turn, place " (first tokens))
+       (board-print)
+       (local! row (get-move "row"))
+       (local! col (get-move "col"))
+       (println "placing at " row " " col)
+       (setnth! row (first tokens) (nth col board))
+       (setq! players (reverse! players))
+       (setq! tokens (reverse! tokens))
+       (setq! turns (+ turns 1))
+       (if (> turns 10) 'end (player-turn))) 
+
+  (fn! setup-game ()
+       (print "player 1 name: ")
+       (setnth! 0 (read-line) players)
+       (print "player 2 name: ")
+       (setnth! 1 (read-line) players)
+       (println "hello " (first players) " and " (second players) "!"))
+
+  (fn! play ()
+       (setup-game)
+       (player-turn))
+
+  (play)
+)

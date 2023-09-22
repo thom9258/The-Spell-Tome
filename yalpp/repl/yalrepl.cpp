@@ -37,25 +37,51 @@ termread_line(yal::VariableScope* _s, yal::Expr* _e)
   return _s->env()->string(line);
 }
 
+yal::Expr*
+write_override(yal::VariableScope* _s, yal::Expr* _e)
+{
+    yal::Expr* args = _s->env()->list_eval(_s, _e);
+    if (len(args) < 1)
+        std::cout << "NIL" << std::endl;
+    if (len(args) > 1)
+        throw ProgramError("write", "expects single argument to write, not", args);
+    std::cout << stringify(first(args), false);
+    return first(args);
+}
+
+yal::Expr*
+newline_override(yal::VariableScope* _s, yal::Expr* _e)
+{
+    if (len(_e) != 0)
+        throw ProgramError("newline", "expects no args, got", _e);
+    std::cout << std::endl;
+    return _s->env()->nil();
+}
+
 int
 main(int argc, char **argv)
 {
-	(void)argc;
-	(void)argv;
 
     char* input;
-    yal::Environment e;
     int i = 0;
-
-    e.load_std();
-
+    yal::Environment e;
+    e.add_buildin("write", write_override);
+    e.add_buildin("newline", newline_override);
     e.add_buildin("read-real", termread_real);
     e.add_buildin("read-decimal", termread_decimal);
     e.add_buildin("read-line", termread_line);
+    e.load_core();
+    e.load(yal::std_lib());
 
-    std::cout << "yal - Yet Another LISP" << std::endl
-              << "\tCreated by Thomas Alexgaard." << std::endl
-              << "(quit) to quit." << std::endl << std::endl;
+    if (argc == 2) {
+        std::cout << "Running file " << argv[1] << std::endl;
+        e.load_file(argv[1]);
+    }
+
+    /*REPL loop*/
+    std::cout << "yal - Yet Another LISP"
+            << " - Created by Thomas Alexgaard." << std::endl
+            << "(quit) to quit." << std::endl << std::endl;
 
     while (1) {
         std::stringstream greet;
@@ -73,5 +99,5 @@ main(int argc, char **argv)
         if (outbuf != "")
             std::cout << outbuf;
         std::cout << yal::stringify(res) << std::endl;
-   }
+    }
 }

@@ -114,7 +114,6 @@ Expr* second(Expr* _e);
 Expr* third(Expr* _e);
 Expr* fourth(Expr* _e);
 
-Expr* assoc(Expr* _key, Expr* _list);
 Expr* ipreverse(Expr* _list);
 
 char* to_cstr(const std::string& _s);
@@ -262,7 +261,7 @@ public:
     Expr* list_eval(VariableScope* _scope, Expr* _list);
     Expr* scoped_eval(VariableScope* _scope, Expr* _e);
 
-    /*Expr creation*/
+    /*Expr Creation*/
 	Expr* blank(void);
 	Expr* t(void);
 	Expr* nil(void);
@@ -275,9 +274,10 @@ public:
     Expr* list(const std::initializer_list<Expr *>& _lst);
     Expr* put_in_list(Expr* _val, Expr* _list);
 
-    /*Library creation*/
+    /*Environment Creation*/
     bool load_core(void);
-    bool load_std(void);
+    bool load_file(const std::string& _path);
+    bool load(const std::string& _program);
 	bool add_constant(const std::string& _name, Expr* _v);
     bool add_global(const std::string& _name, Expr* _v);
 	bool add_buildin(const std::string& _name, const BuildinFn _fn);
@@ -290,6 +290,7 @@ private:
     std::stringstream m_outbuffer;
     GarbageCollector m_gc;
     VariableScope m_global_scope;
+    bool m_core_loaded = false;
     Expr* lex_value(std::string& _token);
     Expr* lex(std::list<std::string>& _tokens);
 };
@@ -985,6 +986,8 @@ Environment::list_eval(VariableScope* _scope, Expr* _list)
 bool
 Environment::load_core(void)
 {
+    if (m_core_loaded)
+        return true;
     try {
         add_buildin("const!", core::defconst);
         add_buildin("global!", core::defglobal);
@@ -1051,25 +1054,44 @@ Environment::load_core(void)
         add_buildin("log10", core::log10);
         add_buildin("exp", core::exp);
         add_buildin("time", core::get_time);
+
+        eval(read(" (fn! progn (&body)"
+                  "   \"evaluate body and return last result\""
+                  "   (if (nil? body)"
+                  "     NIL"
+                  "     (last body)))"));
+
     }
     catch (std::exception& e) {
         std::cout << "something wrong with buildins!" << std::endl
                   << e.what() << std::endl;
         return false;
     }
+    m_core_loaded = true;
     return true;
 }
 
 bool
-Environment::load_std(void)
+Environment::load(const std::string& _program)
 {
-    load_core();
-    eval(read(" (fn! progn (&body)"
-              "   \"evaluate body and return last result\""
-              "   (if (nil? body)"
-              "     NIL"
-              "     (last body)))"));
-    eval(read(std_lib()));
+    eval(read(_program));
+    return true;
+}
+
+bool
+Environment::load_file(const std::string& _path)
+{
+    std::string tmp;
+    std::ifstream ifs;
+    std::stringstream ss;
+    ifs.open(_path);
+    if (!ifs)
+        return false;
+
+    while (std::getline(ifs, tmp))
+        ss << tmp << std::endl;
+    ifs.close(); 
+    eval(read(ss.str()));
     return true;
 }
 
@@ -1253,25 +1275,6 @@ len(Expr* _e)
         tmp = cdr(tmp);
     }
     return cnt;
-}
-
-
-Expr*
-assoc(Expr* _key, Expr* _list)
-{
-    Expr* tmp;
-    std::string key;
-    if (is_nil(_key) || is_nil(_list)) return nullptr;
-    if (!is_cons(_list)) return nullptr;
-
-    key = stringify(_key);
-    tmp = _list;
-    while (!is_nil(tmp)) {
-        if (key == stringify(car(car(tmp))))
-            return car(tmp);
-        tmp = cdr(tmp);
-    }
-    return nullptr;
 }
 
 Expr*
@@ -1938,7 +1941,7 @@ core::write(VariableScope* _s, Expr* _e)
         std::cout << "NIL" << std::endl;
     if (len(args) > 1)
         throw ProgramError("write", "expects single argument to write, not", args);
-    _s->env()->outbuffer_put(stringify(first(args)));
+    _s->env()->outbuffer_put(stringify(first(args), false));
     return first(args);
 }
 
