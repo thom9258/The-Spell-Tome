@@ -33,24 +33,22 @@
 
   (fn! player-won? ()
     (local! v (first tokens))
-    (if (and (= (board-get 0 0) v) (and (= (board-get 0 1) v) (= (board-get 0 2) v))) (return T))
-    (if (and (= (board-get 1 0) v) (and (= (board-get 1 1) v) (= (board-get 1 2) v))) (return T))
-    (if (and (= (board-get 2 0) v) (and (= (board-get 2 1) v) (= (board-get 2 2) v))) (return T))
-    (if (and (= (board-get 0 0) v) (and (= (board-get 1 0) v) (= (board-get 2 0) v))) (return T))
-    (if (and (= (board-get 0 1) v) (and (= (board-get 1 1) v) (= (board-get 2 1) v))) (return T))
-    (if (and (= (board-get 0 2) v) (and (= (board-get 1 2) v) (= (board-get 2 2) v))) (return T))
-    (if (and (= (board-get 0 0) v) (and (= (board-get 1 1) v) (= (board-get 2 2) v))) (return T))
-    (if (and (= (board-get 0 2) v) (and (= (board-get 1 1) v) (= (board-get 2 0) v))) (return T))
-    NIL)
+    (if (or (and (= (get [0 0] board) v) (= (get [0 1] board) v) (= (get [0 2] board) v))
+            (and (= (get [1 0] board) v) (= (get [1 1] board) v) (= (get [1 2] board) v))
+            (and (= (get [2 0] board) v) (= (get [2 1] board) v) (= (get [2 2] board) v))
+            (and (= (get [0 0] board) v) (= (get [1 0] board) v) (= (get [2 0] board) v))
+            (and (= (get [0 1] board) v) (= (get [1 1] board) v) (= (get [2 1] board) v))
+            (and (= (get [0 2] board) v) (= (get [1 2] board) v) (= (get [2 2] board) v))
+            (and (= (get [0 0] board) v) (= (get [1 1] board) v) (= (get [2 2] board) v))
+            (and (= (get [0 2] board) v) (= (get [1 1] board) v) (= (get [2 0] board) v)))
+       T
+       NIL))
 
   (fn! board-print-row (row)
        (println " " (first row) " | " (second row) " | " (third row) " "))
 
   (fn! board-print () 
        (transform board-print-row board))
-
-  (fn! board-get (row col)
-     (nth row (nth col board)))
 
   (fn! get-move (move) 
        (print move ": ")

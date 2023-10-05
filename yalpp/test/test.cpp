@@ -5,6 +5,8 @@
 
 #include "testlib.h"
 
+const char* std_path = "../../std.yal";
+
 bool
 eval_test(yal::Environment* _e, yal::Expr* _prg, const char* _gt)    
 {
@@ -225,43 +227,6 @@ test_len(void)
 }
 
 void
-test_assoc(void)
-{
-    yal::Environment e;
-
-    yal::Expr* res = nullptr;
-    yal::Expr* alist = e.list({
-            e.cons(e.symbol("a"), e.real(2)),
-            e.cons(e.symbol("b"), e.decimal(4.2)),
-            e.list({e.symbol("c"), e.string("bob"), e.real(65)}),
-            });
-
-    std::cout << "len of alist: " << yal::len(alist) << std::endl;
-    TL_TEST(yal::len(alist) == 3);
-    std::cout << "alist: " << yal::stringify(alist) << std::endl;
-    TL_TEST(yal::stringify(alist) == "((a . 2) (b . 4.2) (c \"bob\" 65))");
-
-
-    res = yal::assoc(e.symbol("a"), alist);
-    std::cout << "a: " << yal::stringify(res) << std::endl;
-    TL_TEST(yal::stringify(res) == "(a . 2)");
-
-    res = yal::assoc(e.symbol("b"), alist);
-    std::cout << "b: " << yal::stringify(res) << std::endl;
-    TL_TEST(yal::stringify(res) == "(b . 4.2)");
-
-    res = yal::assoc(e.symbol("c"), alist);
-    std::cout << "c: " << yal::stringify(res) << std::endl;
-    TL_TEST(yal::stringify(res) == "(c \"bob\" 65)");
-
-    res = yal::assoc(e.symbol("d"), alist);
-    std::cout << "d: " << yal::stringify(res) << std::endl;
-    TL_TEST(yal::stringify(res) == "NIL");
-
-    std::cout << e.gc_info() << std::endl;
-}
-
-void
 test_globals(void)
 {
     yal::Environment e;
@@ -309,7 +274,7 @@ test_simple_eval(void)
     yal::Expr* program;
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     program = e.symbol("PI2");
     TL_TEST(eval_test(&e, program, "6.28318"));
@@ -336,7 +301,7 @@ test_lex_types(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(lex_type_test(&e, "myvar", yal::TYPE_SYMBOL));
     TL_TEST(lex_type_test(&e, "my/other-var_", yal::TYPE_SYMBOL));
@@ -357,7 +322,7 @@ test_read(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
     TL_TEST(read_test(&e, "myvar"));
     TL_TEST(read_test(&e, "my/other-var_"));
     TL_TEST(read_test(&e, "2"));
@@ -389,6 +354,13 @@ test_read(void)
     TL_TEST(read_test(&e, "(1 NIL 3)", "(1 NIL 3)"));
     TL_TEST(read_test(&e, "(1 () 3)", "(1 NIL 3)"));
     TL_TEST(read_test(&e, "(1 [] 3)", "(1 NIL 3)"));
+    
+    TL_TEST(read_test(&e, "; mymath\n(+ 2 2)", "(+ 2 2)"));
+    
+
+    TL_TEST(read_test(&e, "; mymath\n"
+                          "(- 1 8) ; is dahm hard!\n",
+                      "(- 1 8)"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -398,7 +370,7 @@ test_buildin_list_creation(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
     TL_TEST(repl_test(&e, "(quote (foo bar (quote (baz))))", "(foo bar (quote (baz)))"));
     TL_TEST(repl_test(&e, "'(foo bar '(baz))", "(foo bar (quote (baz)))"));
     TL_TEST(repl_test(&e, "(quote (1 2 3 4))", "(1 2 3 4)"));
@@ -432,7 +404,7 @@ test_buildin_list_management(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
     TL_TEST(repl_test(&e,
                       "(put 0 (list 1 2 3))",
                       "(0 1 2 3)"));
@@ -452,7 +424,7 @@ test_buildin_range(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
     TL_TEST(repl_test(&e,
                        "(range 2 5)",
                        "(2 3 4 5)"));
@@ -476,7 +448,7 @@ test_buildin_accessors(void)
 
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
     TL_TEST(repl_test(&e,
                        "(car '(1 2 3 4))",
                        "1"));
@@ -494,7 +466,7 @@ test_buildin_math(void)
 
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(+)", "0"));
     TL_TEST(repl_test(&e, "(-)", "0"));
@@ -519,7 +491,7 @@ test_buildin_equality(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(= 1 2)", "NIL"));
     TL_TEST(repl_test(&e, "(= 'somesym 'somesym)", "T"));
@@ -556,7 +528,7 @@ test_conditionals(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
 
     TL_TEST(repl_test(&e, "(if (= 2 2) 4)", "4"));
@@ -583,10 +555,20 @@ test_conditionals(void)
                       "T"));
 
 
+    TL_TEST(repl_test(&e, "(_OR2 t nil)", "T"));
+    TL_TEST(repl_test(&e, "(_OR2 NIL T)", "T"));
+    TL_TEST(repl_test(&e, "(_OR2 t T)", "T"));
+    TL_TEST(repl_test(&e, "(_OR2 nil NIL)", "NIL"));
+
     TL_TEST(repl_test(&e, "(or t nil)", "T"));
     TL_TEST(repl_test(&e, "(or NIL T)", "T"));
     TL_TEST(repl_test(&e, "(or t T)", "T"));
     TL_TEST(repl_test(&e, "(or nil NIL)", "NIL"));
+
+    TL_TEST(repl_test(&e, "(_AND2 t nil)", "NIL"));
+    TL_TEST(repl_test(&e, "(_AND2 NIL T)", "NIL"));
+    TL_TEST(repl_test(&e, "(_AND2 nil NIL)", "NIL"));
+    TL_TEST(repl_test(&e, "(_AND2 t T)", "T"));
 
     TL_TEST(repl_test(&e, "(and t nil)", "NIL"));
     TL_TEST(repl_test(&e, "(and NIL T)", "NIL"));
@@ -601,7 +583,7 @@ test_variables(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(local! player-name \"player1\")", "player-name"));
     TL_TEST(repl_test(&e, "(local! health (+ 2 2))", "health"));
@@ -628,7 +610,7 @@ test_set_variables(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(global! mycons (cons 'a 'b))", "mycons"));
     TL_TEST(repl_test(&e, "(setcar! mycons 'c)", "c"));
@@ -666,7 +648,7 @@ test_try_catch_throw(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(throw \"some error!\")", "(error \"some error!\")"));
 
@@ -706,7 +688,7 @@ test_predicates(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(typeof 2)", "real"));
     TL_TEST(repl_test(&e, "(typeof 2.34)", "decimal"));
@@ -808,7 +790,7 @@ test_lambda(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(lambda (a) a)", "#<lambda>"));
     TL_TEST(repl_test(&e, "((lambda (a) a) 12)", "12"));
@@ -851,7 +833,7 @@ test_fn(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, 
                        "(fn! same (a) a)",
@@ -916,7 +898,7 @@ test_functions_and_recursion(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
     
     TL_TEST(repl_test(&e, 
                        "(len '(1 2 3))",
@@ -952,7 +934,7 @@ test_full_circle(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     /*NOTE: I added a \n at the end here but it should not be there*/
     TL_TEST(repl_test(&e, "(slurp-file \"../test_pow.yal\")",
@@ -976,7 +958,7 @@ test_load_libraries(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(load-file \"../math.yal\")", "math"));
 
@@ -1008,12 +990,13 @@ test_load_libraries(void)
     std::cout << e.gc_info() << std::endl;
 }
 
+
 void
 test_std(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(not t)", "NIL"));
     TL_TEST(repl_test(&e, "(not nil)", "T"));
@@ -1093,7 +1076,7 @@ test_tco(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(recurse (write 1000000))", "did-we-blow-up?"));
     std::cout << e.gc_info() << std::endl;
@@ -1104,7 +1087,7 @@ test_setnth(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(global! to10 (range 0 10))", "to10"));
     TL_TEST(repl_test(&e, "(setnth! 5 'fifth to10)", "fifth"));
@@ -1119,11 +1102,28 @@ test_setnth(void)
 }
 
 void
+test_get(void)
+{
+    yal::Environment e;
+    e.load_core();
+    e.load_file(std_path);
+
+    TL_TEST(repl_test(&e, "(local! mymat '((1 2 3)"
+                          "                (4 5 6)"
+                          "                (7 8 9)))", "mymat"));
+
+    TL_TEST(repl_test(&e, "(get '(2 2) mymat)", "9"));
+    TL_TEST(repl_test(&e, "(get '(0 1) mymat)", "2"));
+    TL_TEST(repl_test(&e, "(get '(1) mymat)", "(4 5 6)"));
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
 test_variable_definition(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(variable-definition 'PI)", "(3.14159 CONSTANT)"));
     TL_TEST(repl_test(&e, "(variable-definition 'NOTPI)", "NIL"));
@@ -1137,7 +1137,7 @@ test_scope_management(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(local! a 10)", "a"));
     TL_TEST(repl_test(&e, "(scope '(progn (local! a 7) (write a) a)) ", "7"));
@@ -1159,7 +1159,7 @@ test_std_list_stuff(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(before-n 3 (range 1 10))", "(1 2 3)"));
     TL_TEST(repl_test(&e, "(after-n 7 (range 1 10))", "(8 9 10)"));
@@ -1186,7 +1186,7 @@ test_funcall(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, 
                       " (macro! funcall (fn &lst)"
@@ -1205,15 +1205,15 @@ test_funcall(void)
 }
 
 void
-test_foldl_foldr(void)
+test_reducers(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
-    TL_TEST(repl_test(&e, "(foldl + 0 '(1 2 3))", "6"));
-    TL_TEST(repl_test(&e, "(foldl + 4 '(1 2 3))", "10"));
-    TL_TEST(repl_test(&e, "(foldl * 1 '(3 8))", "24"));
+    TL_TEST(repl_test(&e, "(reduce + 0 '(1 2 3))", "6"));
+    TL_TEST(repl_test(&e, "(reduce + 4 '(1 2 3))", "10"));
+    TL_TEST(repl_test(&e, "(reduce * 1 '(3 8))", "24"));
 
     TL_TEST(repl_test(&e, "(reverse '(1 2 3))", "(3 2 1)"));
 
@@ -1225,7 +1225,7 @@ test_macros(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(global! v1 2)", "v1"));
     TL_TEST(repl_test(&e,
@@ -1250,7 +1250,7 @@ test_quasiquote(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "`(+ 1 2)", "(+ 1 2)"));
 
@@ -1272,7 +1272,7 @@ test_scope(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
     TL_TEST(repl_test(&e,
                       "(macro! scope (&body)"
                       "  ['lambda '() ['progn body]])",
@@ -1312,7 +1312,7 @@ test_extended_math(void)
 {
     yal::Environment e;
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(cos 1)", "0.540302"));
     TL_TEST(repl_test(&e, "(sin 1)", "0.841471"));
@@ -1335,7 +1335,6 @@ test_extended_math(void)
     
     TL_TEST(repl_test(&e, "(sum-of-squares 2 0.3 11 4)", "141.09"));
 
-
     TL_TEST(repl_test(&e, "(min 2 4.3)", "2"));
     TL_TEST(repl_test(&e, "(max 2 4.3)", "4.3"));
     TL_TEST(repl_test(&e, "(min 7.2 1)", "1"));
@@ -1357,7 +1356,6 @@ main(int argc, char **argv)
     TL(test_read());
     TL(test_nilp());
     TL(test_len());
-    TL(test_assoc());
     TL(test_globals());
     TL(test_ipreverse());
     TL(test_simple_eval());
@@ -1367,7 +1365,6 @@ main(int argc, char **argv)
     TL(test_buildin_accessors());
     TL(test_buildin_list_creation());
     TL(test_buildin_math());
-    TL(test_conditionals());
     TL(test_variables());
     TL(test_lambda());
     TL(test_fn());
@@ -1377,19 +1374,20 @@ main(int argc, char **argv)
     TL(test_functions_and_recursion());
     TL(test_predicates());
     TL(test_std());
+    TL(test_conditionals());
     TL(test_setnth());
     TL(test_variable_definition());
     TL(test_set_variables());
-    TL(test_foldl_foldr());
+    TL(test_reducers());
     TL(test_std_list_stuff());
     TL(test_extended_math());
+    TL(test_get());
     TL(test_macros());
-
     TL(test_quasiquote());
+
     //TL(test_funcall());
 
     /*NOT WORKING*/
-    //TL(test_std_reduce());
     //TL(test_scope_management());
     //TL(test_tco());
 

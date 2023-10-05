@@ -15,7 +15,7 @@ This means, that core functionality is implemented in the languange itself, such
   "count the length of a given list"
   (if (nil? list)
     0
-    (+ 1 (len (tail list)))))
+    (+ 1 (len (rest list)))))
 
 (fn! contains (value list)
   "check if a list contains a given value"
@@ -23,23 +23,21 @@ This means, that core functionality is implemented in the languange itself, such
     NIL
     (if (eq (car list) value)
       T
-      (contains value (cdr list)))))
+      (contains value (rest list)))))
 
 (contains a '(d c b a))
-
 #+end_src
-
-
 
 ** Version 1.0 Requirements
 
-- [X] Macro evaluation
+- [X] Comments support
+- [.] Macro evaluation
   - [ ] Incorporate quasi-quote and its associates as special tokens
 - [ ] Garbage collection
 - [ ] Tail call optimization
 - [ ] Reading of files to not require a progn
 - [ ] buildin or interpreted list iteration function (cl do)
-- [ ] buildin readline and atoi/atof equivilants for inputs
+- [X] buildin readline and atoi/atof equivilants for inputs
 
 *** Nice to have
 
@@ -48,5 +46,4 @@ This means, that core functionality is implemented in the languange itself, such
 - [X] List manioulation such as split, and map transforms for lists
 - [.] Keywords and stricter error checking for function binds and checking of correct input len
 - [ ] let and flet scopes
-
 - [ ] format and print functions

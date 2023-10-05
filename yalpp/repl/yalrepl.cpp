@@ -71,7 +71,7 @@ main(int argc, char **argv)
     e.add_buildin("read-decimal", termread_decimal);
     e.add_buildin("read-line", termread_line);
     e.load_core();
-    e.load(yal::std_lib());
+    e.load_file("../../std.yal");
 
     if (argc == 2) {
         std::cout << "Running file " << argv[1] << std::endl;

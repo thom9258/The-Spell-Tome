@@ -13,6 +13,7 @@
 #include <cassert>
 #include <math.h>
 #include <chrono>
+#include <memory>
 
 #include <unordered_map>
 //https://www.educative.io/answers/what-is-a-hash-map-in-cpp
@@ -147,8 +148,6 @@ Expr* mathequal(VariableScope* _s, Expr* _e);
 Expr* eq(VariableScope* _s, Expr* _e);
 Expr* equal(VariableScope* _s, Expr* _e);
 Expr* is_nil(VariableScope* _s, Expr* _e);
-Expr* _or(VariableScope* _s, Expr* _e);
-Expr* _and(VariableScope* _s, Expr* _e);
 
 Expr* slurp_file(VariableScope* _s, Expr* _e);
 Expr* read(VariableScope* _s, Expr* _e);
@@ -203,18 +202,18 @@ Expr* get_time(VariableScope* _s, Expr* _e);
 
 }; /*namespace core*/
 
-const char* std_lib(void);
-
 class GarbageCollector {
   /*TODO:
     Currently just a dummy gc
-    Implement a mark-and-sweep algorithm as the primary gc
+    Needed features:
+    - Page-based bulk allocation of exprs
+    - a mark-and-sweep algorithm as the primary gc
   */
     std::vector<Expr*> m_in_use = {};
 public:
-    size_t exprs_in_use(void);
-    Expr* new_variable(void);
-    void destroy_variable(Expr* _e);
+    size_t exprs_in_use_count(void);
+    Expr* new_expr(void);
+    void destroy_expr(Expr* _e);
     ~GarbageCollector(void);
 };
 
@@ -390,9 +389,10 @@ UserThrow(Expr* _thrown)
     tw.m_thrown_expr = _thrown;
     return tw;
 }
+  
 
 Expr*
-GarbageCollector::new_variable()
+GarbageCollector::new_expr()
 {
     //Expr* out = (Expr*)malloc(sizeof(Expr));
     Expr* out = new Expr;
@@ -403,7 +403,7 @@ GarbageCollector::new_variable()
 }
 
 void
-GarbageCollector::destroy_variable(Expr* _e)
+GarbageCollector::destroy_expr(Expr* _e)
 {
     if (_e == nullptr)
         return;
@@ -423,12 +423,12 @@ GarbageCollector::destroy_variable(Expr* _e)
 GarbageCollector::~GarbageCollector(void)
 {
     for (auto v : m_in_use) 
-        destroy_variable(v);
+        destroy_expr(v);
 }
 
 
 size_t
-GarbageCollector::exprs_in_use(void)
+GarbageCollector::exprs_in_use_count(void)
 {
     return m_in_use.size(); 
 }
@@ -570,7 +570,7 @@ Environment::global_scope(void)
 size_t
 Environment::exprs_in_use(void)
 {
-    return m_gc.exprs_in_use(); 
+    return m_gc.exprs_in_use_count(); 
 }
 
 const std::string
@@ -686,12 +686,22 @@ tokenize(const std::string& _str) {
     auto is_whitespace = [] (char c) {
         return (c == ' ' || c == '\t' || c == '\n');
     };
-    auto trim_whitespace = [is_whitespace, &cursor, _str] () {
-        while (is_whitespace(_str[cursor]) && _str[cursor] != '\0')
+    auto try_trim = [&] () {
+        while (_str[cursor] != '\0') {
+            /*Remove comment until endline*/
+            if (_str[cursor] == ';') {
+              cursor++;
+              while (_str[cursor] != '\0' && _str[cursor] != '\n')
+                cursor++;
+            }
+            /*Remove whitespace character*/
+            if (!is_whitespace(_str[cursor]))
+              break;
             cursor++;
+        }
     };
     while (_str[cursor] != '\0') {
-        trim_whitespace();
+        try_trim();
         curr = _get_next_token(_str, cursor);
         tokens.push_back(curr);
     }
@@ -1019,8 +1029,6 @@ Environment::load_core(void)
         add_buildin("eq", core::eq);
         add_buildin("equal", core::equal);
         add_buildin("nil?", core::is_nil);
-        add_buildin("and", core::_and);
-        add_buildin("or", core::_or);
         add_buildin("if", core::_if);
         add_buildin("try", core::_try);
         add_buildin("throw", core::_throw);
@@ -1110,7 +1118,7 @@ Environment::nil(void)
 Expr *
 Environment::blank(void)
 {
-	Expr *out = m_gc.new_variable();
+	Expr *out = m_gc.new_expr();
 	if (out == nullptr)
 		return nullptr;
 	return out;
@@ -1118,7 +1126,7 @@ Environment::blank(void)
 
 Expr *
 Environment::cons(Expr *_car, Expr *_cdr) {
-	Expr *out = m_gc.new_variable();
+	Expr *out = m_gc.new_expr();
 	if (out == nullptr)
 		return nullptr;
 	out->type = TYPE_CONS;
@@ -1129,7 +1137,7 @@ Environment::cons(Expr *_car, Expr *_cdr) {
 
 Expr *
 Environment::real(int _v) {
-     Expr *out = m_gc.new_variable();
+     Expr *out = m_gc.new_expr();
      if (out == nullptr)
        return nullptr;
      out->type = TYPE_REAL;
@@ -1139,7 +1147,7 @@ Environment::real(int _v) {
 
 Expr*
 Environment::decimal(float _v) {
-     Expr *out = m_gc.new_variable();
+     Expr *out = m_gc.new_expr();
      if (out == nullptr)
        return nullptr;
      out->type = TYPE_DECIMAL;
@@ -1149,7 +1157,7 @@ Environment::decimal(float _v) {
 
 Expr*
 Environment::symbol(const std::string& _v) {
-     Expr *out = m_gc.new_variable();
+     Expr *out = m_gc.new_expr();
      if (out == nullptr)
        return nullptr;
      out->type = TYPE_SYMBOL;
@@ -1159,7 +1167,7 @@ Environment::symbol(const std::string& _v) {
 
 Expr *
 Environment::string(const std::string& _v) {
-  Expr *out = m_gc.new_variable();
+  Expr *out = m_gc.new_expr();
   if (out == nullptr)
     return nullptr;
   out->type = TYPE_STRING;
@@ -1169,7 +1177,7 @@ Environment::string(const std::string& _v) {
 
 Expr *
 Environment::buildin(BuildinFn _v) {
-  Expr *out = m_gc.new_variable();
+  Expr *out = m_gc.new_expr();
   if (out == nullptr)
     return nullptr;
   out->type = TYPE_BUILDIN;
@@ -1841,33 +1849,6 @@ core::is_nil(VariableScope* _s, Expr* _e)
 }
 
 Expr*
-core::_and(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    if (len(args) > 2)
-        throw ProgramError("and", "expected 2 or less arguments, got", args);
-
-    if (!is_nil(first(args)) && !is_nil(second(args)))
-        return _s->env()->t();
-    return _s->env()->nil();
-}
-
-Expr*
-core::_or(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    if (len(args) > 2)
-        throw ProgramError("or", "expected 2 or less arguments, got", args);
-
-    if (!is_nil(first(args)))
-        return _s->env()->t();
-    if (!is_nil(second(args)))
-        return _s->env()->t();
-    return _s->env()->nil();
-
-}
-
-Expr*
 core::eq(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
@@ -2424,334 +2405,6 @@ core::get_time(VariableScope *_s, Expr *_e)
           _s->env()->real(s % 60),
           _s->env()->real(ms % 1000),
       });
-}
-
-
-const char*
-std_lib(void)
-{
-   return "(progn "
-    /* =======================================================================
-      TOOL INFO
-    ======================================================================= */
-    " (const! *creator* \"Thomas Alexgaard\")"
-       //" (const! *creator-git* \"https://github.com/thom9258/\")"
-    " (const! *host* \"C++\")"
-
-    /* =======================================================================
-      PREDICATES
-    ======================================================================= */
-    " (fn! notnil?  (v) (not (nil? v)))"
-    " (fn! real?    (v) (= (typeof v) 'real))"
-    " (fn! decimal? (v) (= (typeof v) 'decimal))"
-    " (fn! value?   (v) (or (= (typeof v) 'real) (= (typeof v) 'decimal)))"
-    " (fn! symbol?  (v) (= (typeof v) 'symbol))"
-    " (fn! string?  (v) (= (typeof v) 'string))"
-    " (fn! cons?    (v) (= (typeof v) 'cons))"
-    " (fn! list?    (v) (or (nil? v) (= (typeof v) 'cons)))"
-    " (fn! atom?    (v) (or (nil? v) (not (cons? v))))"
-    " (fn! buildin? (v) (= (typeof v) 'buildin))"
-    " (fn! fn?      (v) (or (buildin? v) (= (typeof v) 'lambda)))"
-    " (fn! macro?   (v) (= (typeof v) 'macro))"
-    " (fn! var? (var)"
-    "   (and (symbol? var) (notnil? (variable-definition var))))"
-    " (fn! const? (var)"
-    "   (if (not (var? var)) (return NIL))"
-    "   (= 'CONSTANT (second (variable-definition var))))"
-
-    " (fn! not (x)"
-    "  (if (nil? x) T NIL))"
-
-    /* =======================================================================
-      OPERATING SYSTEM INTERACTION
-    ======================================================================= */
-    " (fn! load-file (f) (eval (read (slurp-file f))))"
-
-    " (fn! time-hours (t) (first t))"
-    " (fn! time-minutes (t) (second t))"
-    " (fn! time-seconds (t) (third t))"
-    " (fn! time-milliseconds (t) (fourth t))"
-
-    " (fn! print (&outs)"
-    "   (write (apply 'concat outs)))"
-    " (fn! println (&outs)"
-    "   (prog1 (write (apply 'concat outs)) (newline)))"
-
-    /* =======================================================================
-       MATH
-    ======================================================================= */
-    " (const! PI         3.141592)"
-    " (const! PI2        (* PI 2))"
-    " (const! PI/2       (/ PI 2))"
-    " (const! PI/3       (/ PI 3))"
-    " (const! PI/4       (/ PI 4))"
-    " (const! E          2.71828)"
-    " (const! E-constant 0.57721)"
-
-    //" (fn! + (&list) (foldl _PLUS2     0 list))"
-    //" (fn! - (&list) (foldl _MINUS2    0 list))"
-    //" (fn! * (&list) (foldl _MULTIPLY2 1 list))"
-    //" (fn! / (&list) (foldl _DIVIDE2   1 list))"
-
-    " (fn! min (a b) (if (< a b) a b))"
-    " (fn! max (a b) (if (< a b) b a))"
-    " (fn! clamp (val low high) (max low (min val high)))"
-
-    " (fn! abs (v) (if (< v 0) (* -1 v) v))"
-    " (fn! % (n a) (if (> n a) (% (- n a) a) a))"
-    " (fn! zero? (v) (or (= v 0) (= v 0.0)))"
-    " (fn! even? (v) (= (% v 2) 0))"
-    " (fn! odd? (v) (= (% v 2) 1))"
-    " (fn! square (v) (* v v))"
-    " (fn! cube (v) (* v v v))"
-
-    " (fn! sum-of-squares (&values)"
-       "\"Calculate the sum of squares of all values provided, eg: v1^2 + v2^2 + ... + vN^2\""
-    "   (apply + (transform square values)))"
-
-    " (fn! factorial (v)"
-    "   (if (= v 0) 1 (* v (factorial (- v 1)))))"
-
-    " (fn! bin-coeff (n k)"
-    "   (/ (factorial n) (factorial (- n k)) (factorial k)))"
-
-    " (fn! fib (n)"
-    "   (if (< n 2)"
-    "     n"
-    "     (+ (fib (- n 1)) (fib (- n 2)))))"
-
-    /* =======================================================================
-       EVALUATION
-    ======================================================================= */
-    " (fn! prog1 (&body)"
-    "   \"evaluate body and return first result\""
-    "   (if (nil? body) NIL (first body)))"
-
-    " (fn! prog2 (&body)"
-    "   \"evaluate body and return second result\""
-    "   (if (nil? body) NIL (second body)))"
-
-    " (fn! prog3 (&body)"
-    "   \"evaluate body and return third result\""
-    "   (if (nil? body) NIL (third body)))"
-
-    //" (macro! when (test &body)"
-    //"  (if test (progn body)))"
-
-    //" (macro! unless (test &body)"
-    //"  (if test NIL (progn body)))"
-
-    " (fn! apply (fn list)"
-    "   \"apply function to list\""
-    "   (eval (put fn list)))"
-
-    /* =======================================================================
-       LISTS
-    ======================================================================= */
-   " (fn! list (&vars) vars)"
-
-    " (fn! put (v l)"
-    "  \"put value onto front of list\""
-    "  (cons v l))"
-
-    " (fn! len (l)"
-    "  \"calculate length of list\""
-    "  (if (nil? l)"
-    "    0"
-    "    (+ 1 (len (rest l)))))"
-
-    /*TODO: Reimplement this with cond instead of if*/
-    " (fn! contains (value list)"
-    "   \"check if value is in list\""
-    "   (if (nil? list)"
-    "     NIL"
-    "     (if (eq (car list) value)"
-    "       T"
-    "       (contains value (cdr list)))))"
-
-    " (fn! assoc (value list)"
-    "   \"check if value is in list\""
-    "   (if (nil? list)"
-    "     NIL"
-    "     (if (eq (caar list) value)"
-    "       (car list)"
-    "       (assoc value (cdr list)))))"
-
-    " (fn! recurse (n)"
-    "   \"create recursion calls n times (used to test "
-    "tail-call-optimization)\""
-    "   (if (> n 0) (recurse (- n 1)) 'did-we-blow-up?))"
-
-    " (fn! before-n (n lst)"
-    "   \"create a list containing the first n values of a given list\""
-    "   (if (= n 0)"
-    "     NIL"
-    "     (put (first lst) (before-n (- n 1) (rest lst)))))"
-
-    " (fn! after-n (n lst)"
-    "   \"create a list containing the last n values of a given list\""
-    "   (if (= n 0)"
-    "     lst"
-    "     (after-n (- n 1) (rest lst))))"
-
-    " (fn! split (n lst)"
-    "   \"create 2 lists split at n\""
-    "   [(before-n n lst) (after-n n lst)])"
-
-    " (fn! transform (fn lst)"
-    "   \"apply fn to all value in lst and collect results\""
-    "   (if (nil? lst)"
-    "     NIL"
-    "     (put ((variable-value 'fn) (first lst)) (transform fn (rest lst)))))"
-
-    /*https://lwh.jp/lisp/library.html*/
-    " (fn! map (fn &lists)"
-    "   \"apply fn to sequencially mapped values in lists and collect results\""
-    "   (throw \"map does not work yet\")"   
-       //"   (write fn) (write lists)"
-    "   (if (nil? (car lists))"
-    "     NIL"
-    "     (cons (apply fn (transform 'car lists))"
-    "           (apply 'map (cons fn"
-    "                            (transform 'cdr lists))))))"
-
-    " (fn! foldl (fn init list)"
-    "  \"fold a list using fn and init value\""
-    "   (if list"
-    "   (foldl fn"
-    "     (fn init (first list))"
-    "     (rest list))"
-    "   init))"
-
-    " (fn! foldr (fn init list)"
-    "  \"reverse fold a list using fn and init value\""
-    "   (if (nil? list)"
-    "     (fn (first list)"
-    "         (foldr fn init (rest list)))"
-    "   init))"
-
-    " (fn! join (a b)"
-    "   (if (nil? a)"
-    "     b"
-    "     (cons (first a) (join (rest a) b))))"
-
-    " (fn! reverse (list)"
-    "  \"reverse a list\""
-    "   (foldl (lambda (a x) (cons x a)) nil list))"
-
-    /* =======================================================================
-       ACCESSORS
-    ======================================================================= */
-    " (fn! head  (l) (car l))"
-    " (fn! tail  (l) (cdr l))"
-    " (fn! first (l) (car l))"
-    " (fn! rest  (l) (cdr l))"
-
-    " (fn! second  (l) (car (cdr l)))"
-    " (fn! third   (l) (car (cdr (cdr l))))"
-    " (fn! fourth  (l) (car (cdr (cdr (cdr l)))))"
-    " (fn! fifth   (l) (car (cdr (cdr (cdr (cdr l))))))"
-    " (fn! sixth   (l) (car (cdr (cdr (cdr (cdr (cdr l)))))))"
-    " (fn! seventh (l) (car (cdr (cdr (cdr (cdr (cdr (cdr l))))))))"
-    " (fn! eighth  (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr l)))))))))"
-    " (fn! ninth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr l))))))))))"
-    " (fn! tenth   (l) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr "
-    " l)))))))))))"
-
-    " (fn! cddr (l) (cdr (cdr l)))"
-    " (fn! cdar (l) (cdr (car l)))"
-    " (fn! cadr (l) (car (cdr l)))"
-    " (fn! caar (l) (car (car l)))"
-
-    " (fn! caddr (l) (car (cdr (cdr l))))"
-    " (fn! cadar (l) (car (cdr (car l))))"
-    " (fn! caadr (l) (car (car (cdr l))))"
-    " (fn! caaar (l) (car (car (car l))))"
-    " (fn! cdddr (l) (cdr (cdr (cdr l))))"
-    " (fn! cddar (l) (cdr (cdr (car l))))"
-    " (fn! cdadr (l) (cdr (car (cdr l))))"
-    " (fn! cdaar (l) (cdr (car (car l))))"
-
-    " (fn! nthcdr (n list)"
-    "  \"get list subset starting from n\""
-    "  (if (> 1 n)"
-    "    list"
-    "    (nthcdr (- n 1) (rest list))))"
-
-    " (fn! nth (n list)"
-    "  \"get nth value of list\""
-    "  (head (nthcdr n list)))"
-
-    " (fn! last (list)"
-    "  \"get last value of list\""
-    "  (nth (- (len list) 1) list))"
-
-    /* =======================================================================
-       VARIABLES
-    ======================================================================= */
-    " (macro! setq! (v x)"
-    "   ['set! 'v x])"
-
-    " (fn! setnth! (n val list)"
-    "   \"set the nth value of a list\""
-    "   (local! target (nthcdr n list))"
-    "   (if (nil? target)"
-    "     (throw \"invalid index to set, got\" n)"
-    "     (setcar! target val)))"
-
-    " (fn! variable-value (var)"
-    "   \"get value associated with variable\""
-    "   (first (variable-definition var)))"
-
-    " (fn! set! (var val)"
-    "   \"change variable to become value on evaluation\""
-    "   (if (not (var? var))"
-    "     (throw \"set! expected symbol variable, not\" var))"
-    "   (if (const? var) (throw \"set! cannot set constant\" var))"
-    "   (setnth! 0 val (variable-definition var)))"
-
-
-    /* =======================================================================
-       STRING MANAGEMENT
-    ======================================================================= */
-    " (fn! concat (&list) (foldl _CONCAT2 \"\" list))"
-
-    /* =======================================================================
-       MACRO-HELPERS
-    ======================================================================= */
-    " (macro! unquote (x)"
-    "   (throw \"unquotes need to be wrapped inside quasiquotes\"))"
-    " (macro! unquote-splicing (x)"
-    "   (throw \"unquotes need to be wrapped inside quasiquotes\"))"
-
-    //https://lwh.jp/lisp/quasiquotation.html
-    //https://blog.veitheller.de/Lets_Build_a_Quasiquoter.html
-    " (macro! quasiquote (x)"
-       //"   (if (nil? x) ['NIL]"
-    "   (if (cons? x)"
-    "     (if (= (car x) 'unquote)"
-    "       (cadr x)"
-    "       (if (= (caar x) 'unquote-splicing)"
-    "         ['join (cadr (car x)) ['quasiquote (cdr x)]]"
-    "         ['cons ['quasiquote (car x)]"
-    "                ['quasiquote (cdr x)]]))"
-    "     ['quote x]))"
-
-       //"(macro! quasiquote (x)"
-       //    "(if (cons? x)"
-       //        "(if (eq (car x) 'unquote)"
-       //            "(cadr x)"
-       //            "(if (eq (caar x) 'unquote-splicing)"
-       //                "(list 'append"
-       //                        "(cadr (car x))"
-       //                        "(list 'quasiquote (cdr x)))"
-       //                "(list 'cons"
-       //                        "(list 'quasiquote (car x))"
-       //                        "(list 'quasiquote (cdr x)))))"
-       //        "(list 'quote x)))"
-
-
-    " 'std)";
 }
 
 #endif /*YALPP_IMPLEMENTATION*/

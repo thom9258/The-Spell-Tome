@@ -1,13 +1,17 @@
-; =======================================================================
-;  YET ANOTHER LISP (YAL) INFORMATION
-; =======================================================================
+(progn
+
+; ======================================================================
+; Info
+; ======================================================================
+
 (const! *creator*     "Thomas Alexgaard")
 (const! *creator-git* "https://github.com/thom9258/")
 (const! *host*        "C++")
 
-; =======================================================================
-;  PREDICATES
-; =======================================================================
+; ======================================================================
+; Predicates
+; ======================================================================
+
 (fn! notnil?  (v) (not (nil? v)))
 (fn! real?    (v) (= (typeof v) 'real))
 (fn! decimal? (v) (= (typeof v) 'decimal))
@@ -25,16 +29,28 @@
   (if (not (var? v)) (return NIL))
   (= 'CONSTANT (second (variable-definition v))))
 
+; ======================================================================
+; Logical operators
+; ======================================================================
 
-; =======================================================================
-;  BINARY LOGIC
-; =======================================================================
-(fn! not (a)
- (if (nil? a) T NIL))
- 
-; =======================================================================
-;  OPERATING SYSTEM INTERACTION
-; =======================================================================
+(fn! not (x)
+ (if (nil? x) T NIL))
+
+(fn! _OR2 (a b)
+  (if (notnil? a) (return T))
+  (if (notnil? b) (return T))
+  NIL)
+
+(fn! _AND2 (a b)
+  (if (notnil? a) (if (notnil? b) (return T)))
+  NIL)
+
+(fn! or (&lst) (reduce _OR2 NIL lst))
+(fn! and (&lst) (reduce _AND2 T lst))
+
+; ======================================================================
+; Operating System Interaction
+; ======================================================================
 
 (fn! load-file (f) (eval (read (slurp-file f))))
 
@@ -43,15 +59,21 @@
 (fn! time-seconds (t) (third t))
 (fn! time-milliseconds (t) (fourth t))
 
+; ======================================================================
+; Printing
+; ======================================================================
+
 (fn! print (&outs)
   (write (apply 'concat outs)))
 
 (fn! println (&outs)
   (prog1 (write (apply 'concat outs)) (newline)))
+  
 
-; =======================================================================
-;  MATH
-; =======================================================================
+; ======================================================================
+; Math
+; ======================================================================
+
 (const! PI         3.141592)
 (const! PI2        (* PI 2))
 (const! PI/2       (/ PI 2))
@@ -87,10 +109,11 @@
   (if (< n 2)
     n
     (+ (fib (- n 1)) (fib (- n 2)))))
+    
+; ======================================================================
+; Evaluation
+; ======================================================================
 
-;=======================================================================
-; EVALUATION
-;======================================================================= 
 (fn! prog1 (&body)
   "evaluate body and return first result"
   (if (nil? body) NIL (first body)))
@@ -103,20 +126,15 @@
   "evaluate body and return third result"
   (if (nil? body) NIL (third body)))
 
-;(macro! when (test &body)
-;  (if test (progn body)))
-;
-;(macro! unless (test &body)
-;  (if test NIL (progn body)))
-
 (fn! apply (fn list)
   "apply function to list"
   (eval (put fn list)))
 
-;=======================================================================
-; LISTS
-;=======================================================================
 (fn! list (&vars) vars)
+
+; ======================================================================
+; List utilities
+; ======================================================================
 
 (fn! put (v l)
  "put value onto front of list"
@@ -135,14 +153,6 @@
     (if (eq (car list) value)
       T
       (contains value (cdr list)))))
-
-(fn! assoc (key list)
-  "check if key is in list, then return (key value)"
-  (if (nil? list)
-    NIL
-    (if (eq (caar list) key)
-      (car list)
-      (assoc value (cdr list)))))
 
 (fn! recurse (n)
   "create recursion calls n times (used to test tail-call-optimization)"
@@ -170,7 +180,6 @@
     NIL
     (put ((variable-value 'fn) (first lst)) (transform fn (rest lst)))))
 
-; https://lwh.jp/lisp/library.html
 (fn! map (fn &lists)
   "apply fn to sequencially mapped values in lists and collect results"
   (throw "map does not work yet")
@@ -180,19 +189,19 @@
           (apply 'map (cons fn
                            (transform 'cdr lists))))))
 
-(fn! foldl (fn init list)
+(fn! reduce (fn init list)
  "fold a list using fn and init value"
   (if list
-  (foldl fn
+  (reduce fn
     (fn init (first list))
     (rest list))
   init))
 
-(fn! foldr (fn init list)
- "reverse fold a list using fn and init value"
+(fn! reduce-r (fn init list)
+  "reverse fold a list using fn and init value"
   (if (nil? list)
     (fn (first list)
-        (foldr fn init (rest list)))
+        (reduce-r fn init (rest list)))
   init))
 
 (fn! join (a b)
@@ -202,11 +211,13 @@
 
 (fn! reverse (list)
   "reverse a list"
-  (foldl (lambda (a x) (cons x a)) nil list))
+  (reduce (lambda (a x) (cons x a)) nil list))
 
-;=======================================================================
-; ACCESSORS
-;=======================================================================
+
+; ======================================================================
+; List accessors
+; ======================================================================
+
 (fn! head  (l) (car l))
 (fn! tail  (l) (cdr l))
 (fn! first (l) (car l))
@@ -245,14 +256,34 @@
 (fn! nth (n list)
  "get nth value of list"
  (head (nthcdr n list)))
+ 
+(fn! get (idxs lst)
+  "get value of list using arbitrary idxs list"
+  (if (< (len idxs) 2)
+    (nth (first idxs) lst)
+    (get (rest idxs) (nth (first idxs) lst))))
+
+(fn! lastcdr (list)
+ "get last car of list"
+ (nthcdr (- (len list) 1) list))
 
 (fn! last (list)
  "get last value of list"
- (nth (- (len list) 1) list))
+ (first  (lastcdr list)))
+ 
+(fn! assoc (key list)
+  "check if key is in list, then return (key value)"
+  (if (nil? list)
+    NIL
+    (if (eq (caar list) key)
+      (car list)
+      (assoc key (cdr list)))))
 
-;=======================================================================
-; VARIABLES
-;=======================================================================
+
+; ======================================================================
+; Variables
+; ======================================================================
+
 (macro! setq! (v x)
   ['set! 'v x])
 
@@ -274,23 +305,23 @@
   (if (const? var) (throw "set! cannot set constant" var))
   (setnth! 0 val (variable-definition var)))
 
+; ======================================================================
+; Strings
+; ======================================================================
 
-;=======================================================================
-; STRING MANAGEMENT
-;=======================================================================
-(fn! concat (&list) (foldl _CONCAT2 "" list))
+(fn! concat (&list) (reduce _CONCAT2 "" list))
 
-;=======================================================================
-; MACRO HELPERS
-;=======================================================================
-(macro! unquote (x)
+
+; ======================================================================
+; Macro Helpers
+; ======================================================================
+
+(fn! unquote (x)
   (throw "unquotes need to be wrapped inside quasiquotes"))
 
-(macro! unquote-splicing (x)
-  (throw "unquotes need to be wrapped inside quasiquotes"))
+(fn! unquote-splicing (x)
+  (unquote x))
 
-; https://lwh.jp/lisp/quasiquotation.html
-; https://blog.veitheller.de/Lets_Build_a_Quasiquoter.html
 (macro! quasiquote (x)
   (if (cons? x)
     (if (= (car x) 'unquote)
@@ -300,3 +331,5 @@
         ['cons ['quasiquote (car x)]
                ['quasiquote (cdr x)]]))
     ['quote x]))
+
+'std)
