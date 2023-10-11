@@ -1,11 +1,18 @@
 cmake_minimum_required(VERSION 3.0)
 
-project(yal-tests)
+if (UNIX)
+    set(CMAKE_CXX_COMPILER g++-10)
+endif (UNIX)
+if (WIN32)
+  message([WARNING] if you cant compile you might need a c++20 compaitble windows compiler..?)
+endif (WIN32)
 
-set(CMAKE_CXX_STANDARD 14)
+project(program_manager_test)
+
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -ggdb")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -ggdb -pthread -std=c++20")
 
 add_executable(test test.cpp)

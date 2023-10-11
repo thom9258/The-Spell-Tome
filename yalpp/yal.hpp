@@ -26,9 +26,6 @@ namespace yal {
 #define ASSERT_UNREACHABLE(str) assert(str && "Unmanaged execution path observed!")  
 #define UNUSED(v) ((void)v)
 
-const auto constvar_id = "CONSTANT";
-
-
 enum TYPE {
     TYPE_INVALID = 0,
     TYPE_CONS,
@@ -153,7 +150,6 @@ Expr* newline(VariableScope* _s, Expr* _e);
 Expr* stringify(VariableScope* _s, Expr* _e);
 Expr* concat2(VariableScope* _s, Expr* _e);
 
-Expr* defconst(VariableScope* _s, Expr* _e);
 Expr* defglobal(VariableScope* _s, Expr* _e);
 Expr* deflocal(VariableScope* _s, Expr* _e);
 Expr* deflambda(VariableScope* _s, Expr* _e);
@@ -226,7 +222,6 @@ public:
     Expr* variable_get(const std::string& _name);
     Expr* variable_get_this_scope(const std::string& _name);
     Expr* variables(void);
-	bool add_constant(const std::string& _name, Expr* _v);
     bool add_global(const std::string& _name, Expr* _v);
 	bool add_buildin(const std::string& _name, const BuildinFn _fn);
     bool add_local(const std::string& _name, Expr* _v);
@@ -235,7 +230,6 @@ public:
 private:
     VariableScope* m_outer = nullptr;
     Environment* m_env;
-    //Expr* m_variables = nullptr;
     std::unordered_map<std::string, Expr*> m_variables;
 };
 
@@ -273,7 +267,6 @@ public:
     bool load_core(void);
     bool load_file(const std::string& _path);
     bool load(const std::string& _program);
-	bool add_constant(const std::string& _name, Expr* _v);
     bool add_global(const std::string& _name, Expr* _v);
 	bool add_buildin(const std::string& _name, const BuildinFn _fn);
     bool add_local(const std::string& _name, Expr* _v);
@@ -390,7 +383,6 @@ UserThrow(Expr* _thrown)
 Expr*
 GarbageCollector::new_expr()
 {
-    //Expr* out = (Expr*)malloc(sizeof(Expr));
     Expr* out = new Expr;
     if (out == nullptr)
       throw InternalError("Expr limit reached, could not create more Expr's.");
@@ -486,17 +478,6 @@ VariableScope::add_local(const std::string& _name, Expr* _v)
 }
 
 bool
-VariableScope::add_constant(const std::string& _name, Expr* _v)
-{
-    Expr* entry;
-    if (!is_nil(variable_get(_name)))
-        return false;
-    entry = env()->list({_v, env()->symbol(constvar_id)});
-    global_scope()->m_variables.insert({_name, entry});
-    return true;
-}
-
-bool
 VariableScope::add_global(const std::string& _name, Expr* _v)
 {
     return global_scope()->add_local(_name, _v);
@@ -505,7 +486,7 @@ VariableScope::add_global(const std::string& _name, Expr* _v)
 bool
 VariableScope::add_buildin(const std::string& _name, const BuildinFn _fn)
 {
-    return add_constant(_name, env()->buildin(_fn));
+    return add_global(_name, env()->buildin(_fn));
 }
 
 void
@@ -548,17 +529,6 @@ VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
         throw ProgramError(_fnname, "too many inputs given! could not bind", _values);
 }
 
-bool
-VariableScope::is_var_const(Expr* _var)
-{
-    if (!is_nil(third(_var)) &&
-        third(_var)->type == TYPE_SYMBOL &&
-        third(_var)->symbol == std::string(constvar_id))
-        return true;
-    return false;
-}
-
-
 VariableScope*
 Environment::global_scope(void)
 {
@@ -596,15 +566,9 @@ Environment::add_global(const std::string& _name, Expr* _v)
 }
 
 bool
-Environment::add_constant(const std::string& _name, Expr* _v)
-{
-    return m_global_scope.add_constant(_name, _v);
-}
-
-bool
 Environment::add_buildin(const std::string& _name, const BuildinFn _fn)
 {
-    return add_constant(_name, buildin(_fn));
+    return add_global(_name, buildin(_fn));
 }
 
 Environment::Environment(void) : m_global_scope(this, nullptr) {}
@@ -756,7 +720,6 @@ Environment::lex(std::list<std::string>& _tokens)
         return nullptr;
 
     token = _tokens.front();
-    //std::cout << "lexing token: " << token << std::endl;
 
     if (token == "(") {
         _tokens.pop_front();
@@ -938,12 +901,6 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
             return t();
         var = _scope->variable_get(_e->symbol);
         return first(var);
-        /*TODO: additional safety could be added here, by checking if variablekey
-          is in map and then throwing a symbol not defined error*/
-        //if (var != nullptr)
-        //    return first(var);
-        //throw ProgramError("eval", "could not find existing symbol called", _e);
-        //return nil();
     }
 
     /*Handle function calls*/
@@ -1000,7 +957,6 @@ Environment::load_core(void)
     if (m_core_loaded)
         return true;
     try {
-        add_buildin("const!", core::defconst);
         add_buildin("global!", core::defglobal);
         add_buildin("local!", core::deflocal);
         add_buildin("variable-definition", core::variable_definition);
@@ -1038,10 +994,10 @@ Environment::load_core(void)
         add_buildin("newline", core::newline);
         add_buildin("stringify", core::stringify);
         add_buildin("_CONCAT2", core::concat2);
-        add_constant("real-max", real(std::numeric_limits<int>::max()));
-        add_constant("real-min", real(std::numeric_limits<int>::min()));
-        add_constant("decimal-max", decimal(std::numeric_limits<float>::max()));
-        add_constant("decimal-min", decimal(std::numeric_limits<float>::min()));
+        add_global("real-max", real(std::numeric_limits<int>::max()));
+        add_global("real-min", real(std::numeric_limits<int>::min()));
+        add_global("decimal-max", decimal(std::numeric_limits<float>::max()));
+        add_global("decimal-min", decimal(std::numeric_limits<float>::min()));
         add_buildin("cos", core::cos);
         add_buildin("cosh", core::cosh);
         add_buildin("acos", core::acos);
@@ -1230,7 +1186,6 @@ is_nil(Expr* _e)
     const std::string nil2 = "NIL";
     if (_e == nullptr || _e->type == TYPE_INVALID)
         return true;
-    //if (_e->type == TYPE_CONS && is_nil(_e->cons.car) && is_nil(_e->cons.cdr))
     if (_e->type == TYPE_CONS && _e->cons.car == nullptr && _e->cons.cdr == nullptr)
         return true;
     if (_e->type == TYPE_SYMBOL && nil1 == _e->symbol)
@@ -1335,7 +1290,6 @@ stream(Expr* _e, bool _wrap_quotes)
         case TYPE_CONS:        ss << "(" << stream(e, _wrap_quotes).str() << ")"; break;
         case TYPE_LAMBDA:      ss << "#<lambda>";                   break;
         case TYPE_MACRO:       ss << "#<macro>";                    break;
-            //case TYPE_FUNCTION:    ss << "#<function>";                 break;
         case TYPE_BUILDIN:     ss << "#<buildin>";                  break;
         case TYPE_REAL:        ss << e->real;                       break;
         case TYPE_DECIMAL:     ss << e->decimal;                    break;
@@ -1389,8 +1343,8 @@ Expr*
 core::quote(VariableScope* _s, Expr* _e)
 {
     UNUSED(_s);
-    //if (len(_e) != 1)
-    //throw ProgramError("quote", "expected 1 argument, not ", _e);
+    if (len(_e) > 1)
+        throw ProgramError("quote", "expected 1 argument, not", _e);
     return first(_e);
 }
 
@@ -1839,7 +1793,6 @@ Expr*
 core::_if(VariableScope* _s, Expr* _e)
 {
     Expr* cond = nullptr;    
-    //std::cout << "if input " << stringify(_e) << std::endl; 
     if (!(len(_e) == 2 || len(_e) == 3))
         throw ProgramError("if", "expected required condition and true body, got", _e);
     cond = _s->env()->scoped_eval(_s, first(_e));
@@ -1860,7 +1813,6 @@ core::_typeof(VariableScope* _s, Expr* _e)
     case TYPE_CONS:        return _s->env()->symbol("cons");
     case TYPE_LAMBDA:      return _s->env()->symbol("lambda");
     case TYPE_MACRO:       return _s->env()->symbol("macro");
-        //case TYPE_FUNCTION:    return _s->env()->symbol("function");
     case TYPE_BUILDIN:     return _s->env()->symbol("buildin");
     case TYPE_REAL:        return _s->env()->symbol("real");
     case TYPE_DECIMAL:     return _s->env()->symbol("decimal");
@@ -1941,18 +1893,6 @@ core::variable_definition(VariableScope* _s, Expr* _e)
 }
 
 Expr*
-core::defconst(VariableScope* _s, Expr* _e)
-{
-    Expr* val = _s->env()->scoped_eval(_s, second(_e));
-    if (len(_e) != 2)
-        throw ProgramError("const!", "expects symbol and value, got", _e);
-    if (first(_e)->type != TYPE_SYMBOL)
-        throw ProgramError("const!", "expects name to be type symbol, got", first(_e));
-    _s->add_constant(first(_e)->symbol, val);
-    return first(_e);
-}
-
-Expr*
 core::defglobal(VariableScope* _s, Expr* _e)
 {
     Expr* val = _s->env()->scoped_eval(_s, second(_e));
@@ -2018,7 +1958,7 @@ core::deffunction(VariableScope* _s, Expr* _e)
     fn->type = TYPE_LAMBDA;
     fn->callable.binds = second(_e);
     fn->callable.body = cdr(cdr(_e));
-    _s->add_constant(first(_e)->symbol, fn);
+    _s->add_global(first(_e)->symbol, fn);
     return first(_e);
 }
 
@@ -2031,7 +1971,7 @@ core::defmacro(VariableScope* _s, Expr* _e)
     macro->type = TYPE_MACRO;
     macro->callable.binds = second(_e);
     macro->callable.body = cdr(cdr(_e));
-    _s->add_constant(first(_e)->symbol, macro);
+    _s->add_global(first(_e)->symbol, macro);
     return first(_e);
 }
 

@@ -54,7 +54,7 @@
        (print move ": ")
        (local! inp (read-real))
        (if (not (contains inp [0 1 2]))
-           (prog2 (println "input 0-2 please..") (get-move move))
+           (progn (println "input 0-2 please..") (get-move move))
            inp))
 
 "Tic-Tac-Toe was loaded!")

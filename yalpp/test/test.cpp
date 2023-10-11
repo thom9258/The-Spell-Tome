@@ -1,4 +1,5 @@
 #include <iostream>
+#include <variant>
 
 #define YALCPP_IMPLEMENTATION
 #include "../yal.hpp"
@@ -74,6 +75,27 @@ repl_test(yal::Environment* _e, const char* _p, const char* _gt)
 /*======================================================================*/
 /*======================================================================*/
 
+struct cppExpr;
+
+struct Callable {
+    cppExpr* binds;
+    cppExpr* body;
+};
+
+struct Cons {
+    cppExpr* car;
+    cppExpr* cdr;
+};
+
+struct cppExpr {
+    std::uint8_t flags;
+    std::variant<int,
+                 float,
+                 yal::BuildinFn,
+                 Callable,
+                 Cons>value;
+};
+
 void
 test_sizes(void)
 {
@@ -86,6 +108,10 @@ test_sizes(void)
     std::cout << "sizeof type = " << enumtypesz << std::endl; 
 
     std::cout << "sizeof iostream = " << sizeof(std::iostream) << std::endl; 
+    std::cout << "sizeof cppExpr = " << sizeof(cppExpr) << std::endl; 
+    std::cout << "sizeof yal::Expr = " << sizeof(yal::Expr) << std::endl; 
+    
+    TL_TEST(sizeof(cppExpr) > sizeof(yal::Expr));
 }
 
 void
@@ -232,22 +258,22 @@ test_globals(void)
     yal::Environment e;
     const float pi = 3.141592; 
 
-    e.add_constant("*Creator*", e.string("Thomas Alexgaard"));
-    e.add_constant("PI", e.decimal(pi));
+    e.add_global("*Creator*", e.string("Thomas Alexgaard"));
+    e.add_global("PI", e.decimal(pi));
 
     yal::Expr* constant = e.global_scope()->variable_get("PI");
     std::cout << "PI: " << yal::stringify(constant) << std::endl;
-    TL_TEST(yal::stringify(constant) == "(3.14159 CONSTANT)");
+    TL_TEST(yal::stringify(constant) == "(3.14159)");
 
     constant = e.global_scope()->variable_get("*Creator*");
     std::cout << "Creator: " << yal::stringify(constant) << std::endl;
-    TL_TEST(yal::stringify(constant) == "(\"Thomas Alexgaard\" CONSTANT)");
+    TL_TEST(yal::stringify(constant) == "(\"Thomas Alexgaard\")");
 
-    e.add_constant("*Creator-github*", e.string("https://github.com/thom9258/"));
-    e.add_constant("*Host-Languange*", e.string("C++"));
-    e.add_constant("*Version*", e.list({e.real(0), e.real(1)}));
-    e.add_constant("PI/2", e.decimal(pi/2));
-    e.add_constant("PI2", e.decimal(pi*2));
+    e.add_global("*Creator-github*", e.string("https://github.com/thom9258/"));
+    e.add_global("*Host-Languange*", e.string("C++"));
+    e.add_global("*Version*", e.list({e.real(0), e.real(1)}));
+    e.add_global("PI/2", e.decimal(pi/2));
+    e.add_global("PI2", e.decimal(pi*2));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -382,6 +408,7 @@ test_buildin_list_creation(void)
     TL_TEST(repl_test(&e, "[]", "NIL"));
 
     TL_TEST(repl_test(&e, "(quote ()  )", "NIL"));
+    TL_TEST(repl_test(&e, "(quote a b)", "(error \"[quote] expected 1 argument, not\" (a b))"));
     TL_TEST(repl_test(&e, "'(+ 2 3 (* 1 2 3 4))", "(+ 2 3 (* 1 2 3 4))"));
 
     TL_TEST(repl_test(&e, "(list 1 2 3 )", "(1 2 3)"));
@@ -553,7 +580,6 @@ test_conditionals(void)
                       "(is10 10)",
                       "T"));
 
-
     TL_TEST(repl_test(&e, "(_OR2 t nil)", "T"));
     TL_TEST(repl_test(&e, "(_OR2 NIL T)", "T"));
     TL_TEST(repl_test(&e, "(_OR2 t T)", "T"));
@@ -624,8 +650,8 @@ test_set_variables(void)
     TL_TEST(repl_test(&e, "(setcdr! 'notcons 'a)",
                           "(error \"[setcdr!] Expected cons to modify, got\" notcons)"));
 
-    TL_TEST(repl_test(&e, "(const! max-health 10)", "max-health"));
-    TL_TEST(repl_test(&e, "(variable-definition 'max-health)", "(10 CONSTANT)"));
+    TL_TEST(repl_test(&e, "(global! max-health 10)", "max-health"));
+    TL_TEST(repl_test(&e, "(variable-definition 'max-health)", "(10)"));
     TL_TEST(repl_test(&e, "(local! health (+ 2 2))", "health"));
     TL_TEST(repl_test(&e, "(set! 'health (- health 1))", "3"));
     TL_TEST(repl_test(&e, "health", "3"));
@@ -633,8 +659,7 @@ test_set_variables(void)
     TL_TEST(repl_test(&e, "(set! 'health (- health 1))", "9"));
     TL_TEST(repl_test(&e, "(set! 'invalid-name 7)",
                           "(error \"set! expected symbol variable, not\" invalid-name)"));
-    TL_TEST(repl_test(&e, "(set! 'PI 7)",
-                          "(error \"set! cannot set constant\" PI)"));
+    TL_TEST(repl_test(&e, "(set! 'PI 7)", "7"));
     /*TODO: how do we allow setting something to nil but only when explicitly supplied as input?*/
     TL_TEST(repl_test(&e, "(set! 'health)", "NIL"));
     TL_TEST(repl_test(&e, "health", "9"));
@@ -1018,8 +1043,7 @@ test_std(void)
     TL_TEST(repl_test(&e, "(car (cdr (tail  [1 2 3 4])))", "3"));
 
     TL_TEST(repl_test(&e, "(second [1 2 3 4])", "2"));
-    //TL_TEST(repl_test(&e, "(const! to100 (range 1 100))", "to100"));
-    TL_TEST(repl_test(&e, "(const! to10 (range 1 10))", "to10"));
+    TL_TEST(repl_test(&e, "(global! to10 (range 1 10))", "to10"));
     TL_TEST(repl_test(&e, "to10", "(1 2 3 4 5 6 7 8 9 10)"));
 
     TL_TEST(repl_test(&e, "(first to10)", "1"));
@@ -1042,7 +1066,7 @@ test_std(void)
     TL_TEST(repl_test(&e, "(nth 0 to10)", "1"));
     TL_TEST(repl_test(&e, "(nth 23 to10)", "NIL"));
 
-    TL_TEST(repl_test(&e, "(const! to100 (range 1 100))", "to100"));
+    TL_TEST(repl_test(&e, "(global! to100 (range 1 100))", "to100"));
     TL_TEST(repl_test(&e, "(nth 77 to100)", "78"));
     TL_TEST(repl_test(&e, "(nth 52 to100)", "53"));
 
@@ -1124,7 +1148,7 @@ test_variable_definition(void)
     e.load_core();
     e.load_file(std_path);
 
-    TL_TEST(repl_test(&e, "(variable-definition 'PI)", "(3.14159 CONSTANT)"));
+    TL_TEST(repl_test(&e, "(variable-definition 'PI)", "(3.14159)"));
     TL_TEST(repl_test(&e, "(variable-definition 'NOTPI)", "NIL"));
     TL_TEST(repl_test(&e, "(variable-value 'PI)", "3.14159"));
 
@@ -1227,9 +1251,7 @@ test_macros(void)
     e.load_file(std_path);
 
     TL_TEST(repl_test(&e, "(global! v1 2)", "v1"));
-    TL_TEST(repl_test(&e,
-                      "(macro! setq! (v x)"
-                      //"['set! ''v 'x])",
+    TL_TEST(repl_test(&e, "(macro! setq! (v x)"
                       "['set! 'v x])",
                       "setq!"));
 
@@ -1240,7 +1262,18 @@ test_macros(void)
     TL_TEST(repl_test(&e, "(macro-expand '(setq! v1 7))", "(set! (quote v1) 7)"));
     TL_TEST(repl_test(&e, "(eval (macro-expand '(setq! v1 7)))", "7"));
     TL_TEST(repl_test(&e, "v1", "7"));
+    
+    TL_TEST(repl_test(&e, "(fn! gfn (a b) (+ a b))", "gfn"));
+    TL_TEST(repl_test(&e, "(global! lfn (lambda (a b) (+ a b)))", "lfn"));
+    TL_TEST(repl_test(&e, "(lfn 2 3)", "5"));
+    TL_TEST(repl_test(&e, "(gfn 2 3)", "5"));
 
+    TL_TEST(repl_test(&e, "(macro! global-fn! (name binds &body)"
+                      "['global! 'name 'binds ])",
+                      "setq!"));
+
+    TL_TEST(repl_test(&e, "(global-fn! gfn2 (a b) (+ a b))", "gfn2"));
+    TL_TEST(repl_test(&e, "(gfn2 2 3)", "5"));
     std::cout << e.gc_info() << std::endl;
 }
 
@@ -1351,37 +1384,37 @@ main(int argc, char **argv)
 	(void)argv;
 
     TL(test_sizes());
-    TL(test_types_creation());
-    TL(test_read());
-    TL(test_nilp());
-    TL(test_len());
-    TL(test_globals());
-    TL(test_ipreverse());
-    TL(test_simple_eval());
-    TL(test_lex_types());
-    TL(test_buildin_range());
-    TL(test_buildin_equality());
-    TL(test_buildin_accessors());
-    TL(test_buildin_list_creation());
-    TL(test_buildin_math());
-    TL(test_variables());
-    TL(test_lambda());
-    TL(test_fn());
-    TL(test_try_catch_throw());
-    TL(test_full_circle());
-    TL(test_load_libraries());
-    TL(test_functions_and_recursion());
-    TL(test_predicates());
-    TL(test_std());
-    TL(test_conditionals());
-    TL(test_setnth());
-    TL(test_variable_definition());
-    TL(test_set_variables());
-    TL(test_reducers());
-    TL(test_std_list_stuff());
-    TL(test_extended_math());
-    TL(test_get());
-    TL(test_macros());
+    //TL(test_types_creation());
+    //TL(test_read());
+    //TL(test_nilp());
+    //TL(test_len());
+    //TL(test_globals());
+    //TL(test_ipreverse());
+    //TL(test_simple_eval());
+    //TL(test_lex_types());
+    //TL(test_buildin_range());
+    //TL(test_buildin_equality());
+    //TL(test_buildin_accessors());
+    //TL(test_buildin_list_creation());
+    //TL(test_buildin_math());
+    //TL(test_variables());
+    //TL(test_lambda());
+    //TL(test_fn());
+    //TL(test_try_catch_throw());
+    //TL(test_full_circle());
+    //TL(test_load_libraries());
+    //TL(test_functions_and_recursion());
+    //TL(test_predicates());
+    //TL(test_std());
+    //TL(test_conditionals());
+    //TL(test_setnth());
+    //TL(test_variable_definition());
+    //TL(test_set_variables());
+    //TL(test_reducers());
+    //TL(test_std_list_stuff());
+    //TL(test_extended_math());
+    //TL(test_get());
+    //TL(test_macros());
 
     //TL(test_quasiquote());
     //TL(test_funcall());

@@ -4,9 +4,9 @@
 ; Info
 ; ======================================================================
 
-(const! *creator*     "Thomas Alexgaard")
-(const! *creator-git* "https://github.com/thom9258/")
-(const! *host*        "C++")
+(global! *creator*     "Thomas Alexgaard")
+(global! *creator-git* "https://github.com/thom9258/")
+(global! *host*        "C++")
 
 ; ======================================================================
 ; Predicates
@@ -25,9 +25,6 @@
 (fn! fn?      (v) (or (buildin? v) (= (typeof v) 'lambda)))
 (fn! macro?   (v) (= (typeof v) 'macro))
 (fn! var?     (v) (and (symbol? v) (notnil? (variable-definition v))))
-(fn! const?   (v)
-  (if (not (var? v)) (return NIL))
-  (= 'CONSTANT (second (variable-definition v))))
 
 ; ======================================================================
 ; Logical operators
@@ -72,11 +69,12 @@
 ; Math
 ; ======================================================================
 
-(const! PI         3.141592)
-(const! E          2.71828)
-(const! E-constant 0.57721)
+(global! PI         3.141592)
+(global! E          2.71828)
+(global! E-constant 0.57721)
 
 (fn! + (&lst) (reduce _PLUS2 0 lst))
+(fn! * (&lst) (reduce _MULTIPLY2 1 lst))
 
 (fn! - (&lst) 
   (if (nil? lst) 
@@ -85,9 +83,10 @@
       (* -1 (first lst))
       (reduce _MINUS2 (first lst) (rest lst)))))
 
-(fn! * (&lst) (reduce _MULTIPLY2 1 lst))
-
-(fn! / (&lst) (if (nil? lst) 1 (reduce _DIVIDE2 (first lst) (rest lst))))
+(fn! / (&lst)
+  (if (nil? lst)
+    1
+    (reduce _DIVIDE2 (first lst) (rest lst))))
 
 (fn! min (a b) (if (< a b) a b))
 (fn! max (a b) (if (< a b) b a))
@@ -308,7 +307,6 @@
   "change variable to become value on evaluation"
   (if (not (var? var))
     (throw "set! expected symbol variable, not" var))
-  (if (const? var) (throw "set! cannot set constant" var))
   (setnth! 0 val (variable-definition var)))
 
 ; ======================================================================
@@ -341,12 +339,13 @@
 ; Post evaluation of math constants
 ; ======================================================================
 
-(const! PI2  (* PI 2))
-(const! PI/2 (/ PI 2))
-(const! PI/3 (/ PI 3))
-(const! PI/4 (/ PI 4))
+(global! PI2  (* PI 2))
+(global! PI/2 (/ PI 2))
+(global! PI/3 (/ PI 3))
+(global! PI/4 (/ PI 4))
 
 ; ======================================================================
 ; End of std
 ; ======================================================================
+
 "std was loaded")
