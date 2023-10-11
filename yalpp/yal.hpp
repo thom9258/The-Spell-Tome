@@ -137,10 +137,6 @@ Expr* minus2(VariableScope* _s, Expr* _e);
 Expr* multiply2(VariableScope* _s, Expr* _e);
 Expr* divide2(VariableScope* _s, Expr* _e);
 
-Expr* plus(VariableScope* _s, Expr* _e);
-Expr* minus(VariableScope* _s, Expr* _e);
-Expr* multiply(VariableScope* _s, Expr* _e);
-Expr* divide(VariableScope* _s, Expr* _e);
 Expr* lessthan(VariableScope* _s, Expr* _e);
 Expr* greaterthan(VariableScope* _s, Expr* _e);
 Expr* mathequal(VariableScope* _s, Expr* _e);
@@ -516,17 +512,19 @@ void
 VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
 {
     /*TODO: add support for keyword binds aswell*/
+    //std::cout << "==================== binding =============" << std::endl;
     //std::cout << "binding for " << _fnname << std::endl;
     //std::cout << "    binding    " << stringify(_binds) << std::endl;
     //std::cout << "    binding to " << stringify(_values) << std::endl;
-
     std::string bindstr;
     Expr* rest = nullptr;
-    //while (!is_nil(_binds) && !is_nil(_values)) {
+
     while (!is_nil(_binds)) {
         if (car(_binds)->type != TYPE_SYMBOL)
             throw ProgramError("bind", "expected binds to be symbols, not", car(_binds));
         bindstr = std::string(car(_binds)->symbol);
+
+        /*Handle potential & symbols that becomes the rest of values*/
         if (bindstr.size() > 1 && bindstr.find_first_of('&') == 0) {
             while (!is_nil(_values)) {
                 rest = env()->put_in_list(car(_values), rest);
@@ -534,18 +532,18 @@ VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
             }
             rest = ipreverse(rest);
             add_local(bindstr.c_str()+1, rest);
-            //std::cout << "&bound " << bindstr.c_str()+1 << " to " << stringify(rest) << std::endl;
             _binds = cdr(_binds);
             _values = nullptr;
             break;
         }
-        add_local(car(_binds)->symbol, car(_values));
-        //std::cout << "bound " << stringify(car(_binds)) << " to " << stringify(car(_values)) << std::endl;
+        /*Handle potential & symbols that becomes the rest of values*/
+        if (is_nil(car(_values)))
+            add_local(car(_binds)->symbol, env()->symbol("NIL"));
+        else
+            add_local(car(_binds)->symbol, car(_values));
         _binds = cdr(_binds);
         _values = cdr(_values);
     }
-    //if (len(_binds) != 0)
-    //throw ProgramError(_fnname, "leftover arg field, could not bind", _binds);
     if (len(_values) > 0)
         throw ProgramError(_fnname, "too many inputs given! could not bind", _values);
 }
@@ -939,9 +937,12 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
         if (_e->symbol == std::string("t") || _e->symbol == std::string("T"))
             return t();
         var = _scope->variable_get(_e->symbol);
-        if (!is_nil(var))
-            return first(var);
-        throw ProgramError("eval", "could not find existing symbol called", _e);
+        return first(var);
+        /*TODO: additional safety could be added here, by checking if variablekey
+          is in map and then throwing a symbol not defined error*/
+        //if (var != nullptr)
+        //    return first(var);
+        //throw ProgramError("eval", "could not find existing symbol called", _e);
         //return nil();
     }
 
@@ -1015,14 +1016,10 @@ Environment::load_core(void)
         add_buildin("reverse!", core::reverse_ip);
         add_buildin("car", core::car);
         add_buildin("cdr", core::cdr);
-        //add_buildin("_PLUS2", core::plus2);
-        //add_buildin("_MINUS2", core::minus2);
-        //add_buildin("_MULTIPLY2", core::multiply2);
-        //add_buildin("_DIVIDE2", core::divide2);
-        add_buildin("+", core::plus);
-        add_buildin("-", core::minus);
-        add_buildin("*", core::multiply);
-        add_buildin("/", core::divide);
+        add_buildin("_PLUS2", core::plus2);
+        add_buildin("_MINUS2", core::minus2);
+        add_buildin("_MULTIPLY2", core::multiply2);
+        add_buildin("_DIVIDE2", core::divide2);
         add_buildin("=", core::mathequal);
         add_buildin("<", core::lessthan);
         add_buildin(">", core::greaterthan);
@@ -1448,14 +1445,12 @@ core::plus2(VariableScope* _s, Expr* _e)
     Expr* a = first(args);
     Expr* b = second(args);
 
-    if (len(args) == 0)
-        return _s->env()->real(0);
-    if (len(args) == 1)
-        return a;
+    if (len(args) < 2)
+        throw ProgramError("+", "cannot do math without 2 values", args);
     if (!is_val(a))
-        throw ProgramError("+", "cannot do math on non-value ", a);
+        throw ProgramError("+", "cannot do math on non-value", a);
     if (!is_val(b))
-        throw ProgramError("+", "cannot do math on non-value ", b);
+        throw ProgramError("+", "cannot do math on non-value", b);
 
     if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
         return _s->env()->decimal(a->decimal + b->decimal);
@@ -1473,18 +1468,12 @@ core::minus2(VariableScope* _s, Expr* _e)
     Expr* a = first(args);
     Expr* b = second(args);
 
-    if (len(args) == 0)
-        return _s->env()->real(0);
-    if (len(args) == 1) {
-        if (a->type == TYPE_REAL)
-            return _s->env()->real(a->real * -1);
-        if (a->type == TYPE_DECIMAL)
-            return _s->env()->decimal(a->decimal * -1);
-    }
+    if (len(args) < 2)
+        throw ProgramError("-", "cannot do math without 2 values", args);
     if (!is_val(a))
-        throw ProgramError("-", "cannot do math on non-value ", a);
+        throw ProgramError("-", "cannot do math on non-value", a);
     if (!is_val(b))
-        throw ProgramError("-", "cannot do math on non-value ", b);
+        throw ProgramError("-", "cannot do math on non-value", b);
 
     if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
         return _s->env()->decimal(a->decimal - b->decimal);
@@ -1501,15 +1490,12 @@ core::multiply2(VariableScope* _s, Expr* _e)
     Expr* args = _s->env()->list_eval(_s, _e);
     Expr* a = first(args);
     Expr* b = second(args);
-
-    if (len(args) == 1)
-        return _s->env()->real(0);
-    if (len(args) == 1)
-        return a;
+    if (len(args) < 2)
+        throw ProgramError("*", "cannot do math without 2 values", args);
     if (!is_val(a))
-        throw ProgramError("*", "cannot do math on non-value ", a);
+        throw ProgramError("*", "cannot do math on non-value", a);
     if (!is_val(b))
-        throw ProgramError("*", "cannot do math on non-value ", b);
+        throw ProgramError("*", "cannot do math on non-value", b);
 
     if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
         return _s->env()->decimal(a->decimal * b->decimal);
@@ -1527,14 +1513,15 @@ core::divide2(VariableScope* _s, Expr* _e)
     Expr* a = first(args);
     Expr* b = second(args);
 
-    if (len(args) == 1)
-        return _s->env()->real(0);
-    if (len(args) == 1)
-        return a;
+    if (len(args) < 2)
+        throw ProgramError("/", "cannot do math without 2 values", args);
     if (!is_val(a))
-        throw ProgramError("/", "cannot do math on non-value ", a);
+        throw ProgramError("/", "cannot do math on non-value", a);
     if (!is_val(b))
-        throw ProgramError("/", "cannot do math on non-value ", b);
+        throw ProgramError("/", "cannot do math on non-value", b);
+    if ((b->type == TYPE_DECIMAL && b->decimal == 0) ||
+        (b->type == TYPE_REAL && b->real == 0)        )
+        throw ProgramError("/", "divide by zero", args);
 
     if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
         return _s->env()->decimal(a->decimal / b->decimal);
@@ -1542,144 +1529,7 @@ core::divide2(VariableScope* _s, Expr* _e)
         return _s->env()->decimal(a->real / b->decimal);
     else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
         return  _s->env()->decimal(a->decimal / b->real);
-    return _s->env()->real(a->real / b->real);
-}
-
-Expr*
-core::plus(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    Expr* res = _s->env()->real(0);
-    Expr* curr = args;
-
-    auto PLUS2 = [_s] (Expr* _a, Expr* _b) {
-        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _s->env()->decimal(_a->decimal + _b->decimal);
-        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _s->env()->decimal(_a->real + _b->decimal);
-        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _s->env()->decimal(_a->decimal + _b->real);
-        return _s->env()->real(_a->real + _b->real);
-    };
-
-    while (!is_nil(curr)) {
-        if (car(curr)->type != TYPE_REAL && car(curr)->type != TYPE_DECIMAL)
-            throw ProgramError("-", "cannot do math on non-value ", car(curr));
-        res = PLUS2(res, car(curr));
-        curr = cdr(curr);
-    }
-    return res;
-}
-
-Expr*
-core::minus(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    Expr* res = _s->env()->real(0);
-    Expr* curr = args;
-
-    auto MINUS2 = [_s] (Expr* _a, Expr* _b) {
-        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _s->env()->decimal(_a->decimal - _b->decimal);
-        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _s->env()->decimal(_a->real - _b->decimal);
-        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _s->env()->decimal(_a->decimal - _b->real);
-        return _s->env()->real(_a->real - _b->real);
-    };
-
-    if (len(args) == 0) {
-        return _s->env()->real(0);
-    }
-    if (len(args) == 1) {
-        if (first(args)->type == TYPE_REAL)
-            return _s->env()->real(first(args)->real * -1);
-        if (first(args)->type == TYPE_DECIMAL)
-            return _s->env()->real(first(args)->decimal * -1);
-    }
-
-    res = car(curr);
-    curr = cdr(curr);
-    while (!is_nil(curr)) {
-        if (!is_val(car(curr)))
-            break;
-        if (car(curr)->type != TYPE_REAL && car(curr)->type != TYPE_DECIMAL)
-            throw ProgramError("-", "cannot do math on non-value ", car(curr));
-        res = MINUS2(res, car(curr));
-        curr = cdr(curr);
-    }
-    return res;
-}
-
-Expr*
-core::multiply(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    Expr* res = _s->env()->real(1);
-    Expr* curr = args;
-
-    auto MULT2 = [_s] (Expr* _a, Expr* _b) {
-        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _s->env()->decimal(_a->decimal * _b->decimal);
-        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _s->env()->decimal(_a->real * _b->decimal);
-        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _s->env()->decimal(_a->decimal * _b->real);
-        return _s->env()->real(_a->real * _b->real);
-    };
-
-    if (len(args) == 0)
-        return _s->env()->real(1);
-    if (len(args) == 1)
-        return first(args);
-    while (!is_nil(curr)) {
-        if (car(curr)->type != TYPE_REAL && car(curr)->type != TYPE_DECIMAL)
-            throw ProgramError("-", "cannot do math on non-value ", car(curr));
-        res = MULT2(res, car(curr));
-        curr = cdr(curr);
-    }
-    return res;
-}
-
-Expr*
-core::divide(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    Expr* res = nullptr;
-    Expr* curr = args;
-
-    auto DIV2 = [_s] (Expr* _a, Expr* _b) {
-        if ((_a->type == TYPE_DECIMAL && _a->decimal == 0) ||
-            (_a->type == TYPE_REAL && _a->real == 0)        )
-            return _s->env()->decimal(0);
-
-        if ((_b->type == TYPE_DECIMAL && _b->decimal == 0) ||
-            (_b->type == TYPE_REAL && _b->real == 0)        )
-            throw ProgramError("/", "divide by zero error created by", _s->env()->cons(_a, _b));
-
-        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _s->env()->decimal(_a->decimal / _b->decimal);
-        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _s->env()->decimal(_a->real / _b->decimal);
-        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _s->env()->decimal(_a->decimal / _b->real);
-        return _s->env()->decimal(_a->real / _b->real);
-    };
-
-    if (len(args) == 0)
-        return _s->env()->real(1);
-    if (len(args) == 1)
-        return first(args);
-
-    res = car(curr);
-    curr = cdr(curr);
-    while (!is_nil(curr)) {
-        if (car(curr)->type != TYPE_REAL && car(curr)->type != TYPE_DECIMAL)
-            throw ProgramError("-", "cannot do math on non-value ", car(curr));
-        res = DIV2(res, car(curr));
-        curr = cdr(curr);
-    }
-    return res;
+    return _s->env()->decimal(a->real / b->real);
 }
 
 Expr*

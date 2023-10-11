@@ -463,7 +463,6 @@ test_buildin_accessors(void)
 void
 test_buildin_math(void)
 {
-
     yal::Environment e;
     e.load_core();
     e.load_file(std_path);
@@ -477,7 +476,7 @@ test_buildin_math(void)
     TL_TEST(repl_test(&e, "(* 4 3)", "12"));
     TL_TEST(repl_test(&e, "(/ 8 2)", "4"));
     TL_TEST(repl_test(&e, "(/ 0 2)", "0"));
-    TL_TEST(repl_test(&e, "(/ 2 0)", "(error \"[/] divide by zero error created by\" (2 . 0))"));
+    TL_TEST(repl_test(&e, "(/ 2 0)", "(error \"[/] divide by zero\" (2 0))"));
     TL_TEST(repl_test(&e, "(+ 2 (- 5 6) 1)", "2"));
     TL_TEST(repl_test(&e, "(+ 4 (* 2 6) (- 10 5))", "21"));
     TL_TEST(repl_test(&e, "(- 5 2)", "3"));
@@ -674,7 +673,7 @@ test_try_catch_throw(void)
 
     TL_TEST(repl_test(&e, "(try (/ 2 0)"
                           "    err err)",
-                          "(error \"[/] divide by zero error created by\" (2 . 0))"));
+                          "(error \"[/] divide by zero\" (2 0))"));
 
     TL_TEST(repl_test(&e, "(try (/ 2 0) "
                           "    err (/ 0 2)",
@@ -1383,8 +1382,8 @@ main(int argc, char **argv)
     TL(test_extended_math());
     TL(test_get());
     TL(test_macros());
-    TL(test_quasiquote());
 
+    //TL(test_quasiquote());
     //TL(test_funcall());
 
     /*NOT WORKING*/

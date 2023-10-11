@@ -11,8 +11,8 @@ YAL is a minimal implementation written in C++. this means that the rest of the 
 This means, that core functionality is implemented in the languange itself, such as core list functionality:
 
 #+begin_src lisp
-(fn! len (l)
-  "count the length of a given list"
+(fn! len (list)
+  "count the length of list"
   (if (nil? list)
     0
     (+ 1 (len (rest list)))))
@@ -21,7 +21,7 @@ This means, that core functionality is implemented in the languange itself, such
   "check if a list contains a given value"
   (if (nil? list)
     NIL
-    (if (eq (car list) value)
+    (if (eq (first list) value)
       T
       (contains value (rest list)))))
 
@@ -43,7 +43,7 @@ This means, that core functionality is implemented in the languange itself, such
 
 - [ ] Redefine variables to contain variable-value and variable-function
 - [X] Use a hash map for O(1) access of variables instead of iteration using assoc
-- [X] List manioulation such as split, and map transforms for lists
+- [X] List manipulation such as split, and map transforms for lists
 - [.] Keywords and stricter error checking for function binds and checking of correct input len
 - [ ] let and flet scopes
 - [ ] format and print functions

@@ -57,4 +57,4 @@
            (prog2 (println "input 0-2 please..") (get-move move))
            inp))
 
-)
+"Tic-Tac-Toe was loaded!")
