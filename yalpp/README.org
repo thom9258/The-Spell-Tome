@@ -5,7 +5,7 @@
 
 * Table of Contents :toc:
 - [[#introduction][Introduction]]
-- [[#version-10-requirements][Version 1.0 Requirements]]
+- [[#roadmap--wanted-features][Roadmap & wanted features]]
 
 * Introduction
 
@@ -34,12 +34,17 @@ This means, that core functionality is implemented in the languange itself, such
       T
       (contains value (rest list)))))
 
-(global! 'mylst '(d c b a)) ;returns refrence to globally-created variable
-(len mylst) ;returns 4
-(contains 'a mylst) ; returns T, the truth variable
+(global! 'mylst '(d c b a)) 
+;returns 'mylst', the name of the globally-created variable
+
+(len mylst)
+;returns '4'
+
+(contains 'a mylst) 
+;returns 'T', the truth variable
 #+end_src
 
-* Version 1.0 Requirements
+* Roadmap & wanted features
 
 - [X] Comments support
 - [.] Macro evaluation
