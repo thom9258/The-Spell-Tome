@@ -10,10 +10,10 @@
 #include <vector>
 #include <list>
 #include <functional>
-#include <cassert>
 #include <math.h>
 #include <chrono>
 #include <memory>
+#include <cassert>
 
 #include <unordered_map>
 //https://www.educative.io/answers/what-is-a-hash-map-in-cpp
@@ -26,19 +26,19 @@ namespace yal {
 #define ASSERT_UNREACHABLE(str) assert(str && "Unmanaged execution path observed!")  
 #define UNUSED(v) ((void)v)
 
+uint8_t mark_bit = 0b10000000;
+
 enum TYPE {
-    TYPE_INVALID = 0,
-    TYPE_CONS,
-    TYPE_REAL,
-    TYPE_DECIMAL,
-    TYPE_SYMBOL,
-    TYPE_STRING,
-
-    TYPE_BUILDIN,
-    TYPE_LAMBDA,
-    TYPE_MACRO,
-
-	TYPE_COUNT
+    /*We fill out the enum values manually as we need to make sure the 8th bit is not set*/
+    TYPE_INVALID = 0b0,
+    TYPE_CONS    = 0b00000001,
+    TYPE_REAL    = 0b00000010,
+    TYPE_DECIMAL = 0b00000011,
+    TYPE_SYMBOL  = 0b00000100,
+    TYPE_STRING  = 0b00000101,
+    TYPE_BUILDIN = 0b00000110,
+    TYPE_LAMBDA  = 0b00000111,
+    TYPE_MACRO   = 0b00001000,
 };
 
 /*Forward Declarations*/
@@ -48,7 +48,10 @@ class Environment;
 typedef Expr*(*BuildinFn)(VariableScope*, Expr*);
 
 const size_t smallXsz = (sizeof(Expr*) * 2) / sizeof(char);
-struct Expr {
+
+class Expr {
+    bool is_marked = false;
+    uint8_t type = TYPE_INVALID;
     union {
         int real;
         float decimal;
@@ -59,65 +62,82 @@ struct Expr {
             Expr* binds;
             Expr* body;
         }callable;
-
         struct {
             Expr* car;
             Expr* cdr;
         }cons;
     };
-    char type;
+
+public:
+    /*'friends' are the only interaction interface with the Expr class.
+      This was chosen to avoid null pointer access, as a nullptr is considered
+      a valid 'Expr'*/
+    friend class GarbageCollector;
+    /*TODO: these two are a temporary workaround, and should be excluded*/
+    friend class Environment;
+    friend class VariableScope;
+
+    friend std::ostream& operator<<(std::ostream& os, Expr* _e);
+    /*type specifiers*/
+    friend uint8_t type(Expr* _e);
+    friend bool is_nil(Expr* _e);
+    friend bool is_real(Expr* _e);
+    friend bool is_decimal(Expr* _e);
+    friend bool is_val(Expr* _e);
+    friend bool is_string(Expr* _e);
+    friend bool is_symbol(Expr* _e);
+    friend bool is_buildin(Expr* _e);
+    friend bool is_lambda(Expr* _e);
+    friend bool is_macro(Expr* _e);
+    friend bool is_cons(Expr* _e);
+    friend bool is_dotted(Expr* _e);
+
+    /*garbage management methods*/
+    friend bool is_marked(Expr* _e);
+    friend void set_mark(Expr* _e);
+    friend void clear_mark(Expr* _e);
+    
+    /*value accessors*/
+    friend int         get_real(Expr* _e);
+    friend float       get_decimal(Expr* _e);
+    friend std::string get_str(Expr* _e);
+    friend const char* get_cstr(Expr* _e);
+    friend std::string get_sym(Expr* _e);
+    friend const char* get_csym(Expr* _e);
+    friend Expr*       get_binds(Expr* _e);
+    friend Expr*       get_body(Expr* _e);
+
+    friend Expr* car(Expr* _e);
+    friend Expr* cdr(Expr* _e);
+    friend Expr* set_callable(Expr* _e, Expr* _binds, Expr* _body);
+    friend Expr* set_car(Expr* _e, Expr* _car);
+    friend Expr* set_cdr(Expr* _e, Expr* _cdr);
+    friend Expr* ipreverse(Expr* _e);
 };
 
 enum THROWABLE_TYPES {
-    THROWABLE_ERROR,
     THROWABLE_RETURNED,
     THROWABLE_THROWN,
 };
 
 class Throwable {
+    char m_type = THROWABLE_THROWN;
+    Expr* m_data{nullptr};
 public:
-    char m_type = THROWABLE_ERROR;
-    Expr* m_returned_expr = nullptr;
-    std::string m_error_msg = "";
-    Expr* m_error_expr = nullptr;
-    Expr* m_thrown_expr = nullptr;
-
-    bool is_error(void);
-    const std::string& error_msg(void);
-    Expr* error_expr(void);
-
-    bool is_returned(void);
-    Expr* returned(void);
-
+    Throwable(char _type, Expr* _data);
     bool is_thrown(void);
-    Expr* thrown(void);
+    bool is_returned(void);
+    Expr* data(void);
 };
 
-Throwable NotImplemented(const std::string& _fn);
-Throwable InternalError(const std::string& _msg);
-Throwable ProgramError(const std::string& _fn, const std::string& _msg, Expr *_specification);
-Throwable UserThrow(Expr* _thrown);
-Throwable UserReturn(Expr* _returned);
-
-bool is_nil(Expr* _e);
-bool is_val(Expr* _e);
-bool is_cons(Expr* _e);
-bool is_dotted(Expr* _e);
-
 int len(Expr* _e);
-Expr* car(Expr* _e);
-Expr* cdr(Expr* _e);
 Expr* first(Expr* _e); 
 Expr* second(Expr* _e);
 Expr* third(Expr* _e);
 Expr* fourth(Expr* _e);
-
-Expr* ipreverse(Expr* _list);
-
 char* to_cstr(const std::string& _s);
 std::stringstream stream(Expr* _e, bool _wrap_quotes);
 std::string stringify(Expr* _e, bool _wrap_quotes=true);
-
 
 namespace core {
 
@@ -128,19 +148,16 @@ Expr* range(VariableScope* _s, Expr* _e);
 Expr* car(VariableScope* _s, Expr* _e);
 Expr* cdr(VariableScope* _s, Expr* _e);
 Expr* cons(VariableScope* _s, Expr* _e);
+Expr* is_nil(VariableScope* _s, Expr* _e);
 
 Expr* plus2(VariableScope* _s, Expr* _e);
 Expr* minus2(VariableScope* _s, Expr* _e);
 Expr* multiply2(VariableScope* _s, Expr* _e);
 Expr* divide2(VariableScope* _s, Expr* _e);
 
-Expr* lessthan(VariableScope* _s, Expr* _e);
-Expr* greaterthan(VariableScope* _s, Expr* _e);
+Expr* lessthan2(VariableScope* _s, Expr* _e);
+Expr* greaterthan2(VariableScope* _s, Expr* _e);
 Expr* mathequal(VariableScope* _s, Expr* _e);
-/*TODO: make eq a macro called similar and equal a function*/
-Expr* eq(VariableScope* _s, Expr* _e);
-Expr* equal(VariableScope* _s, Expr* _e);
-Expr* is_nil(VariableScope* _s, Expr* _e);
 
 Expr* slurp_file(VariableScope* _s, Expr* _e);
 Expr* read(VariableScope* _s, Expr* _e);
@@ -204,7 +221,7 @@ class GarbageCollector {
     std::vector<Expr*> m_in_use = {};
 public:
     size_t exprs_in_use_count(void);
-    Expr* new_expr(void);
+    Expr* new_expr(uint8_t _type);
     void destroy_expr(Expr* _e);
     ~GarbageCollector(void);
 };
@@ -226,6 +243,12 @@ public:
 	bool add_buildin(const std::string& _name, const BuildinFn _fn);
     bool add_local(const std::string& _name, Expr* _v);
     void bind(const std::string& _fnname, Expr* _binds, Expr* _values);
+    
+    Throwable NotImplemented(const std::string& _fn);
+    Throwable InternalError(const std::string& _msg);
+    Throwable ProgramError(const std::string& _fn, const std::string& _msg, Expr* _error);
+    Throwable UserThrow(Expr* _thrown);
+    Throwable UserReturn(Expr* _returned);
 
 private:
     VariableScope* m_outer = nullptr;
@@ -251,7 +274,6 @@ public:
     Expr* scoped_eval(VariableScope* _scope, Expr* _e);
 
     /*Expr Creation*/
-	Expr* blank(void);
 	Expr* t(void);
 	Expr* nil(void);
 	Expr* cons(Expr *_car, Expr *_cdr);
@@ -260,6 +282,8 @@ public:
     Expr* symbol(const std::string& _v);
     Expr* string(const std::string& _v);
     Expr* buildin(const BuildinFn _v);
+	Expr* lambda(Expr* _binds, Expr* _body);
+	Expr* macro(Expr* _binds, Expr* _body);
     Expr* list(const std::initializer_list<Expr *>& _lst);
     Expr* put_in_list(Expr* _val, Expr* _list);
 
@@ -285,23 +309,308 @@ private:
 
 #define YALCPP_IMPLEMENTATION
 #ifdef YALCPP_IMPLEMENTATION
+    
+   
+//bool Expr::is_real(void) {return type == TYPE_REAL;}
+//bool Expr::is_decimal(void) {return type == TYPE_DECIMAL;}
+//bool Expr::is_value(void) {return (is_real() || is_decimal());}
+//bool Expr::is_string(void) {return type == TYPE_STRING;}
+//bool Expr::is_symbol(void) {return type == TYPE_SYMBOL;}
+//bool Expr::is_buildin(void) {return type == TYPE_BUILDIN;}
+//bool Expr::is_lambda(void) {return type == TYPE_LAMBDA;}
+//bool Expr::is_macro(void) {return type == TYPE_MACRO;}
 
-bool
-Throwable::is_error(void)
+std::ostream&
+operator<<(std::ostream& os, Expr* _e)
 {
-    return m_type == THROWABLE_ERROR;
+    os << stream(_e, true).str();
+    return os;
+}
+    
+
+uint8_t
+type(Expr* _e)
+{
+    if (_e == nullptr)
+        return TYPE_INVALID;
+    return _e->type;
 }
 
-const std::string&
-Throwable::error_msg(void)
+bool
+is_nil(Expr* _e)
 {
-  return m_error_msg;
+    const std::string nil1 = "nil";
+    const std::string nil2 = "NIL";
+    if (_e == nullptr || type(_e) == TYPE_INVALID)
+        return true;
+    if (type(_e) == TYPE_CONS && _e->cons.car == nullptr && _e->cons.cdr == nullptr)
+        return true;
+    if (type(_e) == TYPE_SYMBOL && nil1 == _e->symbol)
+        return true;
+    if (type(_e) == TYPE_SYMBOL && nil2 == _e->symbol)
+        return true;
+    return false;
+}
+
+bool
+is_real(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_REAL)
+        return true;
+    return false;
+}
+
+bool
+is_decimal(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_DECIMAL)
+        return true;
+    return false;
+}
+
+bool
+is_val(Expr* _e)
+{
+    if (_e == nullptr)
+        return false;
+    if (type(_e) == TYPE_REAL || type(_e) == TYPE_DECIMAL)
+        return true;
+    return false;
+}
+
+bool
+is_symbol(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_SYMBOL)
+        return true;
+    return false;
+}
+
+bool
+is_string(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_STRING)
+        return true;
+    return false;
+}
+
+bool
+is_buildin(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_BUILDIN)
+        return true;
+    return false;
+}
+
+bool
+is_lambda(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_LAMBDA)
+        return true;
+    return false;
+}
+
+bool
+is_macro(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_MACRO)
+        return true;
+    return false;
+}
+
+bool
+is_cons(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_CONS)
+        return true;
+    return false;
+}
+
+bool
+is_dotted(Expr* _e)
+{
+    if (!is_nil(_e) && type(_e) == TYPE_CONS  &&
+        !is_nil(car(_e)) && !is_cons(car(_e)) &&
+        !is_nil(cdr(_e)) && !is_cons(cdr(_e)))
+        return true;
+    return false;
+}
+
+int
+get_real(Expr* _e)
+{
+    assert(is_real(_e));
+    return _e->real;
+}
+
+float
+get_decimal(Expr* _e)
+{
+    assert(is_decimal(_e));
+    return _e->decimal;
+}
+
+std::string
+get_str(Expr* _e)
+{
+    assert(is_string(_e));
+    return std::string(_e->string);
+}
+
+const char*
+get_cstr(Expr* _e)
+{
+    assert(is_string(_e));
+    return _e->string;
+}
+
+std::string
+get_sym(Expr* _e)
+{
+    assert(is_symbol(_e));
+    return std::string(_e->symbol);
+}
+
+const char*
+get_csym(Expr* _e)
+{
+    assert(is_symbol(_e));
+    return _e->symbol;
 }
 
 Expr*
-Throwable::error_expr(void)
+get_binds(Expr* _e)
 {
-    return m_error_expr; 
+    if (!is_macro(_e) && !is_lambda(_e))
+        return nullptr;
+    return _e->callable.binds;
+}
+
+Expr*
+get_body(Expr* _e)
+{
+    if (!is_macro(_e) && !is_lambda(_e))
+        return nullptr;
+    return _e->callable.body;
+}
+
+Expr*
+ipreverse(Expr* _list)
+{
+    Expr* curr = _list;
+    Expr* next = nullptr;
+    Expr* prev = nullptr;
+    while (!is_nil(curr)) {
+        next = cdr(curr);
+        curr->cons.cdr = prev;
+        prev = curr;
+        curr = next;
+    }
+    return prev;
+}
+
+Expr*
+car(Expr* _e)
+{
+    if (is_nil(_e) || !is_cons(_e))
+        return nullptr;
+    return _e->cons.car;
+}
+
+Expr*
+cdr(Expr* _e)
+{
+    if (is_nil(_e) || !is_cons(_e))
+        return nullptr;
+    return _e->cons.cdr;
+}
+
+Expr*
+set_car(Expr* _e, Expr* _car)
+{
+    assert(is_cons(_e));
+    _e->cons.car = _car;
+    return _e;
+}
+
+Expr*
+set_cdr(Expr* _e, Expr* _cdr)
+{
+    assert(is_cons(_e));
+    _e->cons.cdr = _cdr;
+    return _e;
+}
+    
+Expr*
+set_callable(Expr* _e, Expr* _binds, Expr* _body)
+{
+    assert(is_lambda(_e) || is_macro(_e));
+    _e->callable.binds = _binds;
+    _e->callable.body = _body;
+    return _e;
+}
+
+int
+len(Expr* _e)
+{
+    if (is_nil(_e)) return 0;
+    if (!is_cons(_e)) return 1;
+    int cnt = 0;
+    Expr* tmp = _e;
+    while (!is_nil(tmp)) {
+        cnt++;
+        tmp = cdr(tmp);
+    }
+    return cnt;
+}
+
+Expr* first(Expr* _e)
+{ return car(_e); }
+Expr* second(Expr* _e)
+{ return car(cdr(_e)); }
+Expr* third(Expr* _e)
+{ return car(cdr(cdr(_e))); }
+Expr* fourth(Expr* _e)
+{ return car(cdr(cdr(cdr(_e)))); }
+
+bool
+is_marked(Expr* _e)
+{
+    if (!is_nil(_e))
+        return _e->is_marked;
+    return false;
+}
+
+void
+set_mark(Expr* _e)
+{
+    if (is_nil(_e))
+        return;
+    if (is_lambda(_e) || is_macro(_e)) {
+        set_mark(_e->callable.binds);
+        set_mark(_e->callable.body);
+    }
+    if (is_cons(_e)) {
+        set_mark(_e->cons.car);
+        set_mark(_e->cons.cdr);
+    }
+    _e->is_marked = true;
+}
+
+void
+clear_mark(Expr* _e)
+{
+    if (is_nil(_e))
+        return;
+    _e->is_marked = false;
+}
+    
+Throwable::Throwable(char _type, Expr* _data) : m_type(_type), m_data(_data) {}
+
+bool
+Throwable::is_thrown(void)
+{
+    return m_type == THROWABLE_THROWN;
 }
 
 bool
@@ -311,81 +620,51 @@ Throwable::is_returned(void)
 }
 
 Expr*
-Throwable::returned(void)
+Throwable::data(void)
 {
-    return m_returned_expr;
+    return m_data; 
 }
 
-bool
-Throwable::is_thrown(void)
+Throwable
+VariableScope::InternalError(const std::string& _msg)
 {
-    return m_type == THROWABLE_THROWN;
+    return Throwable(THROWABLE_THROWN,
+                     env()->list({env()->string("[INTERNAL] " + _msg)}));
+}
+
+Throwable
+VariableScope::NotImplemented(const std::string& _fn)
+{
+    return Throwable(THROWABLE_THROWN,
+                     env()->list({env()->string("[" + _fn + "] is not implemented")}));
+}
+
+Throwable
+VariableScope::ProgramError(const std::string& _fn, const std::string& _msg, Expr* _error) {
+    Expr* msg = env()->cons(_error, nullptr);
+    msg = env()->put_in_list(env()->string(_msg), msg);
+    msg = env()->put_in_list(env()->string("[" + _fn + "]"), msg);
+    return Throwable(THROWABLE_THROWN, msg);
+}
+
+Throwable
+VariableScope::UserReturn(Expr* _returned)
+{
+    return Throwable(THROWABLE_RETURNED, _returned);
+}
+
+Throwable
+VariableScope::UserThrow(Expr* _thrown)
+{
+    return Throwable(THROWABLE_THROWN, _thrown);
 }
 
 Expr*
-Throwable::thrown(void)
-{
-    return m_thrown_expr;
-}
-
-Throwable
-InternalError(const std::string& _msg)
-{
-    std::stringstream ss;
-    Throwable tw;
-    tw.m_type = THROWABLE_ERROR;
-    ss << "[INTERNAL] " << _msg;
-    tw.m_error_msg = ss.str();
-    return tw;
-}
-
-Throwable
-NotImplemented(const std::string& _fn)
-{
-    std::stringstream ss;
-    Throwable tw;
-    tw.m_type = THROWABLE_ERROR;
-    ss << "[" << _fn << "] is not implemented" ;
-    tw.m_error_msg = ss.str();
-    return tw;
-}
-
-Throwable
-ProgramError(const std::string& _fn, const std::string& _msg, Expr *_specification) {
-    std::stringstream ss;
-    Throwable tw;
-    tw.m_type = THROWABLE_ERROR;
-    ss << "[" << _fn << "] " << _msg;
-    tw.m_error_msg = ss.str();
-    tw.m_error_expr = _specification;
-    return tw;
-}
-
-Throwable
-UserReturn(Expr* _returned)
-{
-    Throwable tw;
-    tw.m_type = THROWABLE_RETURNED;
-    tw.m_returned_expr = _returned;
-    return tw;
-}
-
-Throwable
-UserThrow(Expr* _thrown)
-{
-    Throwable tw;
-    tw.m_type = THROWABLE_THROWN;
-    tw.m_thrown_expr = _thrown;
-    return tw;
-}
-  
-
-Expr*
-GarbageCollector::new_expr()
+GarbageCollector::new_expr(uint8_t _type)
 {
     Expr* out = new Expr;
-    if (out == nullptr)
-      throw InternalError("Expr limit reached, could not create more Expr's.");
+    out->type = _type;
+    assert(out != nullptr && "Expr limit reached, could not create more Expr's.");
     m_in_use.push_back(out);
     return out;
 }
@@ -395,7 +674,7 @@ GarbageCollector::destroy_expr(Expr* _e)
 {
     if (_e == nullptr)
         return;
-    switch(_e->type) {
+    switch(type(_e)) {
     case TYPE_STRING:
         delete[] _e->string;
         break;
@@ -501,9 +780,9 @@ VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
     Expr* rest = nullptr;
 
     while (!is_nil(_binds)) {
-        if (car(_binds)->type != TYPE_SYMBOL)
+        if (type(car(_binds)) != TYPE_SYMBOL)
             throw ProgramError("bind", "expected binds to be symbols, not", car(_binds));
-        bindstr = std::string(car(_binds)->symbol);
+        bindstr = get_sym(car(_binds));
 
         /*Handle potential & symbols that becomes the rest of values*/
         if (bindstr.size() > 1 && bindstr.find_first_of('&') == 0) {
@@ -519,9 +798,9 @@ VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
         }
         /*Handle potential & symbols that becomes the rest of values*/
         if (is_nil(car(_values)))
-            add_local(car(_binds)->symbol, env()->symbol("NIL"));
+            add_local(get_csym(car(_binds)), env()->symbol("NIL"));
         else
-            add_local(car(_binds)->symbol, car(_values));
+            add_local(get_csym(car(_binds)), car(_values));
         _binds = cdr(_binds);
         _values = cdr(_values);
     }
@@ -800,12 +1079,10 @@ Environment::eval(Expr* _e)
     try {
         res = scoped_eval(&m_global_scope, _e);
     } catch (Throwable& e) {
-        if (e.is_error())
-            return list({symbol("error"), string(e.error_msg()), e.error_expr()});
         if (e.is_thrown())
-            return e.thrown();
+            return put_in_list(symbol("error"), e.data());
         if (e.is_returned())
-            return e.returned();
+            return e.data();
     }
     return res;
 }
@@ -815,17 +1092,17 @@ _macro_expander(VariableScope* _s, const std::string& _macroname, Expr* _macrofn
     auto macro_expand = [] (auto macro_expand, VariableScope* scope, Expr* body) {
         if (is_nil(body))
             return body;
-        if (body->type == TYPE_SYMBOL) {
-            Expr* sym = first(scope->variable_get_this_scope(body->symbol));
-            if (is_nil(sym)) {
+        if (type(body) == TYPE_SYMBOL) {
+            Expr* s = first(scope->variable_get_this_scope(get_csym(body)));
+            if (is_nil(s)) {
                 return body;
             }
-            sym = scope->env()->list({scope->env()->symbol("quote"), sym});
-            return sym;
+            s = scope->env()->list({scope->env()->symbol("quote"), s});
+            return s;
         }
-        if (body->type == TYPE_CONS) {
-            body->cons.car = macro_expand(macro_expand, scope, car(body));
-            body->cons.cdr = macro_expand(macro_expand, scope, cdr(body));
+        if (type(body) == TYPE_CONS) {
+            set_car(body, macro_expand(macro_expand, scope, car(body)));
+            set_cdr(body, macro_expand(macro_expand, scope, cdr(body)));
             return body;
         }
         return body;
@@ -836,12 +1113,10 @@ _macro_expander(VariableScope* _s, const std::string& _macroname, Expr* _macrofn
                 try {
                     last = s->env()->scoped_eval(s, car(e));
                 } catch (Throwable& e) {
-                    if (e.is_error())
-                        return s->env()->list({s->env()->symbol("error"), s->env()->string(e.error_msg()), e.error_expr()});
                     if (e.is_thrown())
-                        return e.thrown();
+                        return s->env()->put_in_list(s->env()->symbol("error"), e.data());
                     if (e.is_returned())
-                        return e.returned();
+                        return e.data();
                 }
                 e = cdr(e);
         }
@@ -849,8 +1124,8 @@ _macro_expander(VariableScope* _s, const std::string& _macroname, Expr* _macrofn
     };
 
     VariableScope internal = _s->create_internal();
-    internal.bind(_macroname, _macrofn->callable.binds, _macroargs);
-    Expr* body_copy = _s->env()->read(stringify(_macrofn->callable.body));
+    internal.bind(_macroname, get_binds(_macrofn), _macroargs);
+    Expr* body_copy = _s->env()->read(stringify(get_body(_macrofn)));
     Expr* expanded = macro_expand(macro_expand, &internal, body_copy);
     expanded = progn(_s, expanded);
     return expanded;
@@ -865,12 +1140,10 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
                 try {
                     last = s->env()->scoped_eval(s, car(e));
                 } catch (Throwable& e) {
-                    if (e.is_error())
-                        return list({symbol("error"), string(e.error_msg()), e.error_expr()});
                     if (e.is_thrown())
-                        return e.thrown();
+                        return put_in_list(symbol("error"), e.data());
                     if (e.is_returned())
-                        return e.returned();
+                        return e.data();
                 }
                 e = cdr(e);
         }
@@ -886,14 +1159,13 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
     if (is_nil(_e)) return nil();
 
     /*Handle non-evaluating types*/
-    if (_e->type == TYPE_REAL       ||
-        _e->type == TYPE_DECIMAL    ||
-        _e->type == TYPE_STRING
-        )
+    if (type(_e) == TYPE_REAL       ||
+        type(_e) == TYPE_DECIMAL    ||
+        type(_e) == TYPE_STRING     )
         return _e;
 
     /*Handle symbols*/
-    if (_e->type == TYPE_SYMBOL) {
+    if (type(_e) == TYPE_SYMBOL) {
         Expr* var = nullptr;
         if (is_nil(_e))
             return nil();
@@ -904,15 +1176,15 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
     }
 
     /*Handle function calls*/
-    if (_e->type == TYPE_CONS) {
+    if (type(_e) == TYPE_CONS) {
         std::string name;
         Expr* fn = nullptr;
         Expr* args = nullptr;
         fn = car(_e);
         args = cdr(_e);
-        if (fn->type == TYPE_CONS)
+        if (type(fn) == TYPE_CONS)
             fn = scoped_eval(_scope, fn);
-        if (fn->type == TYPE_SYMBOL) {
+        if (type(fn) == TYPE_SYMBOL) {
             name = fn->symbol;
             fn = first(_scope->variable_get(fn->symbol));
         }
@@ -920,20 +1192,21 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
             name = "lambda";
         }
         if (is_nil(fn))
-            throw ProgramError("eval", "could not evaluate unknown function", first(_e));
+            throw _scope->ProgramError("eval", "could not evaluate unknown function", first(_e));
 
-        if (fn->type == TYPE_BUILDIN) {
+        if (type(fn) == TYPE_BUILDIN) {
             return fn->buildin(_scope, args);
         }
-        if (fn->type == TYPE_LAMBDA) {
+        if (type(fn) == TYPE_LAMBDA) {
             return eval_fn(name, fn, args);
         }
-        if (fn->type == TYPE_MACRO) {
+        if (type(fn) == TYPE_MACRO) {
             return scoped_eval(_scope, _macro_expander(_scope, name, fn, args));
         }
-        throw ProgramError("eval", "could not find function called", fn);
+        throw _scope->ProgramError("eval", "could not find function called", fn);
     }
-    throw ProgramError("eval", "Got something that could not be evaluated", _e);
+    throw _scope->ProgramError("eval", "Got something that could not be evaluated", _e);
+    return nil();
 }
 
 Expr*
@@ -977,10 +1250,8 @@ Environment::load_core(void)
         add_buildin("_MULTIPLY2", core::multiply2);
         add_buildin("_DIVIDE2", core::divide2);
         add_buildin("=", core::mathequal);
-        add_buildin("<", core::lessthan);
-        add_buildin(">", core::greaterthan);
-        add_buildin("eq", core::eq);
-        add_buildin("equal", core::equal);
+        add_buildin("<", core::lessthan2);
+        add_buildin(">", core::greaterthan2);
         add_buildin("nil?", core::is_nil);
         add_buildin("if", core::_if);
         add_buildin("try", core::_try);
@@ -1069,20 +1340,10 @@ Environment::nil(void)
 }
 
 Expr *
-Environment::blank(void)
-{
-	Expr *out = m_gc.new_expr();
-	if (out == nullptr)
-		return nullptr;
-	return out;
-}
-
-Expr *
 Environment::cons(Expr *_car, Expr *_cdr) {
-	Expr *out = m_gc.new_expr();
+	Expr *out = m_gc.new_expr(TYPE_CONS);
 	if (out == nullptr)
 		return nullptr;
-	out->type = TYPE_CONS;
 	out->cons.car = _car;
 	out->cons.cdr = _cdr;
 	return out;
@@ -1090,51 +1351,65 @@ Environment::cons(Expr *_car, Expr *_cdr) {
 
 Expr *
 Environment::real(int _v) {
-     Expr *out = m_gc.new_expr();
+     Expr *out = m_gc.new_expr(TYPE_REAL);
      if (out == nullptr)
        return nullptr;
-     out->type = TYPE_REAL;
      out->real = _v;
      return out;
    }
 
 Expr*
 Environment::decimal(float _v) {
-     Expr *out = m_gc.new_expr();
+     Expr *out = m_gc.new_expr(TYPE_DECIMAL);
      if (out == nullptr)
        return nullptr;
-     out->type = TYPE_DECIMAL;
      out->decimal = _v;
      return out;
    }
 
 Expr*
 Environment::symbol(const std::string& _v) {
-     Expr *out = m_gc.new_expr();
+     Expr *out = m_gc.new_expr(TYPE_SYMBOL);
      if (out == nullptr)
        return nullptr;
-     out->type = TYPE_SYMBOL;
      out->symbol = to_cstr(_v);
      return out;
 }
 
 Expr *
 Environment::string(const std::string& _v) {
-  Expr *out = m_gc.new_expr();
+  Expr *out = m_gc.new_expr(TYPE_STRING);
   if (out == nullptr)
     return nullptr;
-  out->type = TYPE_STRING;
   out->string = to_cstr(_v);
   return out;
 }
 
 Expr *
 Environment::buildin(BuildinFn _v) {
-  Expr *out = m_gc.new_expr();
+  Expr *out = m_gc.new_expr(TYPE_BUILDIN);
   if (out == nullptr)
     return nullptr;
-  out->type = TYPE_BUILDIN;
   out->buildin = _v;
+  return out;
+}
+
+Expr*
+Environment::lambda(Expr* _binds, Expr* _body) {
+  Expr *out = m_gc.new_expr(TYPE_LAMBDA);
+  if (out == nullptr)
+    return nullptr;
+  set_callable(out, _binds, _body);
+  return out;
+}
+
+Expr*
+Environment::macro(Expr* _binds, Expr* _body) 
+{
+  Expr *out = m_gc.new_expr(TYPE_MACRO);
+  if (out == nullptr)
+    return nullptr;
+  set_callable(out, _binds, _body);
   return out;
 }
 
@@ -1179,104 +1454,6 @@ to_cstr(const std::string& _s)
 }
 
 
-bool
-is_nil(Expr* _e)
-{
-    const std::string nil1 = "nil";
-    const std::string nil2 = "NIL";
-    if (_e == nullptr || _e->type == TYPE_INVALID)
-        return true;
-    if (_e->type == TYPE_CONS && _e->cons.car == nullptr && _e->cons.cdr == nullptr)
-        return true;
-    if (_e->type == TYPE_SYMBOL && nil1 == _e->symbol)
-        return true;
-    if (_e->type == TYPE_SYMBOL && nil2 == _e->symbol)
-        return true;
-    return false;
-}
-
-bool
-is_val(Expr* _e)
-{
-    if (_e == nullptr)
-        return false;
-    if (_e->type == TYPE_REAL || _e->type == TYPE_DECIMAL)
-        return true;
-    return false;
-}
-
-bool
-is_cons(Expr* _e)
-{
-    if (!is_nil(_e) && _e->type == TYPE_CONS)
-        return true;
-    return false;
-}
-
-bool
-is_dotted(Expr* _e)
-{
-    if (!is_nil(_e) && _e->type == TYPE_CONS  &&
-        !is_nil(car(_e)) && !is_cons(car(_e)) &&
-        !is_nil(cdr(_e)) && !is_cons(cdr(_e)))
-        return true;
-    return false;
-}
-
-int
-len(Expr* _e)
-{
-    if (is_nil(_e)) return 0;
-    if (!is_cons(_e)) return 1;
-    int cnt = 0;
-    Expr* tmp = _e;
-    while (!is_nil(tmp)) {
-        cnt++;
-        tmp = cdr(tmp);
-    }
-    return cnt;
-}
-
-Expr*
-ipreverse(Expr* _list)
-{
-    Expr* curr = _list;
-    Expr* next = nullptr;
-    Expr* prev = nullptr;
-    while (!is_nil(curr)) {
-        next = cdr(curr);
-        curr->cons.cdr = prev;
-        prev = curr;
-        curr = next;
-    }
-    return prev;
-}
-
-Expr*
-car(Expr* _e)
-{
-    if (is_nil(_e) || !is_cons(_e))
-        return nullptr;
-    return _e->cons.car;
-}
-
-Expr*
-cdr(Expr* _e)
-{
-    if (is_nil(_e) || !is_cons(_e))
-        return nullptr;
-    return _e->cons.cdr;
-}
-
-Expr* first(Expr* _e)
-{ return car(_e); }
-Expr* second(Expr* _e)
-{ return car(cdr(_e)); }
-Expr* third(Expr* _e)
-{ return car(cdr(cdr(_e))); }
-Expr* fourth(Expr* _e)
-{ return car(cdr(cdr(cdr(_e)))); }
-
 std::stringstream
 stream(Expr* _e, bool _wrap_quotes)
 {
@@ -1286,19 +1463,19 @@ stream(Expr* _e, bool _wrap_quotes)
             ss << "NIL";
             return ss;
         }
-        switch (e->type) {
+        switch (type(e)) {
         case TYPE_CONS:        ss << "(" << stream(e, _wrap_quotes).str() << ")"; break;
         case TYPE_LAMBDA:      ss << "#<lambda>";                   break;
         case TYPE_MACRO:       ss << "#<macro>";                    break;
         case TYPE_BUILDIN:     ss << "#<buildin>";                  break;
-        case TYPE_REAL:        ss << e->real;                       break;
-        case TYPE_DECIMAL:     ss << e->decimal;                    break;
-        case TYPE_SYMBOL:      ss << e->symbol;                     break;
+        case TYPE_REAL:        ss << get_real(e);                   break;
+        case TYPE_DECIMAL:     ss << get_decimal(e);                break;
+        case TYPE_SYMBOL:      ss << get_sym(e);                    break;
         case TYPE_STRING:      
             if (_wrap_quotes)
-                ss << "\"" << e->string << "\"";
+                ss << "\"" << get_str(e) << "\"";
             else
-              ss << e->string;
+              ss << get_str(e);
             break;
         default:
             ASSERT_UNREACHABLE("stringify_value() Got invalid atom type!");
@@ -1344,7 +1521,7 @@ core::quote(VariableScope* _s, Expr* _e)
 {
     UNUSED(_s);
     if (len(_e) > 1)
-        throw ProgramError("quote", "expected 1 argument, not", _e);
+        throw _s->ProgramError("quote", "expected 1 argument, not", _e);
     return first(_e);
 }
 
@@ -1353,7 +1530,7 @@ core::cons(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(_e) != 2)
-        throw ProgramError("cons", "expected 2 arguments, got", args);
+        throw _s->ProgramError("cons", "expected 2 arguments, got", args);
     return _s->env()->cons(first(args), second(args));
 }
 
@@ -1363,7 +1540,7 @@ core::car(VariableScope* _s, Expr* _e)
     Expr* args = _s->env()->list_eval(_s, _e);
     Expr* out;
     if (len(_e) != 1)
-        throw ProgramError("car", "expected 1 argument, got", args);
+        throw _s->ProgramError("car", "expected 1 argument, got", args);
     out = car(first(args));
     if (is_nil(out))
         return _s->env()->nil();
@@ -1376,7 +1553,7 @@ core::cdr(VariableScope* _s, Expr* _e)
     Expr* args = _s->env()->list_eval(_s, _e);
     Expr* out;
     if (len(_e) != 1)
-        throw ProgramError("cdr", "expected 1 argument, got", args);
+        throw _s->ProgramError("cdr", "expected 1 argument, got", args);
     out = cdr(first(args));
     if (is_nil(out))
         return _s->env()->nil();
@@ -1400,19 +1577,19 @@ core::plus2(VariableScope* _s, Expr* _e)
     Expr* b = second(args);
 
     if (len(args) < 2)
-        throw ProgramError("+", "cannot do math without 2 values", args);
+        throw _s->ProgramError("+", "cannot do math without 2 values", args);
     if (!is_val(a))
-        throw ProgramError("+", "cannot do math on non-value", a);
+        throw _s->ProgramError("+", "cannot do math on non-value", a);
     if (!is_val(b))
-        throw ProgramError("+", "cannot do math on non-value", b);
+        throw _s->ProgramError("+", "cannot do math on non-value", b);
 
-    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(a->decimal + b->decimal);
-    else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(a->real + b->decimal);
-    else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
-        return  _s->env()->decimal(a->decimal + b->real);
-    return _s->env()->real(a->real + b->real);
+    if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(get_decimal(a) + get_decimal(b));
+    else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(get_real(a) + get_decimal(b));
+    else if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+        return  _s->env()->decimal(get_decimal(a) + get_real(b));
+    return _s->env()->real(get_real(a) + get_real(b));
 }
 
 Expr*
@@ -1423,19 +1600,19 @@ core::minus2(VariableScope* _s, Expr* _e)
     Expr* b = second(args);
 
     if (len(args) < 2)
-        throw ProgramError("-", "cannot do math without 2 values", args);
+        throw _s->ProgramError("-", "cannot do math without 2 values", args);
     if (!is_val(a))
-        throw ProgramError("-", "cannot do math on non-value", a);
+        throw _s->ProgramError("-", "cannot do math on non-value", a);
     if (!is_val(b))
-        throw ProgramError("-", "cannot do math on non-value", b);
+        throw _s->ProgramError("-", "cannot do math on non-value", b);
 
-    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(a->decimal - b->decimal);
-    else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(a->real - b->decimal);
-    else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
-        return  _s->env()->decimal(a->decimal - b->real);
-    return _s->env()->real(a->real - b->real);
+    if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(get_decimal(a) - get_decimal(b));
+    else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(get_real(a) - get_decimal(b));
+    else if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+        return  _s->env()->decimal(get_decimal(a) - get_real(b));
+    return _s->env()->real(get_real(a) - get_real(b));
 }
 
 Expr*
@@ -1445,19 +1622,19 @@ core::multiply2(VariableScope* _s, Expr* _e)
     Expr* a = first(args);
     Expr* b = second(args);
     if (len(args) < 2)
-        throw ProgramError("*", "cannot do math without 2 values", args);
+        throw _s->ProgramError("*", "cannot do math without 2 values", args);
     if (!is_val(a))
-        throw ProgramError("*", "cannot do math on non-value", a);
+        throw _s->ProgramError("*", "cannot do math on non-value", a);
     if (!is_val(b))
-        throw ProgramError("*", "cannot do math on non-value", b);
+        throw _s->ProgramError("*", "cannot do math on non-value", b);
 
-    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(a->decimal * b->decimal);
-    else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(a->real * b->decimal);
-    else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
-        return  _s->env()->decimal(a->decimal * b->real);
-    return _s->env()->real(a->real * b->real);
+    if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(get_decimal(a) * get_decimal(b));
+    else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(get_real(a) * get_decimal(b));
+    else if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+        return  _s->env()->decimal(get_decimal(a) * get_real(b));
+    return _s->env()->real(get_real(a) * get_real(b));
 }
 
 Expr*
@@ -1468,22 +1645,27 @@ core::divide2(VariableScope* _s, Expr* _e)
     Expr* b = second(args);
 
     if (len(args) < 2)
-        throw ProgramError("/", "cannot do math without 2 values", args);
+        throw _s->ProgramError("/", "cannot do math without 2 values", args);
     if (!is_val(a))
-        throw ProgramError("/", "cannot do math on non-value", a);
+        throw _s->ProgramError("/", "cannot do math on non-value", a);
     if (!is_val(b))
-        throw ProgramError("/", "cannot do math on non-value", b);
-    if ((b->type == TYPE_DECIMAL && b->decimal == 0) ||
-        (b->type == TYPE_REAL && b->real == 0)        )
-        throw ProgramError("/", "divide by zero", args);
+        throw _s->ProgramError("/", "cannot do math on non-value", b);
 
-    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(a->decimal / b->decimal);
-    else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(a->real / b->decimal);
-    else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
-        return  _s->env()->decimal(a->decimal / b->real);
-    return _s->env()->decimal(a->real / b->real);
+     if ((type(a) == TYPE_DECIMAL && get_decimal(a) == 0) ||
+        (type(a) == TYPE_REAL && get_real(a) == 0)        )
+        return _s->env()->decimal(0);
+
+    if ((type(b) == TYPE_DECIMAL && get_decimal(b) == 0) ||
+        (type(b) == TYPE_REAL && get_real(b) == 0)        )
+        throw _s->ProgramError("/", "divide by zero", args);
+
+    if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(get_decimal(a) / get_decimal(b));
+    else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(get_real(a) / get_decimal(b));
+    else if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+        return  _s->env()->decimal(get_decimal(a) / get_real(b));
+    return _s->env()->decimal(get_real(a) / get_real(b));
 }
 
 Expr*
@@ -1495,21 +1677,21 @@ core::mathequal(VariableScope* _s, Expr* _e)
     auto EQ2 = [] (Expr* a, Expr* b) {
         if (is_nil(a) && is_nil(b))
             return true;
-        if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-            return a->decimal == b->decimal;
-        if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-            return a->decimal == b->decimal;
-        else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
-            return a->real == b->decimal;
-        else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
-            return  a->decimal == b->real;
-        else if (a->type == TYPE_REAL && b->type == TYPE_REAL)
-            return a->real == b->real;
-        else if (a->type == TYPE_SYMBOL && b->type == TYPE_SYMBOL)
-            return std::string(a->symbol) == b->symbol;
-        else if (a->type == TYPE_STRING && b->type == TYPE_STRING)
-            return std::string(a->string) == b->string;
-        else if (a->type == TYPE_CONS && b->type == TYPE_CONS)
+        if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+            return get_decimal(a) == get_decimal(b);
+        if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+            return get_decimal(a) == get_decimal(b);
+        else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+            return get_real(a) == get_decimal(b);
+        else if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+            return  get_decimal(a) == get_real(b);
+        else if (type(a) == TYPE_REAL && type(b) == TYPE_REAL)
+            return get_real(a) == get_real(b);
+        else if (type(a) == TYPE_SYMBOL && type(b) == TYPE_SYMBOL)
+            return get_sym(a) == get_sym(b);
+        else if (type(a) == TYPE_STRING && type(b) == TYPE_STRING)
+            return get_str(a) == get_str(b);
+        else if (type(a) == TYPE_CONS && type(b) == TYPE_CONS)
             return stringify(a) == stringify(b);
         return false;
     };
@@ -1524,122 +1706,59 @@ core::mathequal(VariableScope* _s, Expr* _e)
     return _s->env()->t();
 }
 
-#if 0
 Expr*
-core::mathequal(VariableScope* _s, Expr* _e)
+core::lessthan2(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
-    if (len(args) != 2)
-        throw ProgramError("=", "Expects 2 arguments, not", args);
-
-    auto EQ2 = [] (Expr* a, Expr* b) {
-        if (is_nil(a) && is_nil(b))
-            return true;
-        if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-            return a->decimal == b->decimal;
-        if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-            return a->decimal == b->decimal;
-        else if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
-            return a->real == b->decimal;
-        else if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
-            return  a->decimal == b->real;
-        else if (a->type == TYPE_REAL && b->type == TYPE_REAL)
-            return a->real == b->real;
-        else if (a->type == TYPE_SYMBOL && b->type == TYPE_SYMBOL)
-            return std::string(a->symbol) == b->symbol;
-        else if (a->type == TYPE_STRING && b->type == TYPE_STRING)
-            return std::string(a->string) == b->string;
-        else if (a->type == TYPE_CONS && b->type == TYPE_CONS)
-            return stringify(a) == stringify(b);
-        return false;
-    };
-    if (EQ2(first(args), second(args)))
-        return _s->env()->t();
-    return _s->env()->nil();
-}
-#endif
-
-Expr*
-core::lessthan(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    Expr* curr = cdr(args);
-    Expr* prev = args;
-
-    auto LT2 = [_s] (Expr* _a, Expr* _b) {
-        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _a->decimal < _b->decimal;
-        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _a->real < _b->decimal;
-        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _a->decimal < _b->real;
-        return _a->real < _b->real;
-    };
+    Expr* a = first(args);
+    Expr* b = second(args);
 
     if (len(args) < 2)
         return _s->env()->t();
-    while (!is_nil(curr)) {
-        if (!is_val(car(prev)) || !is_val(car(curr)))
-            throw ProgramError("<", "can only compare values, not", car(prev));
-        if (!LT2(car(prev), car(curr)))
-            return nullptr;
-        prev = curr;
-        curr = cdr(curr);
-    }
+    if (!is_val(a))
+        throw _s->ProgramError("<", "cannot compare non-value", a);
+    if (!is_val(b))
+        throw _s->ProgramError("<", "cannot compare non-value", b);
+
+    auto LT2 = [_s] (Expr* a, Expr* b) {
+        if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+            return get_decimal(a) < get_decimal(b);
+        else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+            return get_real(a) < get_decimal(b);
+        else if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+            return  get_decimal(a) < get_real(b);
+        return get_real(a) < get_real(b);
+    };
+    if (!LT2(a, b))
+        return _s->env()->nil();
     return _s->env()->t();
 }
 
 Expr*
-core::greaterthan(VariableScope* _s, Expr* _e)
+core::greaterthan2(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
-    Expr* curr = cdr(args);
-    Expr* prev = args;
-
-    auto GT2 = [_s] (Expr* _a, Expr* _b) {
-        if (_a->type == TYPE_DECIMAL && _b->type == TYPE_DECIMAL)
-            return _a->decimal > _b->decimal;
-        else if (_a->type == TYPE_REAL && _b->type == TYPE_DECIMAL)
-            return _a->real > _b->decimal;
-        else if (_a->type == TYPE_DECIMAL && _b->type == TYPE_REAL)
-            return  _a->decimal > _b->real;
-        return _a->real > _b->real;
-    };
+    Expr* a = first(args);
+    Expr* b = second(args);
 
     if (len(args) < 2)
         return _s->env()->t();
-    while (!is_nil(curr)) {
-        if (!is_val(car(prev)) || !is_val(car(curr)))
-            throw ProgramError(">", "can only compare values, not", car(prev));
-        if (!GT2(car(prev), car(curr)))
-            return nullptr;
-        prev = curr;
-        curr = cdr(curr);
-    }
-    return _s->env()->t();
-}
-
-Expr*
-core::equal(VariableScope* _s, Expr* _e)
-{
-    UNUSED(_s);
-    Expr* args = _e;
-    Expr* curr = cdr(args);
-    Expr* prev = args;
-
-    auto EQ2 = [_s] (Expr* _a, Expr* _b) {
-        return stringify(_a) == stringify(_b);
+    if (!is_val(a))
+        throw _s->ProgramError("<", "cannot compare non-value", a);
+    if (!is_val(b))
+        throw _s->ProgramError("<", "cannot compare non-value", b);
+    auto GT2 = [_s] (Expr* a, Expr* b) {
+        if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+            return get_decimal(a) > get_decimal(b);
+        else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+            return get_real(a) > get_decimal(b);
+        else if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+            return  get_decimal(a) > get_real(b);
+        return get_real(a) > get_real(b);
     };
 
-    if (len(args) < 2) {
-        return _s->env()->t();
-    }
-    while (!is_nil(curr)) {
-        if (!EQ2(car(prev), car(curr)))
-            return nullptr;
-        prev = curr;
-        curr = cdr(curr);
-    }
+    if (!GT2(a, b))
+        return _s->env()->nil();
     return _s->env()->t();
 }
 
@@ -1653,29 +1772,6 @@ core::is_nil(VariableScope* _s, Expr* _e)
 }
 
 Expr*
-core::eq(VariableScope* _s, Expr* _e)
-{
-    Expr* args = _s->env()->list_eval(_s, _e);
-    Expr* curr = cdr(args);
-    Expr* prev = args;
-
-    auto EQ2 = [_s] (Expr* _a, Expr* _b) {
-        return stringify(_a) == stringify(_b);
-    };
-
-    if (len(args) < 2) {
-        return _s->env()->t();
-    }
-    while (!is_nil(curr)) {
-        if (!EQ2(car(prev), car(curr)))
-            return nullptr;
-        prev = curr;
-        curr = cdr(curr);
-    }
-    return _s->env()->t();
-}
-
-Expr*
 core::slurp_file(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
@@ -1683,12 +1779,12 @@ core::slurp_file(VariableScope* _s, Expr* _e)
     std::ifstream ifs;
     std::stringstream ss;
     if (len(args) != 1)
-        throw ProgramError("slurp-file", "expects only 1 argument, got", args);
-    if (first(args)->type != TYPE_STRING)
-        throw ProgramError("slurp-file", "expects string as argument, got", first(args));
-    ifs.open(first(args)->string);
+        throw _s->ProgramError("slurp-file", "expects only 1 argument, got", args);
+    if (type(first(args)) != TYPE_STRING)
+        throw _s->ProgramError("slurp-file", "expects string as argument, got", first(args));
+    ifs.open(get_str(first(args)));
     if (!ifs)
-        throw ProgramError("slurp-file", "could not open file", first(args));
+        throw _s->ProgramError("slurp-file", "could not open file", first(args));
 
     while (std::getline(ifs, content))
         ss << content << std::endl;
@@ -1701,12 +1797,12 @@ core::read(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) == 0)
-        throw ProgramError("read", "expects 1 argument, but did not get anything", _s->env()->nil());
+        throw _s->ProgramError("read", "expects 1 argument, but did not get anything", _s->env()->nil());
     if (len(args) != 1)
-        throw ProgramError("read", "expects only 1 argument, got", args);
-    if (first(args)->type != TYPE_STRING)
-        throw ProgramError("read", "expects string as argument, not ", first(args));
-    return _s->env()->read(first(args)->symbol);
+        throw _s->ProgramError("read", "expects only 1 argument, got", args);
+    if (type(first(args)) != TYPE_STRING)
+        throw _s->ProgramError("read", "expects string as argument, not ", first(args));
+    return _s->env()->read(get_str(first(args)));
 }
 
 Expr*
@@ -1714,7 +1810,7 @@ core::eval(VariableScope* _s, Expr* _e)
 {
      Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
-        throw ProgramError("eval", "expects only 1 argument, got", args);
+        throw _s->ProgramError("eval", "expects only 1 argument, got", args);
     return _s->env()->eval(first(args));
 }
 
@@ -1722,10 +1818,8 @@ Expr*
 core::write(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
-    if (len(args) < 1)
-        std::cout << "NIL" << std::endl;
     if (len(args) > 1)
-        throw ProgramError("write", "expects single argument to write, not", args);
+        throw _s->ProgramError("write", "expects single argument to write, not", args);
     _s->env()->outbuffer_put(stringify(first(args), false));
     return first(args);
 }
@@ -1734,7 +1828,7 @@ Expr*
 core::newline(VariableScope* _s, Expr* _e)
 {
     if (len(_e) != 0)
-        throw ProgramError("newline", "expects no args, got", _e);
+        throw _s->ProgramError("newline", "expects no args, got", _e);
     _s->env()->outbuffer_put("\n");
     return _s->env()->nil();
 }
@@ -1745,7 +1839,7 @@ core::stringify(VariableScope* _s, Expr* _e)
     std::stringstream ss;
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
-        throw ProgramError("stringify", "expects only 1 argument, got", args);
+        throw _s->ProgramError("stringify", "expects only 1 argument, got", args);
     ss << stringify(first(args));
     return _s->env()->string(ss.str());
 }
@@ -1760,7 +1854,7 @@ core::concat2(VariableScope* _s, Expr* _e)
         return _s->env()->string(stringify(first(args), false));
     if (len(args) == 2)
         return _s->env()->string(stringify(first(args), false) + stringify(second(args), false));
-    throw ProgramError("concat", "can only concatenate up to 2 args, not", args);
+    throw _s->ProgramError("concat", "can only concatenate up to 2 args, not", args);
    
 }
 
@@ -1773,12 +1867,12 @@ core::range(VariableScope* _s, Expr* _e)
     Expr* args = _s->env()->list_eval(_s, _e);
     Expr* out = nullptr;
 
-    if (first(args)->real < second(args)->real) {
-        low = first(args)->real;
-        high = second(args)->real;
+    if (get_real(first(args)) < get_real(second(args))) {
+        low = get_real(first(args));
+        high = get_real(second(args));
     } else {
-        low = second(args)->real;
-        high = first(args)->real;
+        low = get_real(second(args));
+        high = get_real(first(args));
         reverse = true;
     }
     for (int i = low; i <= high; i++) {
@@ -1794,7 +1888,7 @@ core::_if(VariableScope* _s, Expr* _e)
 {
     Expr* cond = nullptr;    
     if (!(len(_e) == 2 || len(_e) == 3))
-        throw ProgramError("if", "expected required condition and true body, got", _e);
+        throw _s->ProgramError("if", "expected required condition and true body, got", _e);
     cond = _s->env()->scoped_eval(_s, first(_e));
     if (!is_nil(cond))
         return _s->env()->scoped_eval(_s, second(_e));
@@ -1806,10 +1900,10 @@ core::_typeof(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) > 1)
-        throw ProgramError("typeof", "expected 1 argument, got", args);
+        throw _s->ProgramError("typeof", "expected 1 argument, got", args);
     if (is_nil(first(args)))
         return nullptr;
-    switch (first(args)->type) {
+    switch (type(first(args))) {
     case TYPE_CONS:        return _s->env()->symbol("cons");
     case TYPE_LAMBDA:      return _s->env()->symbol("lambda");
     case TYPE_MACRO:       return _s->env()->symbol("macro");
@@ -1819,7 +1913,7 @@ core::_typeof(VariableScope* _s, Expr* _e)
     case TYPE_SYMBOL:      return _s->env()->symbol("symbol");
     case TYPE_STRING:      return _s->env()->symbol("string");
     default:
-        throw ProgramError("typeof", "Could not determine type of input from", first(args));
+        throw _s->ProgramError("typeof", "Could not determine type of input from", first(args));
     };
 }
 
@@ -1828,34 +1922,38 @@ core::_try(VariableScope* _s, Expr* _e)
 {
     Expr* res = nullptr;
     Expr* err = nullptr;
+    bool was_err = false;
+    
+    /*Check all requirements for catching is in place*/
+    if (len(_e) != 3)
+        throw _s->ProgramError("try", "expected 3 inputs, not", _e);
+    if (type(second(_e)) != TYPE_SYMBOL)
+        throw _s->ProgramError("try", "arg 2 expected symbol for error, not", second(_e));
+    if (is_nil(third(_e)) || !is_cons(_e))
+        throw _s->ProgramError("try",
+                               "arg 3 expected expression for error evaluation, not",
+                               third(_e));
+
     try {
         res = _s->env()->scoped_eval(_s, first(_e));
     } catch (Throwable& e) {
-        if (e.is_error())
-            err = _s->env()->list({
-                    _s->env()->symbol("error"),
-                    _s->env()->string(e.error_msg()),
-                    e.error_expr()
-                });
-        if (e.is_thrown())
-            err = e.thrown();
-        if (e.is_returned())
+        if (e.is_thrown()) {
+            err = _s->env()->put_in_list(_s->env()->symbol("error"), e.data());
+            was_err = true;
+        }
+        if (e.is_returned()) {
             throw e;
+        }
     }
-    if (is_nil(err))
+    /*Return if no error occoured*/
+    if (!was_err)
         return res;
-    /*Check all requirements for catching is in place*/
-    if (len(_e) < 2)
-        return err;
-    if (is_nil(second(_e)) || second(_e)->type != TYPE_SYMBOL)
-        throw ProgramError("try", "arg 2 expected symbol for error, not", second(_e));
-    if (is_nil(third(_e)) || !is_cons(_e))
-        throw ProgramError("try", "arg 3 expected expression for error evaluation, not", third(_e));
+    std::cout << "error resolution " << stringify(third(_e)) << std::endl;
 
+    /*Manage error*/
     VariableScope internal = _s->create_internal();
-    internal.add_local(second(_e)->symbol, err);
-    res = _s->env()->scoped_eval(&internal, third(_e));
-    return res;
+    internal.add_local(get_csym(second(_e)), err);
+    return _s->env()->scoped_eval(&internal, third(_e));
 }
 
 
@@ -1863,7 +1961,9 @@ Expr*
 core::_throw(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
-    throw UserThrow(_s->env()->put_in_list(_s->env()->symbol("error"), args));
+    throw _s->UserThrow(args);
+    //throw _s->UserThrow(_s->env()->put_in_list(_s->env()->symbol("error"), args));
+    return nullptr;
 }
 
 Expr*
@@ -1871,8 +1971,8 @@ core::_return(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) <= 1)
-        throw UserReturn(first(args));
-    throw ProgramError("return", "Return can only have 0-1 argument, got", args);
+        throw _s->UserReturn(first(args));
+    throw _s->ProgramError("return", "Return can only have 0-1 argument, got", args);
     return nullptr;
 }
 
@@ -1882,11 +1982,11 @@ core::variable_definition(VariableScope* _s, Expr* _e)
     Expr* var = nullptr;
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
-        throw ProgramError("variable-definition", "expects single arg, but got", args);
-    if (first(args)->type != TYPE_SYMBOL)
-        throw ProgramError("variable-definition", "expects symbol variable, but got", first(args));
+        throw _s->ProgramError("variable-definition", "expects single arg, but got", args);
+    if (type(first(args)) != TYPE_SYMBOL)
+        throw _s->ProgramError("variable-definition", "expects symbol variable, but got", first(args));
     
-    var = _s->variable_get(first(args)->symbol);
+    var = _s->variable_get(get_csym(first(args)));
     if (is_nil(var))
         return _s->env()->nil();
     return var;
@@ -1897,10 +1997,10 @@ core::defglobal(VariableScope* _s, Expr* _e)
 {
     Expr* val = _s->env()->scoped_eval(_s, second(_e));
     if (len(_e) != 2)
-        throw ProgramError("global!", "expects symbol and value, got", _e);
-    if (first(_e)->type != TYPE_SYMBOL)
-        throw ProgramError("global!", "expects name to be type symbol, got", first(_e));
-    _s->add_global(first(_e)->symbol, val);
+        throw _s->ProgramError("global!", "expects symbol and value, got", _e);
+    if (type(first(_e)) != TYPE_SYMBOL)
+        throw _s->ProgramError("global!", "expects name to be type symbol, got", first(_e));
+    _s->add_global(get_csym(first(_e)), val);
     return first(_e);
 }
 
@@ -1909,10 +2009,10 @@ core::deflocal(VariableScope* _s, Expr* _e)
 {
     Expr* val = _s->env()->scoped_eval(_s, second(_e));
     if (len(_e) != 2)
-        throw ProgramError("local!", "expects symbol and value, got", _e);
-    if (first(_e)->type != TYPE_SYMBOL)
-        throw ProgramError("local!", "expects name to be type symbol, got", first(_e));
-    _s->add_local(first(_e)->symbol, val);
+        throw _s->ProgramError("local!", "expects symbol and value, got", _e);
+    if (type(first(_e)) != TYPE_SYMBOL)
+        throw _s->ProgramError("local!", "expects name to be type symbol, got", first(_e));
+    _s->add_local(get_csym(first(_e)), val);
     return first(_e);
 }
 
@@ -1920,9 +2020,9 @@ Expr*
 core::setcar(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
-    if (first(args)->type != TYPE_CONS)
-        throw ProgramError("setcar!", "Expected cons to modify, got", first(args));
-    first(args)->cons.car = second(args);
+    if (type(first(args)) != TYPE_CONS)
+        throw _s->ProgramError("setcar!", "Expected cons to modify, got", first(args));
+    set_car(first(args), second(args));
     return second(args);
 }
 
@@ -1930,9 +2030,9 @@ Expr*
 core::setcdr(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
-    if (first(args)->type != TYPE_CONS)
-        throw ProgramError("setcdr!", "Expected cons to modify, got", first(args));
-    first(args)->cons.cdr = second(args);
+    if (type(first(args)) != TYPE_CONS)
+        throw _s->ProgramError("setcdr!", "Expected cons to modify, got", first(args));
+    set_cdr(first(args), second(args));
     return second(args);
 }
 
@@ -1940,38 +2040,29 @@ Expr*
 core::deflambda(VariableScope* _s, Expr* _e)
 {
     UNUSED(_s);
-    Expr* l = _s->env()->blank();
     if (len(_e) < 1)
-        throw ProgramError("lambda", "expected arguments to be binds and body, got", _e);
-    l->type = TYPE_LAMBDA;
-    l->callable.binds = car(_e);
-    l->callable.body = cdr(_e);
+        throw _s->ProgramError("lambda", "expected arguments to be binds and body, got", _e);
+    Expr* l = _s->env()->lambda(car(_e), cdr(_e));
     return l;
 }
 
 Expr*
 core::deffunction(VariableScope* _s, Expr* _e)
 {
-    Expr* fn = _s->env()->blank();
     if (len(_e) < 2)
-        throw ProgramError("fn!", "expected arguments to be name, binds and body, got", _e);
-    fn->type = TYPE_LAMBDA;
-    fn->callable.binds = second(_e);
-    fn->callable.body = cdr(cdr(_e));
-    _s->add_global(first(_e)->symbol, fn);
+        throw _s->ProgramError("fn!", "expected arguments to be name, binds and body, got", _e);
+    Expr* fn = _s->env()->lambda(second(_e), cdr(cdr(_e)));
+    _s->add_global(get_csym(first(_e)), fn);
     return first(_e);
 }
 
 Expr*
 core::defmacro(VariableScope* _s, Expr* _e)
 {
-    Expr* macro = _s->env()->blank();
     if (len(_e) < 2)
-        throw ProgramError("macro!", "expected arguments to be name, binds and body, got", _e);
-    macro->type = TYPE_MACRO;
-    macro->callable.binds = second(_e);
-    macro->callable.body = cdr(cdr(_e));
-    _s->add_global(first(_e)->symbol, macro);
+        throw _s->ProgramError("macro!", "expected arguments to be name, binds and body, got", _e);
+    Expr* macro = _s->env()->macro(second(_e), cdr(cdr(_e)));
+    _s->add_global(get_csym(first(_e)), macro);
     return first(_e);
 }
 
@@ -1979,16 +2070,16 @@ Expr*
 core::macro_expand(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
-    if (len(args) != 1 || first(args)->type != TYPE_CONS)
-        throw ProgramError("macro-expand", "expected macro call as list, got", args);
+    if (len(args) != 1 || type(first(args)) != TYPE_CONS)
+        throw _s->ProgramError("macro-expand", "expected macro call as list, got", args);
     Expr* macro_call = first(args);
-    if (first(macro_call)->type != TYPE_SYMBOL)
-        throw ProgramError("macro-expand",
+    if (type(first(macro_call)) != TYPE_SYMBOL)
+        throw _s->ProgramError("macro-expand",
                            "expected first arg to be a symbol pointing to a macro, not",
                            first(macro_call));
 
-    const std::string macro_name = first(macro_call)->symbol;
-    Expr* macro_fn = first(_s->variable_get(first(macro_call)->symbol));
+    const std::string macro_name = get_sym(first(macro_call));
+    Expr* macro_fn = first(_s->variable_get(get_csym(first(macro_call))));
     Expr* macro_args = cdr(macro_call);
     Expr* expanded = _macro_expander(_s, macro_name, macro_fn, macro_args);
     return expanded;
@@ -1999,10 +2090,10 @@ core::cos(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("cos", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::cos(first(args)->decimal));
-    return _s->env()->decimal(std::cos(first(args)->real));
+        throw _s->ProgramError("cos", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::cos(get_decimal(first(args))));
+    return _s->env()->decimal(std::cos(get_real(first(args))));
 }
 
 Expr*
@@ -2010,10 +2101,10 @@ core::sin(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("sin", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::sin(first(args)->decimal));
-    return _s->env()->decimal(std::sin(first(args)->real));
+        throw _s->ProgramError("sin", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::sin(get_decimal(first(args))));
+    return _s->env()->decimal(std::sin(get_real(first(args))));
 }
 
 Expr*
@@ -2021,10 +2112,10 @@ core::tan(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("tan", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::tan(first(args)->decimal));
-    return _s->env()->decimal(std::tan(first(args)->real));
+        throw _s->ProgramError("tan", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::tan(get_decimal(first(args))));
+    return _s->env()->decimal(std::tan(get_real(first(args))));
 }
 
 Expr*
@@ -2032,10 +2123,10 @@ core::acos(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("acos", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::acos(first(args)->decimal));
-    return _s->env()->decimal(std::acos(first(args)->real));
+        throw _s->ProgramError("acos", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::acos(get_decimal(first(args))));
+    return _s->env()->decimal(std::acos(get_real(first(args))));
 }
     
 Expr*
@@ -2043,10 +2134,10 @@ core::asin(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("asin", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::asin(first(args)->decimal));
-    return _s->env()->decimal(std::asin(first(args)->real));
+        throw _s->ProgramError("asin", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::asin(get_decimal(first(args))));
+    return _s->env()->decimal(std::asin(get_real(first(args))));
 }
     
 Expr*
@@ -2054,10 +2145,10 @@ core::atan(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("atan", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::atan(first(args)->decimal));
-    return _s->env()->decimal(std::atan(first(args)->real));
+        throw _s->ProgramError("atan", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::atan(get_decimal(first(args))));
+    return _s->env()->decimal(std::atan(get_real(first(args))));
 }
     
 Expr*
@@ -2065,10 +2156,10 @@ core::cosh(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("cosh", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::cosh(first(args)->decimal));
-    return _s->env()->decimal(std::cosh(first(args)->real));
+        throw _s->ProgramError("cosh", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::cosh(get_decimal(first(args))));
+    return _s->env()->decimal(std::cosh(get_real(first(args))));
 }
     
 Expr*
@@ -2076,10 +2167,10 @@ core::sinh(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("sinh", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::sinh(first(args)->decimal));
-    return _s->env()->decimal(std::sinh(first(args)->real));
+        throw _s->ProgramError("sinh", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::sinh(get_decimal(first(args))));
+    return _s->env()->decimal(std::sinh(get_real(first(args))));
 }
     
 Expr*
@@ -2087,10 +2178,10 @@ core::tanh(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("tanh", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::tanh(first(args)->decimal));
-    return _s->env()->decimal(std::tanh(first(args)->real));
+        throw _s->ProgramError("tanh", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::tanh(get_decimal(first(args))));
+    return _s->env()->decimal(std::tanh(get_real(first(args))));
 }
     
 Expr*
@@ -2098,10 +2189,10 @@ core::floor(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("floor", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->real(std::floor(first(args)->decimal));
-    return _s->env()->real(std::floor(first(args)->real));
+        throw _s->ProgramError("floor", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->real(std::floor(get_decimal(first(args))));
+    return _s->env()->real(std::floor(get_real(first(args))));
 }
     
 Expr*
@@ -2109,10 +2200,10 @@ core::ceil(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("ceil", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->real(std::ceil(first(args)->decimal));
-    return _s->env()->real(std::ceil(first(args)->real));
+        throw _s->ProgramError("ceil", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->real(std::ceil(get_decimal(first(args))));
+    return _s->env()->real(std::ceil(get_real(first(args))));
 }
 
 Expr*
@@ -2120,10 +2211,10 @@ core::sqrt(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("sqrt", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::sqrt(first(args)->decimal));
-    return _s->env()->decimal(std::sqrt(first(args)->real));
+        throw _s->ProgramError("sqrt", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::sqrt(get_decimal(first(args))));
+    return _s->env()->decimal(std::sqrt(get_real(first(args))));
 }
     
 Expr*
@@ -2131,10 +2222,10 @@ core::log(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("log", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->real(std::log(first(args)->decimal));
-    return _s->env()->real(std::log(first(args)->real));
+        throw _s->ProgramError("log", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::log(get_decimal(first(args))));
+    return _s->env()->decimal(std::log(get_real(first(args))));
 }
     
 Expr*
@@ -2142,10 +2233,10 @@ core::log10(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("log10", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->real(std::log10(first(args)->decimal));
-    return _s->env()->real(std::log10(first(args)->real));
+        throw _s->ProgramError("log10", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::log10(get_decimal(first(args))));
+    return _s->env()->decimal(std::log10(get_real(first(args))));
 }
 
 Expr*
@@ -2153,10 +2244,10 @@ core::exp(VariableScope* _s, Expr* _e)
 {
     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
-        throw ProgramError("exp", "expected 1 value arg, got", args);
-    if (first(args)->type == TYPE_DECIMAL)
-        return _s->env()->real(std::exp(first(args)->decimal));
-    return _s->env()->real(std::exp(first(args)->real));
+        throw _s->ProgramError("exp", "expected 1 value arg, got", args);
+    if (type(first(args)) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::exp(get_decimal(first(args))));
+    return _s->env()->decimal(std::exp(get_real(first(args))));
 }
     
 Expr*
@@ -2166,21 +2257,21 @@ core::pow(VariableScope* _s, Expr* _e)
     Expr* a = first(args);
     Expr* b = second(args);
     if (len(args) != 2 || !is_val(a) || !is_val(b))
-        throw ProgramError("pow", "expected 2 value args, got", args);
-    if (a->type == TYPE_DECIMAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::pow(a->decimal, b->decimal));
-    if (a->type == TYPE_REAL && b->type == TYPE_DECIMAL)
-        return _s->env()->decimal(std::pow(a->real, b->decimal));
-    if (a->type == TYPE_DECIMAL && b->type == TYPE_REAL)
-        return _s->env()->decimal(std::pow(a->decimal, b->real));
-    return _s->env()->decimal(std::pow(a->real, b->real));
+        throw _s->ProgramError("pow", "expected 2 value args, got", args);
+    if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::pow(get_decimal(a), get_decimal(b)));
+    if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::pow(get_real(a), get_decimal(b)));
+    if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+        return _s->env()->decimal(std::pow(get_decimal(a), get_real(b)));
+    return _s->env()->decimal(std::pow(get_real(a), get_real(b)));
 }
 
 Expr*
 core::get_time(VariableScope *_s, Expr *_e)
 {
   if (len(_e) != 0)
-      throw ProgramError("time", "expects no arguments, got", _e);
+      throw _s->ProgramError("time", "expects no arguments, got", _e);
 
   using namespace std::chrono;
   const auto c = std::chrono::system_clock::now();

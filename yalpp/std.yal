@@ -156,7 +156,7 @@
   "check if value is in list"
   (if (nil? list)
     NIL
-    (if (eq (car list) value)
+    (if (= (car list) value)
       T
       (contains value (cdr list)))))
 
@@ -281,7 +281,7 @@
   "check if key is in list, then return (key value)"
   (if (nil? list)
     NIL
-    (if (eq (caar list) key)
+    (if (= (caar list) key)
       (car list)
       (assoc key (cdr list)))))
 

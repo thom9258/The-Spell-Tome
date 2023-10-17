@@ -20,6 +20,7 @@ The aim of the project is to create a highly scaleable implementation that is:
 YAL is a minimal implementation written in C++. This means that only the core features are implemented in the host languange, and the rest of the languange is hosted in itself. See "std.yal" for refrence.
 
 ** Simple Example
+
 #+begin_src lisp
 (fn! len (list)
   "count the length of list"
@@ -31,7 +32,7 @@ YAL is a minimal implementation written in C++. This means that only the core fe
   "check if a list contains a given value"
   (if (nil? list)
     NIL
-    (if (eq (first list) value)
+    (if (= (first list) value)
       T
       (contains value (rest list)))))
 

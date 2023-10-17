@@ -1,5 +1,7 @@
 #include <iostream>
 #include <variant>
+#include <string>
+#include <cassert>
 
 #define YALCPP_IMPLEMENTATION
 #include "../yal.hpp"
@@ -27,7 +29,7 @@ lex_type_test(yal::Environment* _e, const char* _prg, yal::TYPE _type)
     std::cout << "res:     " << yal::stringify(res) << std::endl;
     if (is_nil(res))
         return false;
-    return _type == res->type;
+    return _type == type(res);
 }
 
 bool
@@ -65,9 +67,11 @@ repl_test(yal::Environment* _e, const char* _p, const char* _gt)
         return false;
 
     read_result = _e->read(_p);
-    std::cout << "read res: " << stringify(read_result) << std::endl;
+    //std::cout << "read res: " << stringify(read_result) << std::endl;
+    std::cout << "read res: " << read_result << std::endl;
     eval_result = _e->eval(read_result);
-    std::cout << "eval res: " << stringify(eval_result) << std::endl;
+    //std::cout << "eval res: " << stringify(eval_result) << std::endl;
+    std::cout << "eval res: " << eval_result << std::endl;
     return stringify(eval_result) == _gt;
 }
 
@@ -87,13 +91,28 @@ struct Cons {
     cppExpr* cdr;
 };
 
-struct cppExpr {
-    std::uint8_t flags;
+struct Symbol {
+    std::string str;
+};
+
+struct String {
+    std::string str;
+};
+
+class cppExpr {
+    std::uint8_t m_type;
     std::variant<int,
                  float,
                  yal::BuildinFn,
-                 Callable,
+                 std::string,
                  Cons>value;
+public:
+    int real(void) {return std::get<0>(value);}
+    float decimal(void) {return std::get<1>(value);}
+    yal::BuildinFn buildin(void) {return std::get<2>(value);}
+    std::string symbol(void) {return std::get<3>(value);}
+    std::string string(void) {return std::get<3>(value);}
+    Cons cons(void) {return std::get<4>(value);}
 };
 
 void
@@ -118,44 +137,42 @@ void
 test_types_creation(void)
 {
     yal::Environment e;
-    yal::Expr* real = e.real(4);
-    TL_TEST(real->type == yal::TYPE_REAL);
-    TL_TEST(real->real == 4);
-    std::string realstr = yal::stringify(real);
+    yal::Expr* expr = e.real(4);
+    TL_TEST(type(expr) == yal::TYPE_REAL);
+    TL_TEST(get_real(expr) == 4);
+    std::string realstr = yal::stringify(expr);
     std::cout << realstr << std::endl;
     TL_TEST(realstr == "4");
 
-    yal::Expr* deci = e.decimal(4.3f);
-    TL_TEST(deci->type == yal::TYPE_DECIMAL);
-    TL_TEST(deci->decimal == 4.3f);
-    std::string decistr = yal::stringify(deci);
-    std::cout << decistr << std::endl;
-    TL_TEST(decistr == "4.3");
+    expr = e.decimal(4.3f);
+    TL_TEST(type(expr) == yal::TYPE_DECIMAL);
+    TL_TEST(get_decimal(expr) == 4.3f);
+    std::string exprstr = yal::stringify(expr);
+    std::cout << exprstr << std::endl;
+    TL_TEST(exprstr == "4.3");
 
-    yal::Expr* cns = e.cons(real, deci);
-    TL_TEST(cns->type == yal::TYPE_CONS);
-    TL_TEST(cns->cons.car == real);
-    TL_TEST(cns->cons.cdr == deci);
+    yal::Expr* cns = e.cons(e.real(4), e.decimal(4.3));
+    TL_TEST(type(cns) == yal::TYPE_CONS);
     std::string cnsstr = yal::stringify(cns);
     std::cout << cnsstr << std::endl;
     TL_TEST(cnsstr == "(4 . 4.3)");
 
-    yal::Expr* str = e.string("mystr");
-    TL_TEST(str->type == yal::TYPE_STRING);
-    TL_TEST(str->string == std::string("mystr"));
-    std::string strstr = yal::stringify(str);
+    yal::Expr* st = e.string("mystr");
+    TL_TEST(type(st) == yal::TYPE_STRING);
+    TL_TEST(get_str(st) == "mystr");
+    std::string strstr = yal::stringify(st);
     std::cout << strstr << std::endl;
     TL_TEST(strstr == "\"mystr\"");
 
-    yal::Expr* sym = e.symbol("mysym");
-    TL_TEST(sym->type == yal::TYPE_SYMBOL);
-    TL_TEST(sym->symbol == std::string("mysym"));
-    std::string symstr = yal::stringify(sym);
+    yal::Expr* sy = e.symbol("mysym");
+    TL_TEST(type(sy) == yal::TYPE_SYMBOL);
+    TL_TEST(get_sym(sy) == "mysym");
+    std::string symstr = yal::stringify(sy);
     std::cout << symstr << std::endl;
     TL_TEST(symstr == "mysym");
 
     yal::Expr* lst = e.list({e.symbol("*"), e.real(2), e.decimal(3.14)});
-    TL_TEST(lst->type == yal::TYPE_CONS);
+    TL_TEST(type(lst) == yal::TYPE_CONS);
     std::string lststr = yal::stringify(lst);
     std::cout << lststr << std::endl;
     TL_TEST(lststr == std::string("(* 2 3.14)"));
@@ -408,7 +425,7 @@ test_buildin_list_creation(void)
     TL_TEST(repl_test(&e, "[]", "NIL"));
 
     TL_TEST(repl_test(&e, "(quote ()  )", "NIL"));
-    TL_TEST(repl_test(&e, "(quote a b)", "(error \"[quote] expected 1 argument, not\" (a b))"));
+    TL_TEST(repl_test(&e, "(quote a b)", "(error \"[quote]\" \"expected 1 argument, not\" (a b))"));
     TL_TEST(repl_test(&e, "'(+ 2 3 (* 1 2 3 4))", "(+ 2 3 (* 1 2 3 4))"));
 
     TL_TEST(repl_test(&e, "(list 1 2 3 )", "(1 2 3)"));
@@ -503,7 +520,8 @@ test_buildin_math(void)
     TL_TEST(repl_test(&e, "(* 4 3)", "12"));
     TL_TEST(repl_test(&e, "(/ 8 2)", "4"));
     TL_TEST(repl_test(&e, "(/ 0 2)", "0"));
-    TL_TEST(repl_test(&e, "(/ 2 0)", "(error \"[/] divide by zero\" (2 0))"));
+    TL_TEST(repl_test(&e, "(/ 2 0)",
+                          "(error \"[/]\" \"divide by zero\" (2 0))"));
     TL_TEST(repl_test(&e, "(+ 2 (- 5 6) 1)", "2"));
     TL_TEST(repl_test(&e, "(+ 4 (* 2 6) (- 10 5))", "21"));
     TL_TEST(repl_test(&e, "(- 5 2)", "3"));
@@ -531,20 +549,29 @@ test_buildin_equality(void)
     TL_TEST(repl_test(&e, "(= (+ 2 2) 4 (- 10 6) (* 2 2))", "T"));
     TL_TEST(repl_test(&e, "(= '(1 2 3) '(1 2 3))", "T"));
 
-    TL_TEST(repl_test(&e, "(eq '(1 2 3) (quote (1 2 3)) [1 2 3] (list 1 2 3) (range 1 3))", "T"));
-    TL_TEST(repl_test(&e, "(eq 4 (+ 2 2))", "T"));
-
-    TL_TEST(repl_test(&e, "(equal 4 (+ 2 2))", "NIL"));
-    TL_TEST(repl_test(&e, "(equal (1 2 3) (1 2 3) (1 2 3))", "T"));
+    /*TODO: implement a quoted = in std.yal*/
+    //TL_TEST(repl_test(&e, "(equal 4 (+ 2 2))", "NIL"));
+    //TL_TEST(repl_test(&e, "(equal (1 2 3) (1 2 3) (1 2 3))", "T"));
 
     TL_TEST(repl_test(&e, "(< 1 2)", "T"));
-    TL_TEST(repl_test(&e, "(< 1 2 5 7 9 12)", "T"));
-    TL_TEST(repl_test(&e, "(> 1 2 5 7 9 12)", "NIL"));
-    TL_TEST(repl_test(&e, "(> 1 2 5 7 9 12)", "NIL"));
-    TL_TEST(repl_test(&e, "(> 4 2 3)", "NIL"));
-    TL_TEST(repl_test(&e, "(< 4 2 3)", "NIL"));
-    TL_TEST(repl_test(&e, "(< 'sym1 'sym2 3)", "(error \"[<] can only compare values, not\" sym1)"));
-    TL_TEST(repl_test(&e, "(> 'sym1 'sym2 3)",  "(error \"[>] can only compare values, not\" sym1)"));
+    TL_TEST(repl_test(&e, "(< 3 2)", "NIL"));
+    TL_TEST(repl_test(&e, "(< 1)", "T"));
+    TL_TEST(repl_test(&e, "(< 'sym1 3)", "(error \"[<]\" \"cannot compare non-value\" sym1)"));
+    TL_TEST(repl_test(&e, "(< 7 'sym2)", "(error \"[<]\" \"cannot compare non-value\" sym2)"));
+    
+    TL_TEST(repl_test(&e, "(> 1 2)", "NIL"));
+    TL_TEST(repl_test(&e, "(> 3 2)", "T"));
+    TL_TEST(repl_test(&e, "(> 1)", "T"));
+    TL_TEST(repl_test(&e, "(> 'sym1 3)", "(error \"[<]\" \"cannot compare non-value\" sym1)"));
+    TL_TEST(repl_test(&e, "(> 7 'sym2)", "(error \"[<]\" \"cannot compare non-value\" sym2)"));
+
+    //TL_TEST(repl_test(&e, "(< 1 2 5 7 9 12)", "T"));
+    //TL_TEST(repl_test(&e, "(> 1 2 5 7 9 12)", "NIL"));
+    //TL_TEST(repl_test(&e, "(> 1 2 5 7 9 12)", "NIL"));
+    //TL_TEST(repl_test(&e, "(> 4 2 3)", "NIL"));
+    //TL_TEST(repl_test(&e, "(< 4 2 3)", "NIL"));
+    //TL_TEST(repl_test(&e, "(< 'sym1 'sym2 3)", "(error \"[<] can only compare values, not\" sym1)"));
+    //TL_TEST(repl_test(&e, "(> 'sym1 'sym2 3)",  "(error \"[>] can only compare values, not\" sym1)"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -646,9 +673,9 @@ test_set_variables(void)
     TL_TEST(repl_test(&e, "(setcdr! mycons 'cdr)", "cdr"));
     TL_TEST(repl_test(&e, "mycons", "(car . cdr)"));
     TL_TEST(repl_test(&e, "(setcar! 'notcons 'a)",
-                          "(error \"[setcar!] Expected cons to modify, got\" notcons)"));
+                          "(error \"[setcar!]\" \"Expected cons to modify, got\" notcons)"));
     TL_TEST(repl_test(&e, "(setcdr! 'notcons 'a)",
-                          "(error \"[setcdr!] Expected cons to modify, got\" notcons)"));
+                          "(error \"[setcdr!]\" \"Expected cons to modify, got\" notcons)"));
 
     TL_TEST(repl_test(&e, "(global! max-health 10)", "max-health"));
     TL_TEST(repl_test(&e, "(variable-definition 'max-health)", "(10)"));
@@ -660,9 +687,8 @@ test_set_variables(void)
     TL_TEST(repl_test(&e, "(set! 'invalid-name 7)",
                           "(error \"set! expected symbol variable, not\" invalid-name)"));
     TL_TEST(repl_test(&e, "(set! 'PI 7)", "7"));
-    /*TODO: how do we allow setting something to nil but only when explicitly supplied as input?*/
     TL_TEST(repl_test(&e, "(set! 'health)", "NIL"));
-    TL_TEST(repl_test(&e, "health", "9"));
+    TL_TEST(repl_test(&e, "health", "NIL"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -698,11 +724,15 @@ test_try_catch_throw(void)
 
     TL_TEST(repl_test(&e, "(try (/ 2 0)"
                           "    err err)",
-                          "(error \"[/] divide by zero\" (2 0))"));
+                          "(error \"[/]\" \"divide by zero\" (2 0))"));
+
+    TL_TEST(repl_test(&e, "(try (/ 0 2) "
+                          "    err err)",
+                          "0"));
 
     TL_TEST(repl_test(&e, "(try (/ 2 0) "
-                          "    err (/ 0 2)",
-                          "0"));
+                          "    err (/ 2 1))",
+                          "2"));
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -765,7 +795,7 @@ test_predicates(void)
     TL_TEST(repl_test(&e, "(var? 'PI/5)", "NIL"));
     TL_TEST(repl_test(&e,
                       "(var? '(1 2 3))",
-                      "(error \"[variable-definition] expects symbol variable, but got\" (1 2 3))"));
+                      "(error \"[variable-definition]\" \"expects symbol variable, but got\" (1 2 3))"));
     TL_TEST(repl_test(&e, "(var? 'myvar)", "T"));
     TL_TEST(repl_test(&e, "(global! newvar1 23)", "newvar1"));
     TL_TEST(repl_test(&e, "(local! newvar2 5)", "newvar2"));
@@ -937,7 +967,7 @@ test_functions_and_recursion(void)
     TL_TEST(repl_test(&e, 
                       "(fn! isin (v l)"
                       "  (if (nil? l)"
-                      "     (if (eq (car l) v)"
+                      "     (if (= (car l) v)"
                       "       (isin (cdr v) l))"
                       "  nil))",
                       "isin"));
@@ -1384,36 +1414,36 @@ main(int argc, char **argv)
 	(void)argv;
 
     TL(test_sizes());
-    //TL(test_types_creation());
-    //TL(test_read());
-    //TL(test_nilp());
-    //TL(test_len());
-    //TL(test_globals());
-    //TL(test_ipreverse());
-    //TL(test_simple_eval());
-    //TL(test_lex_types());
-    //TL(test_buildin_range());
-    //TL(test_buildin_equality());
-    //TL(test_buildin_accessors());
-    //TL(test_buildin_list_creation());
-    //TL(test_buildin_math());
-    //TL(test_variables());
-    //TL(test_lambda());
-    //TL(test_fn());
-    //TL(test_try_catch_throw());
-    //TL(test_full_circle());
-    //TL(test_load_libraries());
-    //TL(test_functions_and_recursion());
-    //TL(test_predicates());
-    //TL(test_std());
-    //TL(test_conditionals());
-    //TL(test_setnth());
-    //TL(test_variable_definition());
-    //TL(test_set_variables());
-    //TL(test_reducers());
-    //TL(test_std_list_stuff());
-    //TL(test_extended_math());
-    //TL(test_get());
+    TL(test_types_creation());
+    TL(test_read());
+    TL(test_nilp());
+    TL(test_len());
+    TL(test_globals());
+    TL(test_ipreverse());
+    TL(test_simple_eval());
+    TL(test_lex_types());
+    TL(test_buildin_range());
+    TL(test_buildin_equality());
+    TL(test_buildin_accessors());
+    TL(test_buildin_list_creation());
+    TL(test_buildin_math());
+    TL(test_variables());
+    TL(test_lambda());
+    TL(test_fn());
+    TL(test_try_catch_throw());
+    TL(test_full_circle());
+    TL(test_load_libraries());
+    TL(test_functions_and_recursion());
+    TL(test_predicates());
+    TL(test_std());
+    TL(test_conditionals());
+    TL(test_setnth());
+    TL(test_variable_definition());
+    TL(test_set_variables());
+    TL(test_reducers());
+    TL(test_std_list_stuff());
+    TL(test_extended_math());
+    TL(test_get());
     //TL(test_macros());
 
     //TL(test_quasiquote());
