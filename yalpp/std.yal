@@ -93,7 +93,8 @@
 (fn! clamp (val low high) (max low (min val high)))
 
 (fn! abs (v) (if (< v 0) (* -1 v) v))
-(fn! % (n a) (if (> n a) (% (- n a) a) a))
+; note: added as a buildin for now..
+; (fn! % (n a) (if (> n a) (% (- n a) a) a))
 (fn! zero? (v) (or (= v 0) (= v 0.0)))
 (fn! even? (v) (= (% v 2) 0))
 (fn! odd? (v) (= (% v 2) 1))

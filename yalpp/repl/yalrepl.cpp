@@ -8,11 +8,23 @@
 #define YALPP_IMPLEMENTATION
 #include "../yal.hpp"
 
+
+bool should_quit=false;
+
+yal::Expr*
+repl_quit(yal::VariableScope* _s, yal::Expr* _e)
+{
+    UNUSED(_s);
+    UNUSED(_e);
+    should_quit = true;
+    return nullptr;
+}
+
 yal::Expr*
 termread_real(yal::VariableScope* _s, yal::Expr* _e)
 {
   if (len(_e) != 0)
-      throw ProgramError("termread-real", "expects no arguments, got", _e);
+      throw _s->ProgramError("termread-real", "expects no arguments, got", _e);
   int real = 0;
   std::cin >> real;
   return _s->env()->real(real);
@@ -21,7 +33,7 @@ termread_real(yal::VariableScope* _s, yal::Expr* _e)
 yal::Expr* termread_decimal(yal::VariableScope* _s, yal::Expr* _e)
 {
   if (len(_e) != 0)
-      throw ProgramError("termread-decimal", "expects no arguments, got", _e);
+      throw _s->ProgramError("termread-decimal", "expects no arguments, got", _e);
   float decimal = 0;
   std::cin >> decimal;
   return _s->env()->decimal(decimal);
@@ -31,7 +43,7 @@ yal::Expr*
 termread_line(yal::VariableScope* _s, yal::Expr* _e)
 {
   if (len(_e) != 0)
-      throw ProgramError("termread-line", "expects no arguments, got", _e);
+      throw _s->ProgramError("termread-line", "expects no arguments, got", _e);
   std::string line = "";
   std::getline(std::cin, line);
   return _s->env()->string(line);
@@ -44,7 +56,7 @@ write_override(yal::VariableScope* _s, yal::Expr* _e)
     if (len(args) < 1)
         std::cout << "NIL" << std::endl;
     if (len(args) > 1)
-        throw ProgramError("write", "expects single argument to write, not", args);
+        throw _s->ProgramError("write", "expects single argument to write, not", args);
     std::cout << stringify(first(args), false);
     return first(args);
 }
@@ -53,7 +65,7 @@ yal::Expr*
 newline_override(yal::VariableScope* _s, yal::Expr* _e)
 {
     if (len(_e) != 0)
-        throw ProgramError("newline", "expects no args, got", _e);
+        throw _s->ProgramError("newline", "expects no args, got", _e);
     std::cout << std::endl;
     return _s->env()->nil();
 }
@@ -83,7 +95,7 @@ main(int argc, char **argv)
             << " - Created by Thomas Alexgaard." << std::endl
             << "(quit) to quit." << std::endl << std::endl;
 
-    while (1) {
+    while (!should_quit) {
         std::stringstream greet;
         yal::Expr* p = nullptr;
         yal::Expr* res = nullptr;
@@ -98,6 +110,6 @@ main(int argc, char **argv)
         std::string outbuf = e.outbuffer_getreset();
         if (outbuf != "")
             std::cout << outbuf;
-        std::cout << yal::stringify(res) << std::endl;
+        std::cout << res << std::endl;
     }
 }

@@ -73,9 +73,8 @@ public:
       This was chosen to avoid null pointer access, as a nullptr is considered
       a valid 'Expr'*/
     friend class GarbageCollector;
-    /*TODO: these two are a temporary workaround, and should be excluded*/
+    /*TODO: this is a temporary workaround, and should be excluded*/
     friend class Environment;
-    friend class VariableScope;
 
     friend std::ostream& operator<<(std::ostream& os, Expr* _e);
     /*type specifiers*/
@@ -113,7 +112,21 @@ public:
     friend Expr* set_car(Expr* _e, Expr* _car);
     friend Expr* set_cdr(Expr* _e, Expr* _cdr);
     friend Expr* ipreverse(Expr* _e);
+
+    /*friend functions that extend existing friend functions*/
+    friend int len(Expr* _e);
+    friend Expr* first(Expr* _e); 
+    friend Expr* second(Expr* _e);
+    friend Expr* third(Expr* _e);
+    friend Expr* fourth(Expr* _e);
 };
+    
+/*Helper that convert std::string to allocated char ptr*/
+char* str_to_cstr(const std::string& _s);
+
+/*Stringification helpers*/
+std::stringstream stream(Expr* _e, bool _wrap_quotes);
+std::string stringify(Expr* _e, bool _wrap_quotes=true);
 
 enum THROWABLE_TYPES {
     THROWABLE_RETURNED,
@@ -129,15 +142,6 @@ public:
     bool is_returned(void);
     Expr* data(void);
 };
-
-int len(Expr* _e);
-Expr* first(Expr* _e); 
-Expr* second(Expr* _e);
-Expr* third(Expr* _e);
-Expr* fourth(Expr* _e);
-char* to_cstr(const std::string& _s);
-std::stringstream stream(Expr* _e, bool _wrap_quotes);
-std::string stringify(Expr* _e, bool _wrap_quotes=true);
 
 namespace core {
 
@@ -206,8 +210,12 @@ Expr* sqrt(VariableScope* _s, Expr* _e);
 Expr* log(VariableScope* _s, Expr* _e);
 Expr* log10(VariableScope* _s, Expr* _e);
 Expr* exp(VariableScope* _s, Expr* _e);
+Expr* modulus(VariableScope* _s, Expr* _e);
 
 Expr* get_time(VariableScope* _s, Expr* _e);
+
+Expr* gc_info(VariableScope* _s, Expr* _e);
+Expr* gc_run(VariableScope* _s, Expr* _e);
 
 }; /*namespace core*/
 
@@ -1285,7 +1293,10 @@ Environment::load_core(void)
         add_buildin("log", core::log);
         add_buildin("log10", core::log10);
         add_buildin("exp", core::exp);
+        add_buildin("%", core::modulus);
         add_buildin("time", core::get_time);
+        add_buildin("gc-info", core::gc_info);
+        add_buildin("gc", core::gc_run);
 
         eval(read(" (fn! progn (&body)"
                   "   \"evaluate body and return last result\""
@@ -1372,7 +1383,7 @@ Environment::symbol(const std::string& _v) {
      Expr *out = m_gc.new_expr(TYPE_SYMBOL);
      if (out == nullptr)
        return nullptr;
-     out->symbol = to_cstr(_v);
+     out->symbol = str_to_cstr(_v);
      return out;
 }
 
@@ -1381,7 +1392,7 @@ Environment::string(const std::string& _v) {
   Expr *out = m_gc.new_expr(TYPE_STRING);
   if (out == nullptr)
     return nullptr;
-  out->string = to_cstr(_v);
+  out->string = str_to_cstr(_v);
   return out;
 }
 
@@ -1445,7 +1456,7 @@ Environment::outbuffer_getreset()
 }
 
 char*
-to_cstr(const std::string& _s) 
+str_to_cstr(const std::string& _s) 
 {
     char* out = new char[_s.size()+1];
     out[_s.size()] = '\0';
@@ -2249,7 +2260,7 @@ core::exp(VariableScope* _s, Expr* _e)
         return _s->env()->decimal(std::exp(get_decimal(first(args))));
     return _s->env()->decimal(std::exp(get_real(first(args))));
 }
-    
+
 Expr*
 core::pow(VariableScope* _s, Expr* _e)
 {
@@ -2265,6 +2276,23 @@ core::pow(VariableScope* _s, Expr* _e)
     if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
         return _s->env()->decimal(std::pow(get_decimal(a), get_real(b)));
     return _s->env()->decimal(std::pow(get_real(a), get_real(b)));
+}
+
+Expr*
+core::modulus(VariableScope* _s, Expr* _e)
+{
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
+    if (len(args) != 2 || !is_val(a) || !is_val(b))
+        throw _s->ProgramError("%", "expected 2 value args, got", args);
+    if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::fmod(get_decimal(a), get_decimal(b)));
+    if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
+        return _s->env()->decimal(std::fmod(get_real(a), get_decimal(b)));
+    if (type(a) == TYPE_DECIMAL && type(b) == TYPE_REAL)
+        return _s->env()->decimal(std::fmod(get_decimal(a), get_real(b)));
+    return _s->env()->decimal(std::fmod(get_real(a), get_real(b)));
 }
 
 Expr*
@@ -2286,6 +2314,22 @@ core::get_time(VariableScope *_s, Expr *_e)
           _s->env()->real(s % 60),
           _s->env()->real(ms % 1000),
       });
+}
+
+Expr*
+core::gc_info(VariableScope* _s, Expr* _e)
+{
+    if (len(_e) != 0)
+        throw _s->ProgramError("gc-info", "expects no arguments, got", _e);
+    return _s->env()->string(_s->env()->gc_info());
+}
+
+Expr*
+core::gc_run(VariableScope* _s, Expr* _e)
+{
+    UNUSED(_s);
+    UNUSED(_e);
+    return nullptr;
 }
 
 #endif /*YALPP_IMPLEMENTATION*/

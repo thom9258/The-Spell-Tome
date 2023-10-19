@@ -44,6 +44,9 @@ YAL is a minimal implementation written in C++. This means that only the core fe
 
 (contains 'a mylst) 
 ;returns 'T', the truth variable
+
+(contains 'e mylst) 
+;returns 'NIL', the non-truth variable
 #+end_src
 
 Examples of how to utilize the syntax of YAL can be found in the standard library "std.yal" and in the "examples/" folder.
