@@ -227,8 +227,11 @@ class GarbageCollector {
     - a mark-and-sweep algorithm as the primary gc
   */
     std::vector<Expr*> m_in_use = {};
+    std::size_t m_total = 0;
 public:
+    size_t exprs_total_count(void);
     size_t exprs_in_use_count(void);
+    size_t garbage_collect(void);
     Expr* new_expr(uint8_t _type);
     void destroy_expr(Expr* _e);
     ~GarbageCollector(void);
@@ -246,7 +249,7 @@ public:
     bool is_var_const(Expr* _var);
     Expr* variable_get(const std::string& _name);
     Expr* variable_get_this_scope(const std::string& _name);
-    Expr* variables(void);
+    void mark_variables(void);
     bool add_global(const std::string& _name, Expr* _v);
 	bool add_buildin(const std::string& _name, const BuildinFn _fn);
     bool add_local(const std::string& _name, Expr* _v);
@@ -266,12 +269,19 @@ private:
 
 class Environment {
     friend class VariableScope;
+    /*garbage management methods*/
+    friend bool is_marked(Expr* _e);
+    friend void set_mark(Expr* _e);
+    friend void clear_mark(Expr* _e);
+
 public:
     Environment(void);
     VariableScope* global_scope(void);
 
     /*Info*/
+    size_t garbage_collect(void);
     size_t exprs_in_use(void);
+    size_t exprs_total(void);
     const std::string gc_info(void);
 
     /*Evaluation*/
@@ -309,6 +319,8 @@ public:
 private:
     std::stringstream m_outbuffer;
     GarbageCollector m_gc;
+    Expr* m_glob_nil = nullptr;
+    Expr* m_glob_t = nullptr;
     VariableScope m_global_scope;
     bool m_core_loaded = false;
     Expr* lex_value(std::string& _token);
@@ -584,31 +596,40 @@ Expr* fourth(Expr* _e)
 bool
 is_marked(Expr* _e)
 {
-    if (!is_nil(_e))
-        return _e->is_marked;
-    return false;
+    if (_e == nullptr)
+        return false;
+    return _e->is_marked;
 }
 
 void
 set_mark(Expr* _e)
 {
-    if (is_nil(_e))
+    if (_e == nullptr)
         return;
+    _e->is_marked = true;
+
+    //if (!is_lambda(_e) && !is_macro(_e) && !is_cons(_e)) std::cout << "marked " << _e << std::endl;
+
     if (is_lambda(_e) || is_macro(_e)) {
-        set_mark(_e->callable.binds);
+        //std::cout << "marked callable" << std::endl;
+        if (!is_marked(_e->callable.binds))
+            set_mark(_e->callable.binds);
+        if (!is_marked(_e->callable.body))
         set_mark(_e->callable.body);
     }
     if (is_cons(_e)) {
-        set_mark(_e->cons.car);
-        set_mark(_e->cons.cdr);
+        //std::cout << "marked cons " << _e << std::endl;
+        if (!is_marked(_e->cons.car))
+            set_mark(_e->cons.car);
+        if (!is_marked(_e->cons.cdr))
+            set_mark(_e->cons.cdr);
     }
-    _e->is_marked = true;
 }
 
 void
 clear_mark(Expr* _e)
 {
-    if (is_nil(_e))
+    if (_e == nullptr)
         return;
     _e->is_marked = false;
 }
@@ -674,6 +695,7 @@ GarbageCollector::new_expr(uint8_t _type)
     out->type = _type;
     assert(out != nullptr && "Expr limit reached, could not create more Expr's.");
     m_in_use.push_back(out);
+    m_total++;
     return out;
 }
 
@@ -701,11 +723,36 @@ GarbageCollector::~GarbageCollector(void)
         destroy_expr(v);
 }
 
-
 size_t
 GarbageCollector::exprs_in_use_count(void)
 {
     return m_in_use.size(); 
+}
+
+size_t 
+GarbageCollector::garbage_collect(void)
+{
+    size_t removed = 0;
+    for (auto it = m_in_use.begin(); it != m_in_use.end(); it++) {
+        Expr* expr = *it;
+        if (expr == nullptr) {
+            continue;
+        }
+        if (is_marked(expr)) {
+            clear_mark(expr);
+        } else {
+            destroy_expr(expr);
+            it = m_in_use.erase(it);
+            removed++;
+        }
+    }
+    return removed;
+}
+
+size_t
+GarbageCollector::exprs_total_count(void)
+{
+    return m_total; 
 }
 
 VariableScope::VariableScope(Environment* _env, VariableScope* _outer) : m_outer(_outer), m_env(_env) {};
@@ -743,6 +790,15 @@ VariableScope::variable_get(const std::string& _s)
         scope = scope->m_outer;
     }
     return nullptr;
+}
+
+void
+VariableScope::mark_variables(void)
+{
+    for (auto kv: m_variables)
+        set_mark(kv.second);
+    if (m_outer != nullptr)
+        m_outer->mark_variables();
 }
 
 Expr*
@@ -816,6 +872,16 @@ VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
         throw ProgramError(_fnname, "too many inputs given! could not bind", _values);
 }
 
+
+size_t
+Environment::garbage_collect()
+{
+    set_mark(m_glob_nil);
+    set_mark(m_glob_t);
+    m_global_scope.mark_variables();
+    return m_gc.garbage_collect();
+}
+
 VariableScope*
 Environment::global_scope(void)
 {
@@ -825,20 +891,28 @@ Environment::global_scope(void)
 size_t
 Environment::exprs_in_use(void)
 {
-    return m_gc.exprs_in_use_count(); 
+    return m_gc.exprs_in_use_count() + 2; 
+}
+
+size_t
+Environment::exprs_total(void)
+{
+    return m_gc.exprs_total_count() + 2; 
 }
 
 const std::string
 Environment::gc_info(void)
 {
+    auto total = exprs_total();
+    auto in_use = exprs_in_use();
     std::stringstream ss;
-    ss << "Expr size:   " << sizeof(yal::Expr) << " bytes" << std::endl
-       << "used Expr's: " << exprs_in_use() << std::endl
-       << "used memory: " << float(exprs_in_use() * sizeof(yal::Expr)) / 1000000
+    ss << "Expr size:      " << sizeof(yal::Expr) << " bytes" << std::endl
+       << "Total Expr's:   " << total << std::endl
+       << "Current Expr's: " << in_use << std::endl
+       << "Current memory: " << float(in_use * sizeof(yal::Expr)) / 1000000
        << " MB";
     return ss.str();
 }
-
 
 bool
 Environment::add_local(const std::string& _name, Expr* _v)
@@ -858,7 +932,11 @@ Environment::add_buildin(const std::string& _name, const BuildinFn _fn)
     return add_global(_name, buildin(_fn));
 }
 
-Environment::Environment(void) : m_global_scope(this, nullptr) {}
+Environment::Environment(void) : m_global_scope(this, nullptr) 
+{
+    m_glob_nil = symbol("NIL");
+    m_glob_t = symbol("T");
+}
 
 std::string
 _try_get_special_token(const char* _start)    
@@ -1139,6 +1217,7 @@ _macro_expander(VariableScope* _s, const std::string& _macroname, Expr* _macrofn
     return expanded;
 }
 
+
 Expr*
 Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
@@ -1165,6 +1244,9 @@ Environment::scoped_eval(VariableScope* _scope, Expr* _e)
     };
 
     if (is_nil(_e)) return nil();
+    
+    /*mark input as being currently used so it wont be removed by the gc*/
+    set_mark(_e);
 
     /*Handle non-evaluating types*/
     if (type(_e) == TYPE_REAL       ||
@@ -1296,7 +1378,7 @@ Environment::load_core(void)
         add_buildin("%", core::modulus);
         add_buildin("time", core::get_time);
         add_buildin("gc-info", core::gc_info);
-        add_buildin("gc", core::gc_run);
+        add_buildin("gc-run", core::gc_run);
 
         eval(read(" (fn! progn (&body)"
                   "   \"evaluate body and return last result\""
@@ -1341,13 +1423,13 @@ Environment::load_file(const std::string& _path)
 Expr *
 Environment::t(void)
 {
-	return symbol("T");
+	return m_glob_t;
 }
 
 Expr *
 Environment::nil(void)
 {
-	return symbol("NIL");
+	return m_glob_nil;
 }
 
 Expr *
@@ -2327,9 +2409,11 @@ core::gc_info(VariableScope* _s, Expr* _e)
 Expr*
 core::gc_run(VariableScope* _s, Expr* _e)
 {
-    UNUSED(_s);
-    UNUSED(_e);
-    return nullptr;
+    if (len(_e) != 0)
+        throw _s->ProgramError("gc-run", "expects no arguments, got", _e);
+    _s->mark_variables();
+    _s->env()->garbage_collect();
+    return _s->env()->t();
 }
 
 #endif /*YALPP_IMPLEMENTATION*/

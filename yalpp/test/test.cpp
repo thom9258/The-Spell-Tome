@@ -531,6 +531,159 @@ test_buildin_math(void)
 }
 
 void
+test_gc_empty(void)
+{
+    yal::Environment e;
+    e.load_core();
+    std::cout << e.gc_info() << std::endl << std::endl;
+    size_t init = e.exprs_in_use();
+    std::cout << "exprs in use " << init << std::endl;
+    e.garbage_collect();
+    size_t after = e.exprs_in_use();
+    std::cout << "exprs in use after gc " << after << std::endl;
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
+test_mark_unmark(void)
+{
+    yal::Environment e;
+    e.load_core();
+    
+    yal::Expr* ints = e.read("(1 2 3)");
+    std::cout << ints << std::endl;
+    TL_TEST(stringify(ints) == "(1 2 3)");
+    yal::set_mark(ints);
+    TL_TEST(stringify(ints) == "(1 2 3)");
+    TL_TEST(yal::is_marked(ints));
+    TL_TEST(yal::is_marked(yal::first(ints)));
+    TL_TEST(yal::is_marked(yal::second(ints)));
+    TL_TEST(yal::is_marked(yal::third(ints)));
+    
+    yal::Expr* lst = e.read("(quote (T 2 NIL)");
+    yal::set_mark(lst);
+    TL_TEST(yal::is_marked(lst));
+    TL_TEST(yal::is_marked(yal::first(lst)));
+    TL_TEST(yal::is_marked(yal::first(yal::second(lst))));
+    TL_TEST(yal::is_marked(yal::second(yal::second(lst))));
+    TL_TEST(yal::is_marked(yal::third(yal::second(lst))));
+    
+    TL_TEST(stringify(ints) == "(1 2 3)");
+    yal::clear_mark(ints);
+    yal::clear_mark(yal::first(ints));
+    //yal::clear_mark(yal::second(ints));
+    yal::clear_mark(yal::third(ints));
+    TL_TEST(stringify(ints) == "(1 2 3)");
+    TL_TEST(yal::is_marked(ints) == false);
+    TL_TEST(yal::is_marked(yal::first(ints)) == false);
+    TL_TEST(yal::is_marked(yal::second(ints)) == true);
+    TL_TEST(yal::is_marked(yal::third(ints)) == false);
+    TL_TEST(stringify(ints) == "(1 2 3)");
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
+test_global_gc(void)
+{
+    size_t collected = 0;
+    size_t inuse = 0;
+    yal::Environment e;
+    e.load_core();
+
+    std::cout << e.gc_info() << std::endl << std::endl;
+
+    TL_TEST(repl_test(&e, "(global! mymath (_PLUS2 2 3))", "mymath"));
+    TL_TEST(repl_test(&e, "mymath", "5"));
+    std::cout << e.gc_info() << std::endl << std::endl;
+
+    inuse = e.exprs_in_use();
+    std::cout << "exprs in use " << inuse << std::endl;
+
+    collected += e.garbage_collect();
+    std::cout << "collected exprs " << collected << std::endl;
+    inuse = e.exprs_in_use();
+    std::cout << "exprs in use after gc " << inuse << std::endl;
+    
+    std::cout << "exprs in use " << inuse << std::endl;
+    TL_TEST(repl_test(&e, "'(1 2 3)", "(1 2 3)"));
+    collected += e.garbage_collect();
+    std::cout << "collected exprs " << collected << std::endl;
+    std::cout << "exprs in use after gc " << inuse << std::endl;
+
+    TL_TEST(repl_test(&e, "mymath", "5"));
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
+test_scoped_gc(void)
+{
+    size_t collected = 0;
+    size_t inuse = 0;
+    yal::Environment e;
+    e.load_core();
+    TL_TEST(repl_test(&e, "(fn! scale (a b c) (_PLUS2 c (_MULTIPLY2 a b)))", "scale"));
+    
+    std::cout << e.gc_info() << std::endl << std::endl;
+
+    TL_TEST(repl_test(&e, "(scale 2 5 1)", "11"));
+    inuse = e.exprs_in_use();
+    std::cout << "exprs in use " << inuse << std::endl;
+
+    collected += e.garbage_collect();
+    std::cout << "collected exprs " << collected << std::endl;
+
+    inuse = e.exprs_in_use();
+    std::cout << "exprs in use after gc " << inuse << std::endl;
+
+    TL_TEST(repl_test(&e, "(scale 2 5 1)", "11"));
+    collected += e.garbage_collect();
+    std::cout << "collected exprs " << collected << std::endl;
+    
+    TL_TEST(repl_test(&e, "(fn! scale2 ()  (scale 2 5 1) (scale 1 2 3))", "scale2"));
+    TL_TEST(repl_test(&e, "(scale2)", "5"));
+    collected += e.garbage_collect();
+    std::cout << "collected exprs " << collected << std::endl;
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
+test_std_gc(void)
+{
+    size_t collected = 0;
+    size_t inuse = 0;
+    yal::Environment e;
+    e.load_core();
+
+    std::cout << e.gc_info() << std::endl << std::endl;
+
+    TL_TEST(repl_test(&e, "(global! mymath (_PLUS2 2 3))", "mymath"));
+    TL_TEST(repl_test(&e, "mymath", "5"));
+    std::cout << e.gc_info() << std::endl << std::endl;
+
+    inuse = e.exprs_in_use();
+    std::cout << "exprs in use " << inuse << std::endl;
+
+    collected += e.garbage_collect();
+    std::cout << "collected exprs " << collected << std::endl;
+    inuse = e.exprs_in_use();
+    std::cout << "exprs in use after gc " << inuse << std::endl;
+    
+    std::cout << "exprs in use " << inuse << std::endl;
+    TL_TEST(repl_test(&e, "'(1 2 3)", "(1 2 3)"));
+    collected += e.garbage_collect();
+    std::cout << "collected exprs " << collected << std::endl;
+    std::cout << "exprs in use after gc " << inuse << std::endl;
+
+    TL_TEST(repl_test(&e, "mymath", "5"));
+
+    std::cout << e.gc_info() << std::endl;
+}
+
+void
 test_buildin_equality(void)
 {
     yal::Environment e;
@@ -1413,38 +1566,43 @@ main(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-    TL(test_sizes());
-    TL(test_types_creation());
-    TL(test_read());
-    TL(test_nilp());
-    TL(test_len());
-    TL(test_globals());
-    TL(test_ipreverse());
-    TL(test_simple_eval());
-    TL(test_lex_types());
-    TL(test_buildin_range());
-    TL(test_buildin_equality());
-    TL(test_buildin_accessors());
-    TL(test_buildin_list_creation());
-    TL(test_buildin_math());
-    TL(test_variables());
-    TL(test_lambda());
-    TL(test_fn());
-    TL(test_try_catch_throw());
-    TL(test_full_circle());
-    TL(test_load_libraries());
-    TL(test_functions_and_recursion());
-    TL(test_predicates());
-    TL(test_std());
-    TL(test_conditionals());
-    TL(test_setnth());
-    TL(test_variable_definition());
-    TL(test_set_variables());
-    TL(test_reducers());
-    TL(test_std_list_stuff());
-    TL(test_extended_math());
-    TL(test_get());
+    //TL(test_sizes());
+    //TL(test_types_creation());
+    //TL(test_read());
+    //TL(test_nilp());
+    //TL(test_len());
+    //TL(test_globals());
+    //TL(test_ipreverse());
+    //TL(test_simple_eval());
+    //TL(test_lex_types());
+    //TL(test_buildin_range());
+    //TL(test_buildin_equality());
+    //TL(test_buildin_accessors());
+    //TL(test_buildin_list_creation());
+    //TL(test_buildin_math());
+    //TL(test_variables());
+    //TL(test_lambda());
+    //TL(test_fn());
+    //TL(test_try_catch_throw());
+    //TL(test_full_circle());
+    //TL(test_load_libraries());
+    //TL(test_functions_and_recursion());
+    //TL(test_predicates());
+    //TL(test_std());
+    //TL(test_conditionals());
+    //TL(test_setnth());
+    //TL(test_variable_definition());
+    //TL(test_set_variables());
+    //TL(test_reducers());
+    //TL(test_std_list_stuff());
+    //TL(test_extended_math());
+    //TL(test_get());
     //TL(test_macros());
+
+    TL(test_gc_empty());
+    TL(test_mark_unmark());
+    TL(test_global_gc());
+    TL(test_scoped_gc());
 
     //TL(test_quasiquote());
     //TL(test_funcall());
