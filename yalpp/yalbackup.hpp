@@ -8,7 +8,6 @@
 #include <string>
 #include <cstring>
 #include <vector>
-#include <variant>
 #include <list>
 #include <functional>
 #include <math.h>
@@ -43,99 +42,91 @@ enum TYPE {
 };
 
 /*Forward Declarations*/
-class ExprData;
-using ExprPtr = std::shared_ptr<ExprData>;
+class Expr;
 class VariableScope;
 class Environment;
-typedef ExprPtr(*BuildinFn)(VariableScope*, ExprPtr);
+typedef Expr*(*BuildinFn)(VariableScope*, Expr*);
 
-class ExprData {
+const size_t smallXsz = (sizeof(Expr*) * 2) / sizeof(char);
+
+class Expr {
     bool is_marked = false;
     uint8_t type = TYPE_INVALID;
-//   union {
-//       int real;
-//       float decimal;
-//       char* string;
-//       char* symbol;
-//       BuildinFn buildin;
-//       struct {
-//           ExprPtr binds;
-//           ExprPtr body;
-//       }callable;
-//       struct {
-//           ExprPtr car;
-//           ExprPtr cdr;
-//       }cons;
-//   };
-
-       struct cons {
-           ExprPtr car;
-           ExprPtr cdr;
-       };
-
-    std::variant < int, float, char*, cons, BuildinFn
-                   > data;
-
+    union {
+        int real;
+        float decimal;
+        char* string;
+        char* symbol;
+        BuildinFn buildin;
+        struct {
+            Expr* binds;
+            Expr* body;
+        }callable;
+        struct {
+            Expr* car;
+            Expr* cdr;
+        }cons;
+    };
 
 public:
-    /*'friends' are the only interaction interface with the ExprPtr class.
+    /*'friends' are the only interaction interface with the Expr class.
       This was chosen to avoid null pointer access, as a nullptr is considered
-      a valid 'ExprPtr'*/
+      a valid 'Expr'*/
     friend class GarbageCollector;
     /*TODO: this is a temporary workaround, and should be excluded*/
     friend class Environment;
 
-    friend std::ostream& operator<<(std::ostream& os, ExprPtr _e);
+    friend std::ostream& operator<<(std::ostream& os, Expr* _e);
     /*type specifiers*/
-    friend uint8_t type(ExprPtr _e);
-    friend bool is_nil(ExprPtr _e);
-    friend bool is_real(ExprPtr _e);
-    friend bool is_decimal(ExprPtr _e);
-    friend bool is_val(ExprPtr _e);
-    friend bool is_string(ExprPtr _e);
-    friend bool is_symbol(ExprPtr _e);
-    friend bool is_buildin(ExprPtr _e);
-    friend bool is_lambda(ExprPtr _e);
-    friend bool is_macro(ExprPtr _e);
-    friend bool is_cons(ExprPtr _e);
-    friend bool is_dotted(ExprPtr _e);
+    friend uint8_t type(Expr* _e);
+    friend bool is_nil(Expr* _e);
+    friend bool is_real(Expr* _e);
+    friend bool is_decimal(Expr* _e);
+    friend bool is_val(Expr* _e);
+    friend bool is_string(Expr* _e);
+    friend bool is_symbol(Expr* _e);
+    friend bool is_buildin(Expr* _e);
+    friend bool is_lambda(Expr* _e);
+    friend bool is_macro(Expr* _e);
+    friend bool is_cons(Expr* _e);
+    friend bool is_dotted(Expr* _e);
 
     /*garbage management methods*/
-    friend bool is_marked(ExprPtr _e);
-    friend void set_mark(ExprPtr _e);
-    friend void clear_mark(ExprPtr _e);
+    friend bool is_marked(Expr* _e);
+    friend void set_mark(Expr* _e);
+    friend void clear_mark(Expr* _e);
     
     /*value accessors*/
-    friend int         get_real(ExprPtr _e);
-    friend float       get_decimal(ExprPtr _e);
-    friend std::string get_str(ExprPtr _e);
-    friend const char* get_cstr(ExprPtr _e);
-    friend std::string get_sym(ExprPtr _e);
-    friend const char* get_csym(ExprPtr _e);
-    friend ExprPtr     get_binds(ExprPtr _e);
-    friend ExprPtr     get_body(ExprPtr _e);
+    friend int         get_real(Expr* _e);
+    friend float       get_decimal(Expr* _e);
+    friend std::string get_str(Expr* _e);
+    friend const char* get_cstr(Expr* _e);
+    friend std::string get_sym(Expr* _e);
+    friend const char* get_csym(Expr* _e);
+    friend Expr*       get_binds(Expr* _e);
+    friend Expr*       get_body(Expr* _e);
 
-    friend ExprPtr car(ExprPtr _e);
-    friend ExprPtr cdr(ExprPtr _e);
-    friend ExprPtr set_callable(ExprPtr _e, ExprPtr _binds, ExprPtr _body);
-    friend ExprPtr set_car(ExprPtr _e, ExprPtr _car);
-    friend ExprPtr set_cdr(ExprPtr _e, ExprPtr _cdr);
-    friend ExprPtr ipreverse(ExprPtr _e);
+    friend Expr* car(Expr* _e);
+    friend Expr* cdr(Expr* _e);
+    friend Expr* set_callable(Expr* _e, Expr* _binds, Expr* _body);
+    friend Expr* set_car(Expr* _e, Expr* _car);
+    friend Expr* set_cdr(Expr* _e, Expr* _cdr);
+    friend Expr* ipreverse(Expr* _e);
 
     /*friend functions that extend existing friend functions*/
-    friend int len(ExprPtr _e);
-    friend ExprPtr first(ExprPtr _e); 
-    friend ExprPtr second(ExprPtr _e);
-    friend ExprPtr third(ExprPtr _e);
-    friend ExprPtr fourth(ExprPtr _e);
+    friend int len(Expr* _e);
+    friend Expr* first(Expr* _e); 
+    friend Expr* second(Expr* _e);
+    friend Expr* third(Expr* _e);
+    friend Expr* fourth(Expr* _e);
 };
     
 /*Helper that convert std::string to allocated char ptr*/
 char* str_to_cstr(const std::string& _s);
 
 /*Stringification helpers*/
-std::stringstream stream(ExprPtr _e, bool _wrap_quotes);
-std::string stringify(ExprPtr _e, bool _wrap_quotes=true);
+std::stringstream stream(Expr* _e, bool _wrap_quotes);
+std::string stringify(Expr* _e, bool _wrap_quotes=true);
 
 enum THROWABLE_TYPES {
     THROWABLE_RETURNED,
@@ -144,89 +135,89 @@ enum THROWABLE_TYPES {
 
 class Throwable {
     char m_type = THROWABLE_THROWN;
-    ExprPtr m_data{nullptr};
+    Expr* m_data{nullptr};
 public:
-    Throwable(char _type, ExprPtr _data);
+    Throwable(char _type, Expr* _data);
     bool is_thrown(void);
     bool is_returned(void);
-    ExprPtr data(void);
+    Expr* data(void);
 };
 
 namespace core {
 
-ExprPtr quote(VariableScope* _s, ExprPtr _e);
-ExprPtr reverse_ip(VariableScope* _s, ExprPtr _e);
-ExprPtr range(VariableScope* _s, ExprPtr _e);
+Expr* quote(VariableScope* _s, Expr* _e);
+Expr* reverse_ip(VariableScope* _s, Expr* _e);
+Expr* range(VariableScope* _s, Expr* _e);
 
-ExprPtr car(VariableScope* _s, ExprPtr _e);
-ExprPtr cdr(VariableScope* _s, ExprPtr _e);
-ExprPtr cons(VariableScope* _s, ExprPtr _e);
-ExprPtr is_nil(VariableScope* _s, ExprPtr _e);
+Expr* car(VariableScope* _s, Expr* _e);
+Expr* cdr(VariableScope* _s, Expr* _e);
+Expr* cons(VariableScope* _s, Expr* _e);
+Expr* is_nil(VariableScope* _s, Expr* _e);
 
-ExprPtr plus2(VariableScope* _s, ExprPtr _e);
-ExprPtr minus2(VariableScope* _s, ExprPtr _e);
-ExprPtr multiply2(VariableScope* _s, ExprPtr _e);
-ExprPtr divide2(VariableScope* _s, ExprPtr _e);
+Expr* plus2(VariableScope* _s, Expr* _e);
+Expr* minus2(VariableScope* _s, Expr* _e);
+Expr* multiply2(VariableScope* _s, Expr* _e);
+Expr* divide2(VariableScope* _s, Expr* _e);
 
-ExprPtr lessthan2(VariableScope* _s, ExprPtr _e);
-ExprPtr greaterthan2(VariableScope* _s, ExprPtr _e);
-ExprPtr mathequal(VariableScope* _s, ExprPtr _e);
+Expr* lessthan2(VariableScope* _s, Expr* _e);
+Expr* greaterthan2(VariableScope* _s, Expr* _e);
+Expr* mathequal(VariableScope* _s, Expr* _e);
 
-ExprPtr slurp_file(VariableScope* _s, ExprPtr _e);
-ExprPtr read(VariableScope* _s, ExprPtr _e);
-ExprPtr eval(VariableScope* _s, ExprPtr _e);
-ExprPtr write(VariableScope* _s, ExprPtr _e);
-ExprPtr newline(VariableScope* _s, ExprPtr _e);
-ExprPtr stringify(VariableScope* _s, ExprPtr _e);
-ExprPtr concat2(VariableScope* _s, ExprPtr _e);
+Expr* slurp_file(VariableScope* _s, Expr* _e);
+Expr* read(VariableScope* _s, Expr* _e);
+Expr* eval(VariableScope* _s, Expr* _e);
+Expr* write(VariableScope* _s, Expr* _e);
+Expr* newline(VariableScope* _s, Expr* _e);
+Expr* stringify(VariableScope* _s, Expr* _e);
+Expr* concat2(VariableScope* _s, Expr* _e);
 
-ExprPtr defglobal(VariableScope* _s, ExprPtr _e);
-ExprPtr deflocal(VariableScope* _s, ExprPtr _e);
-ExprPtr deflambda(VariableScope* _s, ExprPtr _e);
+Expr* defglobal(VariableScope* _s, Expr* _e);
+Expr* deflocal(VariableScope* _s, Expr* _e);
+Expr* deflambda(VariableScope* _s, Expr* _e);
 /*TODO: make deffunction into a macro that creates a lambda*/
-ExprPtr deffunction(VariableScope* _s, ExprPtr _e);
-ExprPtr defmacro(VariableScope* _s, ExprPtr _e);
-ExprPtr macro_expand(VariableScope* _s, ExprPtr _e);
-ExprPtr setcar(VariableScope* _s, ExprPtr _e);
-ExprPtr setcdr(VariableScope* _s, ExprPtr _e);
-ExprPtr variable_definition(VariableScope* _s, ExprPtr _e);
+Expr* deffunction(VariableScope* _s, Expr* _e);
+Expr* defmacro(VariableScope* _s, Expr* _e);
+Expr* macro_expand(VariableScope* _s, Expr* _e);
+Expr* setcar(VariableScope* _s, Expr* _e);
+Expr* setcdr(VariableScope* _s, Expr* _e);
+Expr* variable_definition(VariableScope* _s, Expr* _e);
 
-ExprPtr _try(VariableScope* _s, ExprPtr _e);
-ExprPtr _throw(VariableScope* _s, ExprPtr _e);
-ExprPtr _return(VariableScope* _s, ExprPtr _e);
+Expr* _try(VariableScope* _s, Expr* _e);
+Expr* _throw(VariableScope* _s, Expr* _e);
+Expr* _return(VariableScope* _s, Expr* _e);
 
-ExprPtr _if(VariableScope* _s, ExprPtr _e);
-ExprPtr _typeof(VariableScope* _s, ExprPtr _e);
+Expr* _if(VariableScope* _s, Expr* _e);
+Expr* _typeof(VariableScope* _s, Expr* _e);
 
 /*NOTE: A lot of these can be calculated using the above buildins, but are
         pulled from c++ stl for convenience.
 */
-ExprPtr cos(VariableScope* _s, ExprPtr _e);
-ExprPtr sin(VariableScope* _s, ExprPtr _e);
-ExprPtr tan(VariableScope* _s, ExprPtr _e);
-ExprPtr acos(VariableScope* _s, ExprPtr _e);
-ExprPtr asin(VariableScope* _s, ExprPtr _e);
-ExprPtr atan(VariableScope* _s, ExprPtr _e);
-ExprPtr cosh(VariableScope* _s, ExprPtr _e);
-ExprPtr sinh(VariableScope* _s, ExprPtr _e);
-ExprPtr tanh(VariableScope* _s, ExprPtr _e);
+Expr* cos(VariableScope* _s, Expr* _e);
+Expr* sin(VariableScope* _s, Expr* _e);
+Expr* tan(VariableScope* _s, Expr* _e);
+Expr* acos(VariableScope* _s, Expr* _e);
+Expr* asin(VariableScope* _s, Expr* _e);
+Expr* atan(VariableScope* _s, Expr* _e);
+Expr* cosh(VariableScope* _s, Expr* _e);
+Expr* sinh(VariableScope* _s, Expr* _e);
+Expr* tanh(VariableScope* _s, Expr* _e);
 
-ExprPtr floor(VariableScope* _s, ExprPtr _e);
-ExprPtr ceil(VariableScope* _s, ExprPtr _e);
+Expr* floor(VariableScope* _s, Expr* _e);
+Expr* ceil(VariableScope* _s, Expr* _e);
 
-ExprPtr pow(VariableScope* _s, ExprPtr _e);
-ExprPtr sqrt(VariableScope* _s, ExprPtr _e);
-ExprPtr log(VariableScope* _s, ExprPtr _e);
-ExprPtr log10(VariableScope* _s, ExprPtr _e);
-ExprPtr exp(VariableScope* _s, ExprPtr _e);
-ExprPtr modulus(VariableScope* _s, ExprPtr _e);
+Expr* pow(VariableScope* _s, Expr* _e);
+Expr* sqrt(VariableScope* _s, Expr* _e);
+Expr* log(VariableScope* _s, Expr* _e);
+Expr* log10(VariableScope* _s, Expr* _e);
+Expr* exp(VariableScope* _s, Expr* _e);
+Expr* modulus(VariableScope* _s, Expr* _e);
 
-ExprPtr get_time(VariableScope* _s, ExprPtr _e);
+Expr* get_time(VariableScope* _s, Expr* _e);
 
-ExprPtr gc_info(VariableScope* _s, ExprPtr _e);
-ExprPtr gc_run(VariableScope* _s, ExprPtr _e);
+Expr* gc_info(VariableScope* _s, Expr* _e);
+Expr* gc_run(VariableScope* _s, Expr* _e);
     
-ExprPtr get_vars(VariableScope* _s, ExprPtr _e);
+Expr* get_vars(VariableScope* _s, Expr* _e);
 
 }; /*namespace core*/
 
@@ -237,14 +228,14 @@ class GarbageCollector {
     - Page-based bulk allocation of exprs
     - a mark-and-sweep algorithm as the primary gc
   */
-    std::vector<ExprPtr> m_in_use = {};
+    std::vector<Expr*> m_in_use = {};
     std::size_t m_total = 0;
 public:
     size_t exprs_total_count(void);
     size_t exprs_in_use_count(void);
     size_t garbage_collect(void);
-    ExprPtr new_expr(uint8_t _type);
-    void destroy_expr(ExprPtr _e);
+    Expr* new_expr(uint8_t _type);
+    void destroy_expr(Expr* _e);
     ~GarbageCollector(void);
 };
 
@@ -258,34 +249,34 @@ public:
     VariableScope* global_scope(void);
     VariableScope* outer_scope(void);
     VariableScope create_internal(void);
-    bool is_var_const(ExprPtr _var);
-    ExprPtr variable_get(const std::string& _name);
-    ExprPtr variable_get_this_scope(const std::string& _name);
-    std::unordered_map<std::string, ExprPtr>& variables_get_all(void);
+    bool is_var_const(Expr* _var);
+    Expr* variable_get(const std::string& _name);
+    Expr* variable_get_this_scope(const std::string& _name);
+    std::unordered_map<std::string, Expr*>& variables_get_all(void);
     void mark_variables(void);
-    bool add_global(const std::string& _name, ExprPtr _v);
+    bool add_global(const std::string& _name, Expr* _v);
 	bool add_buildin(const std::string& _name, const BuildinFn _fn);
-    bool add_local(const std::string& _name, ExprPtr _v);
-    void bind(const std::string& _fnname, ExprPtr _binds, ExprPtr _values);
+    bool add_local(const std::string& _name, Expr* _v);
+    void bind(const std::string& _fnname, Expr* _binds, Expr* _values);
     
     Throwable NotImplemented(const std::string& _fn);
     Throwable InternalError(const std::string& _msg);
-    Throwable ProgramError(const std::string& _fn, const std::string& _msg, ExprPtr _error);
-    Throwable UserThrow(ExprPtr _thrown);
-    Throwable UserReturn(ExprPtr _returned);
+    Throwable ProgramError(const std::string& _fn, const std::string& _msg, Expr* _error);
+    Throwable UserThrow(Expr* _thrown);
+    Throwable UserReturn(Expr* _returned);
 
 private:
     VariableScope* m_outer = nullptr;
     Environment* m_env;
-    std::unordered_map<std::string, ExprPtr> m_variables;
+    std::unordered_map<std::string, Expr*> m_variables;
 };
 
 class Environment {
     friend class VariableScope;
     /*garbage management methods*/
-    friend bool is_marked(ExprPtr _e);
-    friend void set_mark(ExprPtr _e);
-    friend void clear_mark(ExprPtr _e);
+    friend bool is_marked(Expr* _e);
+    friend void set_mark(Expr* _e);
+    friend void clear_mark(Expr* _e);
 
 public:
     Environment(void);
@@ -298,33 +289,33 @@ public:
     const std::string gc_info(void);
 
     /*Evaluation*/
-    ExprPtr read(const std::string& _program);
-    ExprPtr eval(ExprPtr _e);
+    Expr* read(const std::string& _program);
+    Expr* eval(Expr* _e);
     /*TODO: put these into private and access as friend*/
-    ExprPtr list_eval(VariableScope* _scope, ExprPtr _list);
-    ExprPtr scoped_eval(VariableScope* _scope, ExprPtr _e);
+    Expr* list_eval(VariableScope* _scope, Expr* _list);
+    Expr* scoped_eval(VariableScope* _scope, Expr* _e);
 
-    /*ExprPtr Creation*/
-	ExprPtr t(void);
-	ExprPtr nil(void);
-	ExprPtr cons(ExprPtr _car, ExprPtr _cdr);
-    ExprPtr real(int _v);
-    ExprPtr decimal(float _v);
-    ExprPtr symbol(const std::string& _v);
-    ExprPtr string(const std::string& _v);
-    ExprPtr buildin(const BuildinFn _v);
-	ExprPtr lambda(ExprPtr _binds, ExprPtr _body);
-	ExprPtr macro(ExprPtr _binds, ExprPtr _body);
-    ExprPtr list(const std::initializer_list<ExprPtr >& _lst);
-    ExprPtr put_in_list(ExprPtr _val, ExprPtr _list);
+    /*Expr Creation*/
+	Expr* t(void);
+	Expr* nil(void);
+	Expr* cons(Expr *_car, Expr *_cdr);
+    Expr* real(int _v);
+    Expr* decimal(float _v);
+    Expr* symbol(const std::string& _v);
+    Expr* string(const std::string& _v);
+    Expr* buildin(const BuildinFn _v);
+	Expr* lambda(Expr* _binds, Expr* _body);
+	Expr* macro(Expr* _binds, Expr* _body);
+    Expr* list(const std::initializer_list<Expr *>& _lst);
+    Expr* put_in_list(Expr* _val, Expr* _list);
 
     /*Environment Creation*/
     bool load_core(void);
     bool load_file(const std::string& _path);
     bool load(const std::string& _program);
-    bool add_global(const std::string& _name, ExprPtr _v);
+    bool add_global(const std::string& _name, Expr* _v);
 	bool add_buildin(const std::string& _name, const BuildinFn _fn);
-    bool add_local(const std::string& _name, ExprPtr _v);
+    bool add_local(const std::string& _name, Expr* _v);
 
     const std::stringstream& outbuffer_put(const std::string& _put);
     std::string outbuffer_getreset();
@@ -332,29 +323,29 @@ public:
 private:
     std::stringstream m_outbuffer;
     GarbageCollector m_gc;
-    ExprPtr m_glob_nil = nullptr;
-    ExprPtr m_glob_t = nullptr;
+    Expr* m_glob_nil = nullptr;
+    Expr* m_glob_t = nullptr;
     VariableScope m_global_scope;
     bool m_core_loaded = false;
-    ExprPtr lex_value(std::string& _token);
-    ExprPtr lex(std::list<std::string>& _tokens);
+    Expr* lex_value(std::string& _token);
+    Expr* lex(std::list<std::string>& _tokens);
 };
 
 #define YALCPP_IMPLEMENTATION
 #ifdef YALCPP_IMPLEMENTATION
     
    
-//bool ExprPtr::is_real(void) {return type == TYPE_REAL;}
-//bool ExprPtr::is_decimal(void) {return type == TYPE_DECIMAL;}
-//bool ExprPtr::is_value(void) {return (is_real() || is_decimal());}
-//bool ExprPtr::is_string(void) {return type == TYPE_STRING;}
-//bool ExprPtr::is_symbol(void) {return type == TYPE_SYMBOL;}
-//bool ExprPtr::is_buildin(void) {return type == TYPE_BUILDIN;}
-//bool ExprPtr::is_lambda(void) {return type == TYPE_LAMBDA;}
-//bool ExprPtr::is_macro(void) {return type == TYPE_MACRO;}
+//bool Expr::is_real(void) {return type == TYPE_REAL;}
+//bool Expr::is_decimal(void) {return type == TYPE_DECIMAL;}
+//bool Expr::is_value(void) {return (is_real() || is_decimal());}
+//bool Expr::is_string(void) {return type == TYPE_STRING;}
+//bool Expr::is_symbol(void) {return type == TYPE_SYMBOL;}
+//bool Expr::is_buildin(void) {return type == TYPE_BUILDIN;}
+//bool Expr::is_lambda(void) {return type == TYPE_LAMBDA;}
+//bool Expr::is_macro(void) {return type == TYPE_MACRO;}
 
 std::ostream&
-operator<<(std::ostream& os, ExprPtr _e)
+operator<<(std::ostream& os, Expr* _e)
 {
     os << stream(_e, true).str();
     return os;
@@ -362,7 +353,7 @@ operator<<(std::ostream& os, ExprPtr _e)
     
 
 uint8_t
-type(ExprPtr _e)
+type(Expr* _e)
 {
     if (_e == nullptr)
         return TYPE_INVALID;
@@ -370,23 +361,23 @@ type(ExprPtr _e)
 }
 
 bool
-is_nil(ExprPtr _e)
+is_nil(Expr* _e)
 {
     const std::string nil1 = "nil";
     const std::string nil2 = "NIL";
     if (_e == nullptr || type(_e) == TYPE_INVALID)
         return true;
-    if (type(_e) == TYPE_CONS && car(_e) == nullptr && cdr(_e) == nullptr)
+    if (type(_e) == TYPE_CONS && _e->cons.car == nullptr && _e->cons.cdr == nullptr)
         return true;
-    if (type(_e) == TYPE_SYMBOL && nil1 == get_sym(_e))
+    if (type(_e) == TYPE_SYMBOL && nil1 == _e->symbol)
         return true;
-    if (type(_e) == TYPE_SYMBOL && nil2 == get_sym(_e))
+    if (type(_e) == TYPE_SYMBOL && nil2 == _e->symbol)
         return true;
     return false;
 }
 
 bool
-is_real(ExprPtr _e)
+is_real(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_REAL)
         return true;
@@ -394,7 +385,7 @@ is_real(ExprPtr _e)
 }
 
 bool
-is_decimal(ExprPtr _e)
+is_decimal(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_DECIMAL)
         return true;
@@ -402,7 +393,7 @@ is_decimal(ExprPtr _e)
 }
 
 bool
-is_val(ExprPtr _e)
+is_val(Expr* _e)
 {
     if (_e == nullptr)
         return false;
@@ -412,7 +403,7 @@ is_val(ExprPtr _e)
 }
 
 bool
-is_symbol(ExprPtr _e)
+is_symbol(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_SYMBOL)
         return true;
@@ -420,7 +411,7 @@ is_symbol(ExprPtr _e)
 }
 
 bool
-is_string(ExprPtr _e)
+is_string(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_STRING)
         return true;
@@ -428,7 +419,7 @@ is_string(ExprPtr _e)
 }
 
 bool
-is_buildin(ExprPtr _e)
+is_buildin(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_BUILDIN)
         return true;
@@ -436,7 +427,7 @@ is_buildin(ExprPtr _e)
 }
 
 bool
-is_lambda(ExprPtr _e)
+is_lambda(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_LAMBDA)
         return true;
@@ -444,7 +435,7 @@ is_lambda(ExprPtr _e)
 }
 
 bool
-is_macro(ExprPtr _e)
+is_macro(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_MACRO)
         return true;
@@ -452,7 +443,7 @@ is_macro(ExprPtr _e)
 }
 
 bool
-is_cons(ExprPtr _e)
+is_cons(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_CONS)
         return true;
@@ -460,7 +451,7 @@ is_cons(ExprPtr _e)
 }
 
 bool
-is_dotted(ExprPtr _e)
+is_dotted(Expr* _e)
 {
     if (!is_nil(_e) && type(_e) == TYPE_CONS  &&
         !is_nil(car(_e)) && !is_cons(car(_e)) &&
@@ -470,112 +461,112 @@ is_dotted(ExprPtr _e)
 }
 
 int
-get_real(ExprPtr _e)
+get_real(Expr* _e)
 {
     assert(is_real(_e));
-    return std::get<0>(_e->data);
+    return _e->real;
 }
 
 float
-get_decimal(ExprPtr _e)
+get_decimal(Expr* _e)
 {
     assert(is_decimal(_e));
-    return std::get<1>(_e->data);
+    return _e->decimal;
 }
 
 std::string
-get_str(ExprPtr _e)
+get_str(Expr* _e)
 {
     assert(is_string(_e));
-    return std::string(std::get<2>(_e->data));
+    return std::string(_e->string);
 }
 
 const char*
-get_cstr(ExprPtr _e)
+get_cstr(Expr* _e)
 {
     assert(is_string(_e));
-    return std::get<2>(_e->data);
+    return _e->string;
 }
 
 std::string
-get_sym(ExprPtr _e)
+get_sym(Expr* _e)
 {
     assert(is_symbol(_e));
-    return std::string(std::get<2>(_e->data));
+    return std::string(_e->symbol);
 }
 
 const char*
-get_csym(ExprPtr _e)
+get_csym(Expr* _e)
 {
     assert(is_symbol(_e));
-    return std::get<2>(_e->data);
+    return _e->symbol;
 }
 
-ExprPtr
-get_binds(ExprPtr _e)
+Expr*
+get_binds(Expr* _e)
 {
     if (!is_macro(_e) && !is_lambda(_e))
         return nullptr;
-    return std::get<3>(_e->data).car;
+    return _e->callable.binds;
 }
 
-ExprPtr
-get_body(ExprPtr _e)
+Expr*
+get_body(Expr* _e)
 {
     if (!is_macro(_e) && !is_lambda(_e))
         return nullptr;
-    return std::get<3>(_e->data).cdr;
+    return _e->callable.body;
 }
 
-ExprPtr
-ipreverse(ExprPtr _list)
+Expr*
+ipreverse(Expr* _list)
 {
-    ExprPtr curr = _list;
-    ExprPtr next = nullptr;
-    ExprPtr prev = nullptr;
+    Expr* curr = _list;
+    Expr* next = nullptr;
+    Expr* prev = nullptr;
     while (!is_nil(curr)) {
         next = cdr(curr);
-        set_cdr(curr, prev);
+        curr->cons.cdr = prev;
         prev = curr;
         curr = next;
     }
     return prev;
 }
 
-ExprPtr
-car(ExprPtr _e)
+Expr*
+car(Expr* _e)
 {
     if (is_nil(_e) || !is_cons(_e))
         return nullptr;
-    return std::get<3>(_e->data).car;
+    return _e->cons.car;
 }
 
-ExprPtr
-cdr(ExprPtr _e)
+Expr*
+cdr(Expr* _e)
 {
     if (is_nil(_e) || !is_cons(_e))
         return nullptr;
-    return std::get<3>(_e->data).cdr;
+    return _e->cons.cdr;
 }
 
-ExprPtr
-set_car(ExprPtr _e, ExprPtr _car)
+Expr*
+set_car(Expr* _e, Expr* _car)
 {
     assert(is_cons(_e));
     _e->cons.car = _car;
     return _e;
 }
 
-ExprPtr
-set_cdr(ExprPtr _e, ExprPtr _cdr)
+Expr*
+set_cdr(Expr* _e, Expr* _cdr)
 {
     assert(is_cons(_e));
     _e->cons.cdr = _cdr;
     return _e;
 }
     
-ExprPtr
-set_callable(ExprPtr _e, ExprPtr _binds, ExprPtr _body)
+Expr*
+set_callable(Expr* _e, Expr* _binds, Expr* _body)
 {
     assert(is_lambda(_e) || is_macro(_e));
     _e->callable.binds = _binds;
@@ -584,12 +575,12 @@ set_callable(ExprPtr _e, ExprPtr _binds, ExprPtr _body)
 }
 
 int
-len(ExprPtr _e)
+len(Expr* _e)
 {
     if (is_nil(_e)) return 0;
     if (!is_cons(_e)) return 1;
     int cnt = 0;
-    ExprPtr tmp = _e;
+    Expr* tmp = _e;
     while (!is_nil(tmp)) {
         cnt++;
         tmp = cdr(tmp);
@@ -597,17 +588,17 @@ len(ExprPtr _e)
     return cnt;
 }
 
-ExprPtr first(ExprPtr _e)
+Expr* first(Expr* _e)
 { return car(_e); }
-ExprPtr second(ExprPtr _e)
+Expr* second(Expr* _e)
 { return car(cdr(_e)); }
-ExprPtr third(ExprPtr _e)
+Expr* third(Expr* _e)
 { return car(cdr(cdr(_e))); }
-ExprPtr fourth(ExprPtr _e)
+Expr* fourth(Expr* _e)
 { return car(cdr(cdr(cdr(_e)))); }
 
 bool
-is_marked(ExprPtr _e)
+is_marked(Expr* _e)
 {
     if (_e == nullptr)
         return false;
@@ -615,7 +606,7 @@ is_marked(ExprPtr _e)
 }
 
 void
-set_mark(ExprPtr _e)
+set_mark(Expr* _e)
 {
     if (_e == nullptr)
         return;
@@ -639,14 +630,14 @@ set_mark(ExprPtr _e)
 }
 
 void
-clear_mark(ExprPtr _e)
+clear_mark(Expr* _e)
 {
     if (_e == nullptr)
         return;
     _e->is_marked = false;
 }
     
-Throwable::Throwable(char _type, ExprPtr _data) : m_type(_type), m_data(_data) {}
+Throwable::Throwable(char _type, Expr* _data) : m_type(_type), m_data(_data) {}
 
 bool
 Throwable::is_thrown(void)
@@ -660,7 +651,7 @@ Throwable::is_returned(void)
     return m_type == THROWABLE_RETURNED;
 }
 
-ExprPtr
+Expr*
 Throwable::data(void)
 {
     return m_data; 
@@ -681,38 +672,38 @@ VariableScope::NotImplemented(const std::string& _fn)
 }
 
 Throwable
-VariableScope::ProgramError(const std::string& _fn, const std::string& _msg, ExprPtr _error) {
-    ExprPtr msg = env()->cons(_error, nullptr);
+VariableScope::ProgramError(const std::string& _fn, const std::string& _msg, Expr* _error) {
+    Expr* msg = env()->cons(_error, nullptr);
     msg = env()->put_in_list(env()->string(_msg), msg);
     msg = env()->put_in_list(env()->string("[" + _fn + "]"), msg);
     return Throwable(THROWABLE_THROWN, msg);
 }
 
 Throwable
-VariableScope::UserReturn(ExprPtr _returned)
+VariableScope::UserReturn(Expr* _returned)
 {
     return Throwable(THROWABLE_RETURNED, _returned);
 }
 
 Throwable
-VariableScope::UserThrow(ExprPtr _thrown)
+VariableScope::UserThrow(Expr* _thrown)
 {
     return Throwable(THROWABLE_THROWN, _thrown);
 }
 
-ExprPtr
+Expr*
 GarbageCollector::new_expr(uint8_t _type)
 {
-    ExprPtr out = std::make_shared<ExprData>();
+    Expr* out = new Expr;
     out->type = _type;
-    assert(out != nullptr && "ExprPtr limit reached, could not create more ExprPtr's.");
+    assert(out != nullptr && "Expr limit reached, could not create more Expr's.");
     m_in_use.push_back(out);
     m_total++;
     return out;
 }
 
 void
-GarbageCollector::destroy_expr(ExprPtr _e)
+GarbageCollector::destroy_expr(Expr* _e)
 {
     if (_e == nullptr)
         return;
@@ -726,8 +717,7 @@ GarbageCollector::destroy_expr(ExprPtr _e)
     default:
         break;
     };
-    /*not allowed*/
-    //delete _e;
+    delete _e;
 }
 
 GarbageCollector::~GarbageCollector(void)
@@ -747,7 +737,7 @@ GarbageCollector::garbage_collect(void)
 {
     size_t removed = 0;
     for (auto it = m_in_use.begin(); it != m_in_use.end(); it++) {
-        ExprPtr expr = *it;
+        Expr* expr = *it;
         if (expr == nullptr) {
             continue;
         }
@@ -799,10 +789,10 @@ VariableScope::env(void)
     return m_env;
 }
 
-ExprPtr
+Expr*
 VariableScope::variable_get(const std::string& _s)
 {
-    ExprPtr v = nullptr;
+    Expr* v = nullptr;
     VariableScope* scope = this;
     while (scope != nullptr) {
         v = scope->variable_get_this_scope(_s);
@@ -814,7 +804,7 @@ VariableScope::variable_get(const std::string& _s)
 }
 
 
-std::unordered_map<std::string, ExprPtr>&
+std::unordered_map<std::string, Expr*>&
 VariableScope::variables_get_all(void)
 {
     return m_variables;
@@ -831,7 +821,7 @@ VariableScope::mark_variables(void)
         m_outer->mark_variables();
 }
 
-ExprPtr
+Expr*
 VariableScope::variable_get_this_scope(const std::string& _s)
 {
     if (m_variables.find(_s) == m_variables.end())
@@ -840,9 +830,9 @@ VariableScope::variable_get_this_scope(const std::string& _s)
 }
 
 bool
-VariableScope::add_local(const std::string& _name, ExprPtr _v)
+VariableScope::add_local(const std::string& _name, Expr* _v)
 {
-    ExprPtr entry;
+    Expr* entry;
     if (!is_nil(variable_get_this_scope(_name)))
         return false;
     entry = env()->list({_v});
@@ -851,7 +841,7 @@ VariableScope::add_local(const std::string& _name, ExprPtr _v)
 }
 
 bool
-VariableScope::add_global(const std::string& _name, ExprPtr _v)
+VariableScope::add_global(const std::string& _name, Expr* _v)
 {
     return global_scope()->add_local(_name, _v);
 }
@@ -863,7 +853,7 @@ VariableScope::add_buildin(const std::string& _name, const BuildinFn _fn)
 }
 
 void
-VariableScope::bind(const std::string& _fnname, ExprPtr _binds, ExprPtr _values)
+VariableScope::bind(const std::string& _fnname, Expr* _binds, Expr* _values)
 {
     /*TODO: add support for keyword binds aswell*/
     //std::cout << "==================== binding =============" << std::endl;
@@ -871,7 +861,7 @@ VariableScope::bind(const std::string& _fnname, ExprPtr _binds, ExprPtr _values)
     //std::cout << "    binding    " << stringify(_binds) << std::endl;
     //std::cout << "    binding to " << stringify(_values) << std::endl;
     std::string bindstr;
-    ExprPtr rest = nullptr;
+    Expr* rest = nullptr;
 
     while (!is_nil(_binds)) {
         if (type(car(_binds)) != TYPE_SYMBOL)
@@ -935,22 +925,22 @@ Environment::gc_info(void)
     auto total = exprs_total();
     auto in_use = exprs_in_use();
     std::stringstream ss;
-    ss << "ExprPtr size:      " << sizeof(yal::ExprPtr) << " bytes" << std::endl
-       << "Total ExprPtr's:   " << total << std::endl
-       << "Current ExprPtr's: " << in_use << std::endl
-       << "Current memory: " << float(in_use * sizeof(yal::ExprPtr)) / 1000000
+    ss << "Expr size:      " << sizeof(yal::Expr) << " bytes" << std::endl
+       << "Total Expr's:   " << total << std::endl
+       << "Current Expr's: " << in_use << std::endl
+       << "Current memory: " << float(in_use * sizeof(yal::Expr)) / 1000000
        << " MB";
     return ss.str();
 }
 
 bool
-Environment::add_local(const std::string& _name, ExprPtr _v)
+Environment::add_local(const std::string& _name, Expr* _v)
 {
     return m_global_scope.add_local(_name, _v);
 }
 
 bool
-Environment::add_global(const std::string& _name, ExprPtr _v)
+Environment::add_global(const std::string& _name, Expr* _v)
 {
     return m_global_scope.add_global(_name, _v);
 }
@@ -1064,7 +1054,7 @@ tokenize(const std::string& _str) {
     return tokens;
 };
 
-ExprPtr
+Expr*
 Environment::lex_value(std::string& _token)
 {
 
@@ -1100,15 +1090,15 @@ Environment::lex_value(std::string& _token)
     return symbol(_token);
 }
 
-ExprPtr
+Expr*
 Environment::lex(std::list<std::string>& _tokens)
 {
     /*TODO: Does not support special syntax for:
     dotted lists (a . 34)
     */
     std::string token;
-    ExprPtr program = nullptr;
-    ExprPtr curr = nullptr;
+    Expr* program = nullptr;
+    Expr* curr = nullptr;
 
     if (_tokens.empty())
         return nullptr;
@@ -1175,11 +1165,11 @@ Environment::lex(std::list<std::string>& _tokens)
     return program;
 }
 
-ExprPtr
+Expr*
 Environment::read(const std::string& _program)
 {
     std::list<std::string> tokens;
-    ExprPtr lexed = nullptr;
+    Expr* lexed = nullptr;
     tokens = tokenize(_program);
     if (tokens.empty())
         return nullptr;
@@ -1187,10 +1177,10 @@ Environment::read(const std::string& _program)
     return lexed;
 }
 
-ExprPtr
-Environment::eval(ExprPtr _e)
+Expr*
+Environment::eval(Expr* _e)
 {
-    ExprPtr res = nullptr;
+    Expr* res = nullptr;
     try {
         res = scoped_eval(&m_global_scope, _e);
     } catch (Throwable& e) {
@@ -1202,13 +1192,13 @@ Environment::eval(ExprPtr _e)
     return res;
 }
 
-ExprPtr
-_macro_expander(VariableScope* _s, const std::string& _macroname, ExprPtr _macrofn, ExprPtr _macroargs) {
-    auto macro_expand = [] (auto macro_expand, VariableScope* scope, ExprPtr body) {
+Expr*
+_macro_expander(VariableScope* _s, const std::string& _macroname, Expr* _macrofn, Expr* _macroargs) {
+    auto macro_expand = [] (auto macro_expand, VariableScope* scope, Expr* body) {
         if (is_nil(body))
             return body;
         if (type(body) == TYPE_SYMBOL) {
-            ExprPtr s = first(scope->variable_get_this_scope(get_csym(body)));
+            Expr* s = first(scope->variable_get_this_scope(get_csym(body)));
             if (is_nil(s)) {
                 return body;
             }
@@ -1222,8 +1212,8 @@ _macro_expander(VariableScope* _s, const std::string& _macroname, ExprPtr _macro
         }
         return body;
     };
-    auto progn = [] (VariableScope* s, ExprPtr e) {
-        ExprPtr last = nullptr;
+    auto progn = [] (VariableScope* s, Expr* e) {
+        Expr* last = nullptr;
             while (!is_nil(e)) {
                 try {
                     last = s->env()->scoped_eval(s, car(e));
@@ -1240,18 +1230,18 @@ _macro_expander(VariableScope* _s, const std::string& _macroname, ExprPtr _macro
 
     VariableScope internal = _s->create_internal();
     internal.bind(_macroname, get_binds(_macrofn), _macroargs);
-    ExprPtr body_copy = _s->env()->read(stringify(get_body(_macrofn)));
-    ExprPtr expanded = macro_expand(macro_expand, &internal, body_copy);
+    Expr* body_copy = _s->env()->read(stringify(get_body(_macrofn)));
+    Expr* expanded = macro_expand(macro_expand, &internal, body_copy);
     expanded = progn(_s, expanded);
     return expanded;
 }
 
 
-ExprPtr
-Environment::scoped_eval(VariableScope* _scope, ExprPtr _e)
+Expr*
+Environment::scoped_eval(VariableScope* _scope, Expr* _e)
 {
-    auto progn = [this] (VariableScope* s, ExprPtr e) {
-        ExprPtr last = nullptr;
+    auto progn = [this] (VariableScope* s, Expr* e) {
+        Expr* last = nullptr;
             while (!is_nil(e)) {
                 try {
                     last = s->env()->scoped_eval(s, car(e));
@@ -1265,7 +1255,7 @@ Environment::scoped_eval(VariableScope* _scope, ExprPtr _e)
         }
         return last;
     };
-    auto eval_fn = [progn, this, _scope] (const std::string& name, ExprPtr fn, ExprPtr args) {
+    auto eval_fn = [progn, this, _scope] (const std::string& name, Expr* fn, Expr* args) {
         VariableScope internal = _scope->create_internal();
         args = list_eval(&internal, args);
         internal.bind(name, fn->callable.binds, args);
@@ -1286,7 +1276,7 @@ Environment::scoped_eval(VariableScope* _scope, ExprPtr _e)
 
     /*Handle symbols*/
     if (type(_e) == TYPE_SYMBOL) {
-        ExprPtr var = nullptr;
+        Expr* var = nullptr;
         if (is_nil(_e))
             return nil();
         if (_e->symbol == std::string("t") || _e->symbol == std::string("T"))
@@ -1298,8 +1288,8 @@ Environment::scoped_eval(VariableScope* _scope, ExprPtr _e)
     /*Handle function calls*/
     if (type(_e) == TYPE_CONS) {
         std::string name;
-        ExprPtr fn = nullptr;
-        ExprPtr args = nullptr;
+        Expr* fn = nullptr;
+        Expr* args = nullptr;
         fn = car(_e);
         args = cdr(_e);
         if (type(fn) == TYPE_CONS)
@@ -1329,11 +1319,11 @@ Environment::scoped_eval(VariableScope* _scope, ExprPtr _e)
     return nil();
 }
 
-ExprPtr
-Environment::list_eval(VariableScope* _scope, ExprPtr _list)
+Expr*
+Environment::list_eval(VariableScope* _scope, Expr* _list)
 {
-    ExprPtr root = nullptr;
-    ExprPtr curr = _list;
+    Expr* root = nullptr;
+    Expr* curr = _list;
     if (!is_cons(_list)) {
         return nullptr;
     }
@@ -1451,21 +1441,21 @@ Environment::load_file(const std::string& _path)
     return true;
 }
 
-ExprPtr
+Expr *
 Environment::t(void)
 {
 	return m_glob_t;
 }
 
-ExprPtr
+Expr *
 Environment::nil(void)
 {
 	return m_glob_nil;
 }
 
-ExprPtr
-Environment::cons(ExprPtr _car, ExprPtr _cdr) {
-	ExprPtr out = m_gc.new_expr(TYPE_CONS);
+Expr *
+Environment::cons(Expr *_car, Expr *_cdr) {
+	Expr *out = m_gc.new_expr(TYPE_CONS);
 	if (out == nullptr)
 		return nullptr;
 	out->cons.car = _car;
@@ -1473,80 +1463,80 @@ Environment::cons(ExprPtr _car, ExprPtr _cdr) {
 	return out;
 }
 
-ExprPtr
+Expr *
 Environment::real(int _v) {
-     ExprPtr out = m_gc.new_expr(TYPE_REAL);
+     Expr *out = m_gc.new_expr(TYPE_REAL);
      if (out == nullptr)
        return nullptr;
      out->real = _v;
      return out;
    }
 
-ExprPtr
+Expr*
 Environment::decimal(float _v) {
-     ExprPtr out = m_gc.new_expr(TYPE_DECIMAL);
+     Expr *out = m_gc.new_expr(TYPE_DECIMAL);
      if (out == nullptr)
        return nullptr;
      out->decimal = _v;
      return out;
    }
 
-ExprPtr
+Expr*
 Environment::symbol(const std::string& _v) {
-     ExprPtr out = m_gc.new_expr(TYPE_SYMBOL);
+     Expr *out = m_gc.new_expr(TYPE_SYMBOL);
      if (out == nullptr)
        return nullptr;
      out->symbol = str_to_cstr(_v);
      return out;
 }
 
-ExprPtr 
+Expr *
 Environment::string(const std::string& _v) {
-  ExprPtr out = m_gc.new_expr(TYPE_STRING);
+  Expr *out = m_gc.new_expr(TYPE_STRING);
   if (out == nullptr)
     return nullptr;
   out->string = str_to_cstr(_v);
   return out;
 }
 
-ExprPtr 
+Expr *
 Environment::buildin(BuildinFn _v) {
-  ExprPtr out = m_gc.new_expr(TYPE_BUILDIN);
+  Expr *out = m_gc.new_expr(TYPE_BUILDIN);
   if (out == nullptr)
     return nullptr;
   out->buildin = _v;
   return out;
 }
 
-ExprPtr
-Environment::lambda(ExprPtr _binds, ExprPtr _body) {
-  ExprPtr out = m_gc.new_expr(TYPE_LAMBDA);
+Expr*
+Environment::lambda(Expr* _binds, Expr* _body) {
+  Expr *out = m_gc.new_expr(TYPE_LAMBDA);
   if (out == nullptr)
     return nullptr;
   set_callable(out, _binds, _body);
   return out;
 }
 
-ExprPtr
-Environment::macro(ExprPtr _binds, ExprPtr _body) 
+Expr*
+Environment::macro(Expr* _binds, Expr* _body) 
 {
-  ExprPtr out = m_gc.new_expr(TYPE_MACRO);
+  Expr *out = m_gc.new_expr(TYPE_MACRO);
   if (out == nullptr)
     return nullptr;
   set_callable(out, _binds, _body);
   return out;
 }
 
-ExprPtr Environment::list(const std::initializer_list<ExprPtr>& _lst) {
-    ExprPtr lst = nullptr;
+Expr *Environment::list(const std::initializer_list<Expr*>& _lst) {
+    Expr* lst = nullptr;
     /*Iterating in reverse order*/
     for (auto it = std::rbegin(_lst); it != std::rend(_lst); ++it)
         lst = put_in_list(*it, lst);
     return lst;
 }
 
-ExprPtr
-Environment::put_in_list(ExprPtr _val, ExprPtr _list)
+Expr*
+Environment::put_in_list(Expr* _val, Expr* _list)
 {
     return cons(_val, _list);
 }
@@ -1579,9 +1569,9 @@ str_to_cstr(const std::string& _s)
 
 
 std::stringstream
-stream(ExprPtr _e, bool _wrap_quotes)
+stream(Expr* _e, bool _wrap_quotes)
 {
-    auto stream_value = [_wrap_quotes] (ExprPtr e) {
+    auto stream_value = [_wrap_quotes] (Expr* e) {
         std::stringstream ss;
         if (is_nil(e)) {
             ss << "NIL";
@@ -1607,7 +1597,7 @@ stream(ExprPtr _e, bool _wrap_quotes)
         return ss;
     };
     std::stringstream ss;
-    ExprPtr curr = _e;
+    Expr* curr = _e;
     if (is_nil(_e)) {
         ss << "NIL";
         return ss;
@@ -1632,7 +1622,7 @@ stream(ExprPtr _e, bool _wrap_quotes)
 }
 
 std::string
-stringify(ExprPtr _e, bool _wrap_quotes)
+stringify(Expr* _e, bool _wrap_quotes)
 {
     std::stringstream ss = stream(_e, _wrap_quotes);
     if (ss.rdbuf()->in_avail() == 0)
@@ -1640,8 +1630,8 @@ stringify(ExprPtr _e, bool _wrap_quotes)
     return ss.str();
 }
 
-ExprPtr
-core::quote(VariableScope* _s, ExprPtr _e)
+Expr*
+core::quote(VariableScope* _s, Expr* _e)
 {
     UNUSED(_s);
     if (len(_e) > 1)
@@ -1649,20 +1639,20 @@ core::quote(VariableScope* _s, ExprPtr _e)
     return first(_e);
 }
 
-ExprPtr
-core::cons(VariableScope* _s, ExprPtr _e)
+Expr*
+core::cons(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(_e) != 2)
         throw _s->ProgramError("cons", "expected 2 arguments, got", args);
     return _s->env()->cons(first(args), second(args));
 }
 
-ExprPtr
-core::car(VariableScope* _s, ExprPtr _e)
+Expr*
+core::car(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr out;
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* out;
     if (len(_e) != 1)
         throw _s->ProgramError("car", "expected 1 argument, got", args);
     out = car(first(args));
@@ -1671,11 +1661,11 @@ core::car(VariableScope* _s, ExprPtr _e)
     return car(first(args));
 }
 
-ExprPtr
-core::cdr(VariableScope* _s, ExprPtr _e)
+Expr*
+core::cdr(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr out;
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* out;
     if (len(_e) != 1)
         throw _s->ProgramError("cdr", "expected 1 argument, got", args);
     out = cdr(first(args));
@@ -1684,21 +1674,21 @@ core::cdr(VariableScope* _s, ExprPtr _e)
     return cdr(first(args));
 }
 
-ExprPtr
-core::reverse_ip(VariableScope* _s, ExprPtr _e)
+Expr*
+core::reverse_ip(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
         return nullptr;
     return ipreverse(first(args));
 }
 
-ExprPtr
-core::plus2(VariableScope* _s, ExprPtr _e)
+Expr*
+core::plus2(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr a = first(args);
-    ExprPtr b = second(args);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
 
     if (len(args) < 2)
         throw _s->ProgramError("+", "cannot do math without 2 values", args);
@@ -1716,12 +1706,12 @@ core::plus2(VariableScope* _s, ExprPtr _e)
     return _s->env()->real(get_real(a) + get_real(b));
 }
 
-ExprPtr
-core::minus2(VariableScope* _s, ExprPtr _e)
+Expr*
+core::minus2(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr a = first(args);
-    ExprPtr b = second(args);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
 
     if (len(args) < 2)
         throw _s->ProgramError("-", "cannot do math without 2 values", args);
@@ -1739,12 +1729,12 @@ core::minus2(VariableScope* _s, ExprPtr _e)
     return _s->env()->real(get_real(a) - get_real(b));
 }
 
-ExprPtr
-core::multiply2(VariableScope* _s, ExprPtr _e)
+Expr*
+core::multiply2(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr a = first(args);
-    ExprPtr b = second(args);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
     if (len(args) < 2)
         throw _s->ProgramError("*", "cannot do math without 2 values", args);
     if (!is_val(a))
@@ -1761,12 +1751,12 @@ core::multiply2(VariableScope* _s, ExprPtr _e)
     return _s->env()->real(get_real(a) * get_real(b));
 }
 
-ExprPtr
-core::divide2(VariableScope* _s, ExprPtr _e)
+Expr*
+core::divide2(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr a = first(args);
-    ExprPtr b = second(args);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
 
     if (len(args) < 2)
         throw _s->ProgramError("/", "cannot do math without 2 values", args);
@@ -1792,13 +1782,13 @@ core::divide2(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(get_real(a) / get_real(b));
 }
 
-ExprPtr
-core::mathequal(VariableScope* _s, ExprPtr _e)
+Expr*
+core::mathequal(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr curr = cdr(args);
-    ExprPtr prev = args;
-    auto EQ2 = [] (ExprPtr a, ExprPtr b) {
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* curr = cdr(args);
+    Expr* prev = args;
+    auto EQ2 = [] (Expr* a, Expr* b) {
         if (is_nil(a) && is_nil(b))
             return true;
         if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
@@ -1830,12 +1820,12 @@ core::mathequal(VariableScope* _s, ExprPtr _e)
     return _s->env()->t();
 }
 
-ExprPtr
-core::lessthan2(VariableScope* _s, ExprPtr _e)
+Expr*
+core::lessthan2(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr a = first(args);
-    ExprPtr b = second(args);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
 
     if (len(args) < 2)
         return _s->env()->t();
@@ -1844,7 +1834,7 @@ core::lessthan2(VariableScope* _s, ExprPtr _e)
     if (!is_val(b))
         throw _s->ProgramError("<", "cannot compare non-value", b);
 
-    auto LT2 = [_s] (ExprPtr a, ExprPtr b) {
+    auto LT2 = [_s] (Expr* a, Expr* b) {
         if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
             return get_decimal(a) < get_decimal(b);
         else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
@@ -1858,12 +1848,12 @@ core::lessthan2(VariableScope* _s, ExprPtr _e)
     return _s->env()->t();
 }
 
-ExprPtr
-core::greaterthan2(VariableScope* _s, ExprPtr _e)
+Expr*
+core::greaterthan2(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr a = first(args);
-    ExprPtr b = second(args);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
 
     if (len(args) < 2)
         return _s->env()->t();
@@ -1871,7 +1861,7 @@ core::greaterthan2(VariableScope* _s, ExprPtr _e)
         throw _s->ProgramError("<", "cannot compare non-value", a);
     if (!is_val(b))
         throw _s->ProgramError("<", "cannot compare non-value", b);
-    auto GT2 = [_s] (ExprPtr a, ExprPtr b) {
+    auto GT2 = [_s] (Expr* a, Expr* b) {
         if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
             return get_decimal(a) > get_decimal(b);
         else if (type(a) == TYPE_REAL && type(b) == TYPE_DECIMAL)
@@ -1886,19 +1876,19 @@ core::greaterthan2(VariableScope* _s, ExprPtr _e)
     return _s->env()->t();
 }
 
-ExprPtr
-core::is_nil(VariableScope* _s, ExprPtr _e)
+Expr*
+core::is_nil(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (is_nil(first(args)))
         return _s->env()->t();
     return _s->env()->nil();
 }
 
-ExprPtr
-core::slurp_file(VariableScope* _s, ExprPtr _e)
+Expr*
+core::slurp_file(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     std::string content;
     std::ifstream ifs;
     std::stringstream ss;
@@ -1916,10 +1906,10 @@ core::slurp_file(VariableScope* _s, ExprPtr _e)
     return _s->env()->string(ss.str());
 }
 
-ExprPtr
-core::read(VariableScope* _s, ExprPtr _e)
+Expr*
+core::read(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) == 0)
         throw _s->ProgramError("read", "expects 1 argument, but did not get anything", _s->env()->nil());
     if (len(args) != 1)
@@ -1929,27 +1919,27 @@ core::read(VariableScope* _s, ExprPtr _e)
     return _s->env()->read(get_str(first(args)));
 }
 
-ExprPtr
-core::eval(VariableScope* _s, ExprPtr _e)
+Expr*
+core::eval(VariableScope* _s, Expr* _e)
 {
-     ExprPtr args = _s->env()->list_eval(_s, _e);
+     Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
         throw _s->ProgramError("eval", "expects only 1 argument, got", args);
     return _s->env()->eval(first(args));
 }
 
-ExprPtr
-core::write(VariableScope* _s, ExprPtr _e)
+Expr*
+core::write(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) > 1)
         throw _s->ProgramError("write", "expects single argument to write, not", args);
     _s->env()->outbuffer_put(stringify(first(args), false));
     return first(args);
 }
 
-ExprPtr
-core::newline(VariableScope* _s, ExprPtr _e)
+Expr*
+core::newline(VariableScope* _s, Expr* _e)
 {
     if (len(_e) != 0)
         throw _s->ProgramError("newline", "expects no args, got", _e);
@@ -1957,21 +1947,21 @@ core::newline(VariableScope* _s, ExprPtr _e)
     return _s->env()->nil();
 }
 
-ExprPtr
-core::stringify(VariableScope* _s, ExprPtr _e)
+Expr*
+core::stringify(VariableScope* _s, Expr* _e)
 {
     std::stringstream ss;
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
         throw _s->ProgramError("stringify", "expects only 1 argument, got", args);
     ss << stringify(first(args));
     return _s->env()->string(ss.str());
 }
 
-ExprPtr
-core::concat2(VariableScope* _s, ExprPtr _e)
+Expr*
+core::concat2(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) == 0)
         return _s->env()->string("");
     if (len(args) == 1)
@@ -1982,14 +1972,14 @@ core::concat2(VariableScope* _s, ExprPtr _e)
    
 }
 
-ExprPtr
-core::range(VariableScope* _s, ExprPtr _e)
+Expr*
+core::range(VariableScope* _s, Expr* _e)
 {
     bool reverse = false;
     int low;
     int high;
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr out = nullptr;
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* out = nullptr;
 
     if (get_real(first(args)) < get_real(second(args))) {
         low = get_real(first(args));
@@ -2007,10 +1997,10 @@ core::range(VariableScope* _s, ExprPtr _e)
     return ipreverse(out);
 }
 
-ExprPtr
-core::_if(VariableScope* _s, ExprPtr _e)
+Expr*
+core::_if(VariableScope* _s, Expr* _e)
 {
-    ExprPtr cond = nullptr;    
+    Expr* cond = nullptr;    
     if (!(len(_e) == 2 || len(_e) == 3))
         throw _s->ProgramError("if", "expected required condition and true body, got", _e);
     cond = _s->env()->scoped_eval(_s, first(_e));
@@ -2019,10 +2009,10 @@ core::_if(VariableScope* _s, ExprPtr _e)
     return _s->env()->scoped_eval(_s, third(_e));
 }
 
-ExprPtr
-core::_typeof(VariableScope* _s, ExprPtr _e)
+Expr*
+core::_typeof(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) > 1)
         throw _s->ProgramError("typeof", "expected 1 argument, got", args);
     if (is_nil(first(args)))
@@ -2041,11 +2031,11 @@ core::_typeof(VariableScope* _s, ExprPtr _e)
     };
 }
 
-ExprPtr
-core::_try(VariableScope* _s, ExprPtr _e)
+Expr*
+core::_try(VariableScope* _s, Expr* _e)
 {
-    ExprPtr res = nullptr;
-    ExprPtr err = nullptr;
+    Expr* res = nullptr;
+    Expr* err = nullptr;
     bool was_err = false;
     
     /*Check all requirements for catching is in place*/
@@ -2081,30 +2071,30 @@ core::_try(VariableScope* _s, ExprPtr _e)
 }
 
 
-ExprPtr
-core::_throw(VariableScope* _s, ExprPtr _e)
+Expr*
+core::_throw(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     throw _s->UserThrow(args);
     //throw _s->UserThrow(_s->env()->put_in_list(_s->env()->symbol("error"), args));
     return nullptr;
 }
 
-ExprPtr
-core::_return(VariableScope* _s, ExprPtr _e)
+Expr*
+core::_return(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) <= 1)
         throw _s->UserReturn(first(args));
     throw _s->ProgramError("return", "Return can only have 0-1 argument, got", args);
     return nullptr;
 }
 
-ExprPtr
-core::variable_definition(VariableScope* _s, ExprPtr _e)
+Expr*
+core::variable_definition(VariableScope* _s, Expr* _e)
 {
-    ExprPtr var = nullptr;
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* var = nullptr;
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1)
         throw _s->ProgramError("variable-definition", "expects single arg, but got", args);
     if (type(first(args)) != TYPE_SYMBOL)
@@ -2116,10 +2106,10 @@ core::variable_definition(VariableScope* _s, ExprPtr _e)
     return var;
 }
 
-ExprPtr
-core::defglobal(VariableScope* _s, ExprPtr _e)
+Expr*
+core::defglobal(VariableScope* _s, Expr* _e)
 {
-    ExprPtr val = _s->env()->scoped_eval(_s, second(_e));
+    Expr* val = _s->env()->scoped_eval(_s, second(_e));
     if (len(_e) != 2)
         throw _s->ProgramError("global!", "expects symbol and value, got", _e);
     if (type(first(_e)) != TYPE_SYMBOL)
@@ -2128,10 +2118,10 @@ core::defglobal(VariableScope* _s, ExprPtr _e)
     return first(_e);
 }
 
-ExprPtr
-core::deflocal(VariableScope* _s, ExprPtr _e)
+Expr*
+core::deflocal(VariableScope* _s, Expr* _e)
 {
-    ExprPtr val = _s->env()->scoped_eval(_s, second(_e));
+    Expr* val = _s->env()->scoped_eval(_s, second(_e));
     if (len(_e) != 2)
         throw _s->ProgramError("local!", "expects symbol and value, got", _e);
     if (type(first(_e)) != TYPE_SYMBOL)
@@ -2140,79 +2130,79 @@ core::deflocal(VariableScope* _s, ExprPtr _e)
     return first(_e);
 }
 
-ExprPtr
-core::setcar(VariableScope* _s, ExprPtr _e)
+Expr*
+core::setcar(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (type(first(args)) != TYPE_CONS)
         throw _s->ProgramError("setcar!", "Expected cons to modify, got", first(args));
     set_car(first(args), second(args));
     return second(args);
 }
 
-ExprPtr
-core::setcdr(VariableScope* _s, ExprPtr _e)
+Expr*
+core::setcdr(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (type(first(args)) != TYPE_CONS)
         throw _s->ProgramError("setcdr!", "Expected cons to modify, got", first(args));
     set_cdr(first(args), second(args));
     return second(args);
 }
 
-ExprPtr
-core::deflambda(VariableScope* _s, ExprPtr _e)
+Expr*
+core::deflambda(VariableScope* _s, Expr* _e)
 {
     UNUSED(_s);
     if (len(_e) < 1)
         throw _s->ProgramError("lambda", "expected arguments to be binds and body, got", _e);
-    ExprPtr l = _s->env()->lambda(car(_e), cdr(_e));
+    Expr* l = _s->env()->lambda(car(_e), cdr(_e));
     return l;
 }
 
-ExprPtr
-core::deffunction(VariableScope* _s, ExprPtr _e)
+Expr*
+core::deffunction(VariableScope* _s, Expr* _e)
 {
     if (len(_e) < 2)
         throw _s->ProgramError("fn!", "expected arguments to be name, binds and body, got", _e);
-    ExprPtr fn = _s->env()->lambda(second(_e), cdr(cdr(_e)));
+    Expr* fn = _s->env()->lambda(second(_e), cdr(cdr(_e)));
     _s->add_global(get_csym(first(_e)), fn);
     return first(_e);
 }
 
-ExprPtr
-core::defmacro(VariableScope* _s, ExprPtr _e)
+Expr*
+core::defmacro(VariableScope* _s, Expr* _e)
 {
     if (len(_e) < 2)
         throw _s->ProgramError("macro!", "expected arguments to be name, binds and body, got", _e);
-    ExprPtr macro = _s->env()->macro(second(_e), cdr(cdr(_e)));
+    Expr* macro = _s->env()->macro(second(_e), cdr(cdr(_e)));
     _s->add_global(get_csym(first(_e)), macro);
     return first(_e);
 }
 
-ExprPtr
-core::macro_expand(VariableScope* _s, ExprPtr _e)
+Expr*
+core::macro_expand(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || type(first(args)) != TYPE_CONS)
         throw _s->ProgramError("macro-expand", "expected macro call as list, got", args);
-    ExprPtr macro_call = first(args);
+    Expr* macro_call = first(args);
     if (type(first(macro_call)) != TYPE_SYMBOL)
         throw _s->ProgramError("macro-expand",
                            "expected first arg to be a symbol pointing to a macro, not",
                            first(macro_call));
 
     const std::string macro_name = get_sym(first(macro_call));
-    ExprPtr macro_fn = first(_s->variable_get(get_csym(first(macro_call))));
-    ExprPtr macro_args = cdr(macro_call);
-    ExprPtr expanded = _macro_expander(_s, macro_name, macro_fn, macro_args);
+    Expr* macro_fn = first(_s->variable_get(get_csym(first(macro_call))));
+    Expr* macro_args = cdr(macro_call);
+    Expr* expanded = _macro_expander(_s, macro_name, macro_fn, macro_args);
     return expanded;
 }
 
-ExprPtr
-core::cos(VariableScope* _s, ExprPtr _e)
+Expr*
+core::cos(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("cos", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2220,10 +2210,10 @@ core::cos(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::cos(get_real(first(args))));
 }
 
-ExprPtr
-core::sin(VariableScope* _s, ExprPtr _e)
+Expr*
+core::sin(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("sin", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2231,10 +2221,10 @@ core::sin(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::sin(get_real(first(args))));
 }
 
-ExprPtr
-core::tan(VariableScope* _s, ExprPtr _e)
+Expr*
+core::tan(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("tan", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2242,10 +2232,10 @@ core::tan(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::tan(get_real(first(args))));
 }
 
-ExprPtr
-core::acos(VariableScope* _s, ExprPtr _e)
+Expr*
+core::acos(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("acos", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2253,10 +2243,10 @@ core::acos(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::acos(get_real(first(args))));
 }
     
-ExprPtr
-core::asin(VariableScope* _s, ExprPtr _e)
+Expr*
+core::asin(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("asin", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2264,10 +2254,10 @@ core::asin(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::asin(get_real(first(args))));
 }
     
-ExprPtr
-core::atan(VariableScope* _s, ExprPtr _e)
+Expr*
+core::atan(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("atan", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2275,10 +2265,10 @@ core::atan(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::atan(get_real(first(args))));
 }
     
-ExprPtr
-core::cosh(VariableScope* _s, ExprPtr _e)
+Expr*
+core::cosh(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("cosh", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2286,10 +2276,10 @@ core::cosh(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::cosh(get_real(first(args))));
 }
     
-ExprPtr
-core::sinh(VariableScope* _s, ExprPtr _e)
+Expr*
+core::sinh(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("sinh", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2297,10 +2287,10 @@ core::sinh(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::sinh(get_real(first(args))));
 }
     
-ExprPtr
-core::tanh(VariableScope* _s, ExprPtr _e)
+Expr*
+core::tanh(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("tanh", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2308,10 +2298,10 @@ core::tanh(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::tanh(get_real(first(args))));
 }
     
-ExprPtr
-core::floor(VariableScope* _s, ExprPtr _e)
+Expr*
+core::floor(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("floor", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2319,10 +2309,10 @@ core::floor(VariableScope* _s, ExprPtr _e)
     return _s->env()->real(std::floor(get_real(first(args))));
 }
     
-ExprPtr
-core::ceil(VariableScope* _s, ExprPtr _e)
+Expr*
+core::ceil(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("ceil", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2330,10 +2320,10 @@ core::ceil(VariableScope* _s, ExprPtr _e)
     return _s->env()->real(std::ceil(get_real(first(args))));
 }
 
-ExprPtr
-core::sqrt(VariableScope* _s, ExprPtr _e)
+Expr*
+core::sqrt(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("sqrt", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2341,10 +2331,10 @@ core::sqrt(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::sqrt(get_real(first(args))));
 }
     
-ExprPtr
-core::log(VariableScope* _s, ExprPtr _e)
+Expr*
+core::log(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("log", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2352,10 +2342,10 @@ core::log(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::log(get_real(first(args))));
 }
     
-ExprPtr
-core::log10(VariableScope* _s, ExprPtr _e)
+Expr*
+core::log10(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("log10", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2363,10 +2353,10 @@ core::log10(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::log10(get_real(first(args))));
 }
 
-ExprPtr
-core::exp(VariableScope* _s, ExprPtr _e)
+Expr*
+core::exp(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
+    Expr* args = _s->env()->list_eval(_s, _e);
     if (len(args) != 1 || !is_val(first(args)))
         throw _s->ProgramError("exp", "expected 1 value arg, got", args);
     if (type(first(args)) == TYPE_DECIMAL)
@@ -2374,12 +2364,12 @@ core::exp(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::exp(get_real(first(args))));
 }
 
-ExprPtr
-core::pow(VariableScope* _s, ExprPtr _e)
+Expr*
+core::pow(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr a = first(args);
-    ExprPtr b = second(args);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
     if (len(args) != 2 || !is_val(a) || !is_val(b))
         throw _s->ProgramError("pow", "expected 2 value args, got", args);
     if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
@@ -2391,12 +2381,12 @@ core::pow(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::pow(get_real(a), get_real(b)));
 }
 
-ExprPtr
-core::modulus(VariableScope* _s, ExprPtr _e)
+Expr*
+core::modulus(VariableScope* _s, Expr* _e)
 {
-    ExprPtr args = _s->env()->list_eval(_s, _e);
-    ExprPtr a = first(args);
-    ExprPtr b = second(args);
+    Expr* args = _s->env()->list_eval(_s, _e);
+    Expr* a = first(args);
+    Expr* b = second(args);
     if (len(args) != 2 || !is_val(a) || !is_val(b))
         throw _s->ProgramError("%", "expected 2 value args, got", args);
     if (type(a) == TYPE_DECIMAL && type(b) == TYPE_DECIMAL)
@@ -2408,8 +2398,8 @@ core::modulus(VariableScope* _s, ExprPtr _e)
     return _s->env()->decimal(std::fmod(get_real(a), get_real(b)));
 }
 
-ExprPtr
-core::get_time(VariableScope *_s, ExprPtr _e)
+Expr*
+core::get_time(VariableScope *_s, Expr *_e)
 {
   if (len(_e) != 0)
       throw _s->ProgramError("time", "expects no arguments, got", _e);
@@ -2429,26 +2419,26 @@ core::get_time(VariableScope *_s, ExprPtr _e)
       });
 }
 
-ExprPtr
-core::gc_info(VariableScope* _s, ExprPtr _e)
+Expr*
+core::gc_info(VariableScope* _s, Expr* _e)
 {
     if (len(_e) != 0)
         throw _s->ProgramError("gc-info", "expects no arguments, got", _e);
     return _s->env()->string(_s->env()->gc_info());
 }
 
-ExprPtr
-core::gc_run(VariableScope* _s, ExprPtr _e)
+Expr*
+core::gc_run(VariableScope* _s, Expr* _e)
 {
     if (len(_e) != 0)
         throw _s->ProgramError("gc-run", "expects no arguments, got", _e);
     _s->mark_variables();
     size_t collected = _s->env()->garbage_collect();
-    return _s->env()->string("GC collected " + std::to_string(collected) + " ExprPtr's");
+    return _s->env()->string("GC collected " + std::to_string(collected) + " Expr's");
 }
 
-//   ExprPtr
-//   core::get_all_globals(VariableScope* _s, ExprPtr _e)
+//   Expr*
+//   core::get_all_globals(VariableScope* _s, Expr* _e)
 //   {
 //       std::vector<std::string> locals{};
 //       if (len(_e) != 0)
@@ -2458,7 +2448,7 @@ core::gc_run(VariableScope* _s, ExprPtr _e)
 //           std::string local = "";
 //           if (is_macro(first(kv.second))) {
 //               local += "(macro! " + kv.first + " ";
-//               ExprPtr e = first(first(kv.second))
+//               Expr* e = first(first(kv.second))
 //               while (!is_nil(e)) {
 //                   local += car
 //
@@ -2484,8 +2474,8 @@ core::gc_run(VariableScope* _s, ExprPtr _e)
 //       return _s->env()->string(str);
 //   }
 
-//   ExprPtr
-//   core::get_all_globals(VariableScope* _s, ExprPtr _e)
+//   Expr*
+//   core::get_all_globals(VariableScope* _s, Expr* _e)
 //   {
 //       std::vector<std::string> locals{};
 //       if (len(_e) != 0)
@@ -2495,7 +2485,7 @@ core::gc_run(VariableScope* _s, ExprPtr _e)
 //           std::string local = "";
 //           if (is_macro(first(kv.second))) {
 //               local += "(macro! " + kv.first + " ";
-//               ExprPtr e = first(first(kv.second))
+//               Expr* e = first(first(kv.second))
 //               while (!is_nil(e)) {
 //                   local += car
 //
@@ -2521,10 +2511,10 @@ core::gc_run(VariableScope* _s, ExprPtr _e)
 //       return _s->env()->string(str);
 //   }
 
-ExprPtr
-core::get_vars(VariableScope* _s, ExprPtr _e)
+Expr*
+core::get_vars(VariableScope* _s, Expr* _e)
 {
-    ExprPtr locals = nullptr;
+    Expr* locals = nullptr;
     if (len(_e) != 0)
         throw _s->ProgramError("get-globals", "expects no arguments, got", _e);
 

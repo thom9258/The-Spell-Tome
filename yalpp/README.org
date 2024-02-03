@@ -5,8 +5,10 @@
 
 ** Table of Contents                                                    :toc:
   - [[#introduction][Introduction]]
-  - [[#simple-example][Simple Example]]
+  - [[#languange-example][Languange Example]]
   - [[#roadmap--wanted-features][Roadmap & wanted features]]
+  - [[#yal-embedding-guide][YAL Embedding Guide]]
+  - [[#writing-yal-programs][Writing YAL Programs]]
 
 ** Introduction
 
@@ -19,7 +21,7 @@ The aim of the project is to create a highly scaleable implementation that is:
 
 YAL is a minimal implementation written in C++. This means that only the core features are implemented in the host languange, and the rest of the languange is hosted in itself. See "std.yal" for refrence.
 
-** Simple Example
+** Languange Example
 
 #+begin_src lisp
 (fn! len (list)
@@ -51,7 +53,6 @@ YAL is a minimal implementation written in C++. This means that only the core fe
 
 Examples of how to utilize the syntax of YAL can be found in the standard library "std.yal" and in the "examples/" folder.
 
-
 ** Roadmap & wanted features
 
 - [X] Comments support
@@ -73,3 +74,12 @@ Examples of how to utilize the syntax of YAL can be found in the standard librar
 - [.] Keywords and stricter error checking for function binds and checking of correct input len
 - [ ] let and flet scopes
 - [ ] format and print functions
+  
+** YAL Embedding Guide
+
+
+** Writing YAL Programs
+
+
+
+

@@ -65,6 +65,13 @@
 (fn! println (&outs)
   (prog1 (write (apply 'concat outs)) (newline)))
   
+; (fn! q-println (&outs)
+; (if (nil? outs) 
+;     NIL
+;     (progn (write (first outs)) 
+;         (newline)
+;         (q-println (rest outs)))))
+  
 ; ======================================================================
 ; Math
 ; ======================================================================
@@ -194,7 +201,7 @@
     NIL
     (cons (apply fn (transform 'car lists))
           (apply 'map (cons fn
-                           (transform 'cdr lists))))))
+                            (transform 'cdr lists))))))
 
 (fn! reduce (fn init list)
  "fold a list using fn and init value"
@@ -219,7 +226,6 @@
 (fn! reverse (list)
   "reverse a list"
   (reduce (lambda (a x) (cons x a)) nil list))
-
 
 ; ======================================================================
 ; List accessors
@@ -344,6 +350,10 @@
 (global! PI/2 (/ PI 2))
 (global! PI/3 (/ PI 3))
 (global! PI/4 (/ PI 4))
+
+; ======================================================================
+; Garbage Collection Management
+; ======================================================================
 
 ; ======================================================================
 ; End of std
