@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
-
 #include "testlib.h"
-
 #define TH_ALLOCATOR_IMPLEMENTATION
 #include "../th_allocator.h"
 
