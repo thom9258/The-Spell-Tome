@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 #define MATHPLUSPLUS_IMPLEMENTATION
-#include "../mathpp.h"
+#include "../src/Mat44.h"
 
 int main(void) {
 
@@ -17,14 +17,10 @@ int main(void) {
     b.m24 = .22;
     Mat44 c = mat44_multiply(a, b);
 
-    printf("a:\n" MAT44_PSTRING, MAT44_EXPAND(a));
-    printf("b:\n" MAT44_PSTRING, MAT44_EXPAND(b));
-    printf("c:\n" MAT44_PSTRING, MAT44_EXPAND(c));
+    printf("a:\n" MAT44_FMTSTRING, MAT44_EXPAND(a));
+    printf("b:\n" MAT44_FMTSTRING, MAT44_EXPAND(b));
+    printf("c:\n" MAT44_FMTSTRING, MAT44_EXPAND(c));
 
-
-
-    Vec3 t = vec3(1.2, 0, 4.7);
-    printf(VEC3_PSTRING "\n", VEC3_EXPAND(t));
     return 0;
 }
 
