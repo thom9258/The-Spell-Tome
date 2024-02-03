@@ -1,0 +1,52 @@
+* Yet Another LISP
+
+YAL is a programming languange in the LISP style aiming to provide a robust, fully-fledged programming interpreter.
+The aim of the project is to create a highly scaleable implementation that is:
+
+- Embeddable as a scripting languange for running C++ applications.
+- Scaleable and modyfiable to the degree that you can mold the languange to fit the project's needs.
+- Useable as a serializeable datastructure like JSON and XML.
+
+YAL is a minimal implementation written in C++. this means that the rest of the languange be hosted in itself using the host implementation.
+This means, that core functionality is implemented in the languange itself, such as core list functionality:
+
+#+begin_src lisp
+(fn! len (l)
+  "count the length of a given list"
+  (if (nil? list)
+    0
+    (+ 1 (len (tail list)))))
+
+(fn! contains (value list)
+  "check if a list contains a given value"
+  (if (nil? list)
+    NIL
+    (if (eq (car list) value)
+      T
+      (contains value (cdr list)))))
+
+(contains a '(d c b a))
+
+#+end_src
+
+
+
+** Version 1.0 Requirements
+
+- [X] Macro evaluation
+  - [ ] Incorporate quasi-quote and its associates as special tokens
+- [ ] Garbage collection
+- [ ] Tail call optimization
+- [ ] Reading of files to not require a progn
+- [ ] buildin or interpreted list iteration function (cl do)
+- [ ] buildin readline and atoi/atof equivilants for inputs
+
+*** Nice to have
+
+- [ ] Redefine variables to contain variable-value and variable-function
+- [X] Use a hash map for O(1) access of variables instead of iteration using assoc
+- [X] List manioulation such as split, and map transforms for lists
+- [.] Keywords and stricter error checking for function binds and checking of correct input len
+- [ ] let and flet scopes
+
+- [ ] format and print functions
