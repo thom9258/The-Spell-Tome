@@ -11,9 +11,9 @@
 const char* std_path = "../../std.yal";
 
 bool
-eval_test(yal::Environment* _e, yal::Expr* _prg, const char* _gt)    
+eval_test(yal::Environment* _e, yal::ExprPtr _prg, const char* _gt)    
 {
-    yal::Expr* res;
+    yal::ExprPtr res;
     std::cout << "program: " << yal::stringify(_prg) << std::endl;
     res = _e->eval(_prg);
     std::cout << "res:     " << yal::stringify(res) << std::endl;
@@ -23,7 +23,7 @@ eval_test(yal::Environment* _e, yal::Expr* _prg, const char* _gt)
 bool
 lex_type_test(yal::Environment* _e, const char* _prg, yal::TYPE _type)
 {
-    yal::Expr* res;
+    yal::ExprPtr res;
     std::cout << "program: " << _prg << std::endl;
     res = _e->read(_prg);
     std::cout << "res:     " << yal::stringify(res) << std::endl;
@@ -35,7 +35,7 @@ lex_type_test(yal::Environment* _e, const char* _prg, yal::TYPE _type)
 bool
 read_test(yal::Environment* _e, const char* _prg)
 {
-    yal::Expr* res;
+    yal::ExprPtr res;
     std::string resstr;
     std::cout << "program: " << _prg << std::endl;
     res = _e->read(_prg);
@@ -47,7 +47,7 @@ read_test(yal::Environment* _e, const char* _prg)
 bool
 read_test(yal::Environment* _e, const char* _prg, const char* _gt)
 {
-    yal::Expr* res;
+    yal::ExprPtr res;
     std::string resstr;
     std::cout << "program: " << _prg << std::endl;
     res = _e->read(_prg);
@@ -61,8 +61,8 @@ repl_test(yal::Environment* _e, const char* _p, const char* _gt)
 {
     std::string read_str;
     std::string eval_str;
-    yal::Expr* read_result;
-    yal::Expr* eval_result;
+    yal::ExprPtr read_result;
+    yal::ExprPtr eval_result;
     if (_p == nullptr || _gt == nullptr)
         return false;
 
@@ -79,16 +79,16 @@ repl_test(yal::Environment* _e, const char* _p, const char* _gt)
 /*======================================================================*/
 /*======================================================================*/
 
-struct cppExpr;
+struct ExprData*;
 
 struct Callable {
-    cppExpr* binds;
-    cppExpr* body;
+    ExprData* binds;
+    ExprData* body;
 };
 
 struct Cons {
-    cppExpr* car;
-    cppExpr* cdr;
+    ExprData* car;
+    ExprData* cdr;
 };
 
 struct Symbol {
@@ -99,7 +99,7 @@ struct String {
     std::string str;
 };
 
-class cppExpr {
+class ExprData* {
     std::uint8_t m_type;
     std::variant<int,
                  float,
@@ -118,26 +118,26 @@ public:
 void
 test_sizes(void)
 {
-    const size_t exprsz = sizeof(yal::Expr);
-    const size_t conssz = sizeof(yal::Expr*) * 2;
+    const size_t exprsz = sizeof(yal::ExprPtr);
+    const size_t conssz = sizeof(yal::ExprPtr) * 2;
     const size_t enumtypesz = sizeof(yal::TYPE);
-    std::cout << "sizeof Expr = " << exprsz << std::endl; 
+    std::cout << "sizeof ExprPtr = " << exprsz << std::endl; 
     std::cout << "sizeof cons = " << conssz << std::endl; 
     std::cout << "sizeof smallsz = " << yal::smallXsz << std::endl; 
     std::cout << "sizeof type = " << enumtypesz << std::endl; 
 
     std::cout << "sizeof iostream = " << sizeof(std::iostream) << std::endl; 
-    std::cout << "sizeof cppExpr = " << sizeof(cppExpr) << std::endl; 
-    std::cout << "sizeof yal::Expr = " << sizeof(yal::Expr) << std::endl; 
+    std::cout << "sizeof ExprData* = " << sizeof(ExprData*) << std::endl; 
+    std::cout << "sizeof yal::ExprPtr = " << sizeof(yal::ExprPtr) << std::endl; 
     
-    TL_TEST(sizeof(cppExpr) > sizeof(yal::Expr));
+    TL_TEST(sizeof(ExprData*) > sizeof(yal::ExprPtr));
 }
 
 void
 test_types_creation(void)
 {
     yal::Environment e;
-    yal::Expr* expr = e.real(4);
+    yal::ExprPtr expr = e.real(4);
     TL_TEST(type(expr) == yal::TYPE_REAL);
     TL_TEST(get_real(expr) == 4);
     std::string realstr = yal::stringify(expr);
@@ -151,33 +151,33 @@ test_types_creation(void)
     std::cout << exprstr << std::endl;
     TL_TEST(exprstr == "4.3");
 
-    yal::Expr* cns = e.cons(e.real(4), e.decimal(4.3));
+    yal::ExprPtr cns = e.cons(e.real(4), e.decimal(4.3));
     TL_TEST(type(cns) == yal::TYPE_CONS);
     std::string cnsstr = yal::stringify(cns);
     std::cout << cnsstr << std::endl;
     TL_TEST(cnsstr == "(4 . 4.3)");
 
-    yal::Expr* st = e.string("mystr");
+    yal::ExprPtr st = e.string("mystr");
     TL_TEST(type(st) == yal::TYPE_STRING);
     TL_TEST(get_str(st) == "mystr");
     std::string strstr = yal::stringify(st);
     std::cout << strstr << std::endl;
     TL_TEST(strstr == "\"mystr\"");
 
-    yal::Expr* sy = e.symbol("mysym");
+    yal::ExprPtr sy = e.symbol("mysym");
     TL_TEST(type(sy) == yal::TYPE_SYMBOL);
     TL_TEST(get_sym(sy) == "mysym");
     std::string symstr = yal::stringify(sy);
     std::cout << symstr << std::endl;
     TL_TEST(symstr == "mysym");
 
-    yal::Expr* lst = e.list({e.symbol("*"), e.real(2), e.decimal(3.14)});
+    yal::ExprPtr lst = e.list({e.symbol("*"), e.real(2), e.decimal(3.14)});
     TL_TEST(type(lst) == yal::TYPE_CONS);
     std::string lststr = yal::stringify(lst);
     std::cout << lststr << std::endl;
     TL_TEST(lststr == std::string("(* 2 3.14)"));
 
-    yal::Expr* lst2 = e.list({e.symbol("+"), e.real(5), e.list({e.symbol("*"), e.real(4), e.decimal(2.5)})});
+    yal::ExprPtr lst2 = e.list({e.symbol("+"), e.real(5), e.list({e.symbol("*"), e.real(4), e.decimal(2.5)})});
     std::string lst2str = yal::stringify(lst2);
     std::cout << lst2str << std::endl;
     TL_TEST(lst2str == std::string("(+ 5 (* 4 2.5))"));
@@ -189,7 +189,7 @@ void
 test_nilp(void)
 {
     yal::Environment e;
-    yal::Expr* p = e.read("(1 2 3)");
+    yal::ExprPtr p = e.read("(1 2 3)");
     std::cout << stringify(p) << std::endl;
     TL_TEST(is_nil(p) == false);
 
@@ -234,7 +234,7 @@ test_len(void)
 {
     yal::Environment e;
 
-    yal::Expr* list = e.list({e.real(1)});
+    yal::ExprPtr list = e.list({e.real(1)});
     std::cout << "list: " << yal::stringify(list) << std::endl;
     std::cout << "len of list: " << yal::len(list) << std::endl;
     TL_TEST(yal::len(list) == 1);
@@ -278,7 +278,7 @@ test_globals(void)
     e.add_global("*Creator*", e.string("Thomas Alexgaard"));
     e.add_global("PI", e.decimal(pi));
 
-    yal::Expr* constant = e.global_scope()->variable_get("PI");
+    yal::ExprPtr constant = e.global_scope()->variable_get("PI");
     std::cout << "PI: " << yal::stringify(constant) << std::endl;
     TL_TEST(yal::stringify(constant) == "(3.14159)");
 
@@ -299,8 +299,8 @@ void
 test_ipreverse(void)
 {
     yal::Environment e;
-    yal::Expr* list;
-    yal::Expr* rev;
+    yal::ExprPtr list;
+    yal::ExprPtr rev;
 
     list = e.list({e.real(1), e.real(2), e.real(3), e.real(4)});
     std::cout << "list:     " << yal::stringify(list) << std::endl;
@@ -314,7 +314,7 @@ test_ipreverse(void)
 void
 test_simple_eval(void)
 {
-    yal::Expr* program;
+    yal::ExprPtr program;
     yal::Environment e;
     e.load_core();
     e.load_file(std_path);
@@ -551,7 +551,7 @@ test_mark_unmark(void)
     yal::Environment e;
     e.load_core();
     
-    yal::Expr* ints = e.read("(1 2 3)");
+    yal::ExprPtr ints = e.read("(1 2 3)");
     std::cout << ints << std::endl;
     TL_TEST(stringify(ints) == "(1 2 3)");
     yal::set_mark(ints);
@@ -561,7 +561,7 @@ test_mark_unmark(void)
     TL_TEST(yal::is_marked(yal::second(ints)));
     TL_TEST(yal::is_marked(yal::third(ints)));
     
-    yal::Expr* lst = e.read("(quote (T 2 NIL)");
+    yal::ExprPtr lst = e.read("(quote (T 2 NIL)");
     yal::set_mark(lst);
     TL_TEST(yal::is_marked(lst));
     TL_TEST(yal::is_marked(yal::first(lst)));
@@ -653,32 +653,36 @@ test_scoped_gc(void)
 void
 test_std_gc(void)
 {
-    size_t collected = 0;
-    size_t inuse = 0;
+    //size_t collected = 0;
     yal::Environment e;
     e.load_core();
-
     std::cout << e.gc_info() << std::endl << std::endl;
-
-    TL_TEST(repl_test(&e, "(global! mymath (_PLUS2 2 3))", "mymath"));
-    TL_TEST(repl_test(&e, "mymath", "5"));
-    std::cout << e.gc_info() << std::endl << std::endl;
-
-    inuse = e.exprs_in_use();
-    std::cout << "exprs in use " << inuse << std::endl;
-
-    collected += e.garbage_collect();
-    std::cout << "collected exprs " << collected << std::endl;
-    inuse = e.exprs_in_use();
-    std::cout << "exprs in use after gc " << inuse << std::endl;
+    //collected += e.garbage_collect();
+    std::cout << e.eval(e.read("(gc-run)")) << std::endl;
+    //std::cout << "after core collected exprs " << collected << std::endl;
     
-    std::cout << "exprs in use " << inuse << std::endl;
-    TL_TEST(repl_test(&e, "'(1 2 3)", "(1 2 3)"));
-    collected += e.garbage_collect();
-    std::cout << "collected exprs " << collected << std::endl;
-    std::cout << "exprs in use after gc " << inuse << std::endl;
+    
+    TL_TEST(repl_test(&e,"(fn! min (a b) (if (< a b) a b))", "min"));
+    TL_TEST(repl_test(&e,"(fn! max (a b) (if (< a b) b a))", "max"));
+    TL_TEST(repl_test(&e,"(fn! clamp (val low high) (max low (min val high)))", "clamp"));
+    
+    TL_TEST(repl_test(&e, "(min 1 2)", "1"));
+    TL_TEST(repl_test(&e, "(clamp 7 -2 2)", "2"));
+    std::cout << e.eval(e.read("(gc-run)")) << std::endl;
+    std::cout << e.gc_info() << std::endl << std::endl;
+    
+    for (int i = 0; i < 10; i++)
+        std::cout << e.eval(e.read("(gc-run)")) << std::endl;
 
-    TL_TEST(repl_test(&e, "mymath", "5"));
+    //collected += e.garbage_collect();
+    //std::cout << "after core collected exprs " << collected << std::endl;
+ 
+    std::cout << "==================================================" << std::endl;
+    TL_TEST(repl_test(&e, "(min 1 2)", "1"));
+    //collected += e.garbage_collect();
+    std::cout << e.eval(e.read("(gc-run)")) << std::endl;
+    //std::cout << "after core collected exprs " << collected << std::endl;
+
 
     std::cout << e.gc_info() << std::endl;
 }
@@ -1575,6 +1579,13 @@ main(int argc, char **argv)
     //TL(test_ipreverse());
     //TL(test_simple_eval());
     //TL(test_lex_types());
+
+    TL(test_gc_empty());
+    TL(test_mark_unmark());
+    //TL(test_global_gc());
+    //TL(test_scoped_gc());
+    TL(test_std_gc());
+
     //TL(test_buildin_range());
     //TL(test_buildin_equality());
     //TL(test_buildin_accessors());
@@ -1598,12 +1609,6 @@ main(int argc, char **argv)
     //TL(test_extended_math());
     //TL(test_get());
     //TL(test_macros());
-
-    TL(test_gc_empty());
-    TL(test_mark_unmark());
-    TL(test_global_gc());
-    TL(test_scoped_gc());
-
     //TL(test_quasiquote());
     //TL(test_funcall());
 
